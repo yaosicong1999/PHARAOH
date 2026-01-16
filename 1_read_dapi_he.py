@@ -134,6 +134,9 @@ dapi_level = None
 he_path = None
 dapi_path = None
 
+he_blob_count_var = None
+dapi_blob_count_var = None
+
 
 # ---- Helper Functions ----
 def save_img_array(ary, filename):
@@ -228,6 +231,20 @@ def create_blob_mask_from_luted_dapi(luted_dapi):
     mask_clean = clean_and_cluster_mask(mask_filled, top_k=15, bridge_kernel=15, min_area=2000, dist_thresh=50)
     return mask_clean
 
+def count_components(mask_u8, min_area=2000):
+    """
+    Count connected components in a binary/uint8 mask.
+    Returns: int (number of components excluding background)
+    """
+    if mask_u8 is None:
+        return 0
+    m = (mask_u8 > 0).astype(np.uint8)
+    num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(m, connectivity=8)
+    if num_labels <= 1:
+        return 0
+    areas = stats[1:, cv2.CC_STAT_AREA]  # skip background
+    return int(np.sum(areas >= min_area))
+
 def pil_thumbnail(img, max_width=600, max_height=600):
     if img.ndim == 2:
         img_show = cv2.cvtColor(img, cv2.COLOR_GRAY2RGB)
@@ -312,6 +329,10 @@ def update_he(threshold):
     he_dense_label.configure(image=tk_img)
     he_dense_label.image = tk_img
 
+    # 5. update HE blob count display
+    if he_blob_count_var is not None:
+        n_he = count_components(he_dense_mask, min_area=2000)
+        he_blob_count_var.set(f"HE blobs: {n_he}")
 
 def select_dapi():
     global dapi_img, dapi_img_view, dapi_slider, dapi_level, dapi_path
@@ -387,6 +408,11 @@ def update_dapi(threshold):
     dapi_mask_label.configure(image=tk_img)
     dapi_mask_label.image = tk_img
 
+    # 5. update DAPI blob count display
+    if dapi_blob_count_var is not None:
+        n_dapi = count_components(dapi_mask_img, min_area=2000)
+        dapi_blob_count_var.set(f"DAPI blobs: {n_dapi}")
+
 def update_grid():
     # ---- HE original ----
     if he_orig is not None:
@@ -429,6 +455,15 @@ def update_grid():
     tk_img = ImageTk.PhotoImage(tile)
     dapi_mask_label.configure(image=tk_img)
     dapi_mask_label.image = tk_img
+
+    # ---- update blob count text ----
+    if he_blob_count_var is not None:
+        n_he = count_components(he_dense_mask, min_area=2000)
+        he_blob_count_var.set(f"HE blobs: {n_he}")
+
+    if dapi_blob_count_var is not None:
+        n_dapi = count_components(dapi_mask_img, min_area=2000)
+        dapi_blob_count_var.set(f"DAPI blobs: {n_dapi}")
 
 
 def confirm_selection():
@@ -646,11 +681,42 @@ def main():
     root.rowconfigure(2, weight=1)
     root.rowconfigure(4, weight=1)
 
+    # -------------------------------
+    # Blob count display (centered under images)
+    # -------------------------------
+    global he_blob_count_var, dapi_blob_count_var
+    he_blob_count_var = tk.StringVar(value="HE blobs: 0")
+    dapi_blob_count_var = tk.StringVar(value="DAPI blobs: 0")
+
+    # HE blob counter frame (same width as image)
+    he_count_frame = tk.Frame(root, width=TILE_SIZE[0])
+    he_count_frame.grid(row=5, column=0, padx=5, pady=(0, 6))
+    he_count_frame.grid_propagate(False)
+
+    he_count_label = tk.Label(
+        he_count_frame,
+        textvariable=he_blob_count_var,
+        anchor="center"
+    )
+    he_count_label.pack(expand=True, fill="both")
+
+    # DAPI blob counter frame (same width as image)
+    dapi_count_frame = tk.Frame(root, width=TILE_SIZE[0])
+    dapi_count_frame.grid(row=5, column=1, padx=5, pady=(0, 6))
+    dapi_count_frame.grid_propagate(False)
+
+    dapi_count_label = tk.Label(
+        dapi_count_frame,
+        textvariable=dapi_blob_count_var,
+        anchor="center"
+    )
+    dapi_count_label.pack(expand=True, fill="both")
+
     # ============================================================
     # DAPI Transform Buttons (RIGHT COLUMN, INITIALLY HIDDEN)
     # ============================================================
     dapi_btn_frame = tk.Frame(root, width=TILE_SIZE[0])
-    dapi_btn_frame.grid(row=5, column=1, padx=5, pady=5)
+    dapi_btn_frame.grid(row=6, column=1, padx=5, pady=5)
     dapi_btn_frame.grid_propagate(False)
     btn_rotate_cw = tk.Button(
         dapi_btn_frame, text="Rotate CW", command=rotate_dapi_cw
@@ -675,7 +741,7 @@ def main():
         root, text="Confirm Selection", command=confirm_selection
     )
     confirm_btn.grid(
-        row=6, column=0, columnspan=2, padx=5, pady=10, sticky="we"
+        row=7, column=0, columnspan=2, padx=5, pady=10, sticky="we"
     )
 
     # ---- Start GUI ----
