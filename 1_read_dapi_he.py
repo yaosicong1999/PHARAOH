@@ -466,7 +466,24 @@ def update_grid():
         dapi_blob_count_var.set(f"DAPI blobs: {n_dapi}")
 
 
-def confirm_selection():
+def manual_alignment():
+    global he_dense_mask, dapi_mask_img
+    if he_dense_mask is None or dapi_mask_img is None:
+        messagebox.showerror("Error", "Please load and threshold both H&E and DAPI first.")
+        return
+
+    messagebox.showinfo("Manual Alignment", "TODO: launch manual alignment UI / script here.")
+    # 以后你可以像 confirm_selection 一样：
+    # - 保存当前 mask
+    # - 写 images_info.json
+    # - subprocess.Popen([... "2_manual_alignment.py", ...])
+    root.withdraw()
+    subprocess.Popen([
+        sys.executable,
+        "2_manual_alignment.py",
+    ])
+
+def blob_matching():
     global he_dense_mask, dapi_mask_img, root, run_dir
 
     if he_dense_mask is None or dapi_mask_img is None:
@@ -734,16 +751,26 @@ def main():
     for btn in [btn_rotate_cw, btn_rotate_ccw, btn_flip_v, btn_flip_h]:
         btn.pack(side="left", expand=True, fill="x", padx=2)
 
-    # -------------------------------
-    # Confirm button
-    # -------------------------------
-    confirm_btn = tk.Button(
-        root, text="Confirm Selection", command=confirm_selection
-    )
-    confirm_btn.grid(
-        row=7, column=0, columnspan=2, padx=5, pady=10, sticky="we"
-    )
 
+    # -------------------------------
+    # Action buttons (Confirm + Manual Alignment)
+    # -------------------------------
+    action_frame = tk.Frame(root)
+    action_frame.grid(row=7, column=0, columnspan=2, padx=5, pady=10, sticky="we")
+
+    # 让 frame 内两列平均分
+    action_frame.columnconfigure(0, weight=1)
+    action_frame.columnconfigure(1, weight=1)
+
+    confirm_btn = tk.Button(
+        action_frame, text="Blob Matching", command=blob_matching
+    )
+    confirm_btn.grid(row=0, column=0, padx=(0, 5), sticky="we")
+
+    manual_btn = tk.Button(
+        action_frame, text="Manual Alignment", command=manual_alignment
+    )
+    manual_btn.grid(row=0, column=1, padx=(5, 0), sticky="we")
     # ---- Start GUI ----
     root.mainloop()
 
