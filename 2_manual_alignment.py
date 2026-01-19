@@ -14,6 +14,21 @@ from PyQt5.QtWidgets import QGraphicsItem, QGraphicsRectItem
 from PyQt5.QtGui import QPainterPath
 from PyQt5.QtGui import QImage
 
+
+from PyQt5.QtWidgets import QApplication
+
+def set_override_cursor(cursor_shape):
+    """Avoid stacking override cursors on every hoverMove."""
+    if QApplication.overrideCursor() is None:
+        QApplication.setOverrideCursor(cursor_shape)
+    else:
+        QApplication.changeOverrideCursor(cursor_shape)
+
+def clear_override_cursor():
+    """Clear ALL stacked override cursors (in case some got stacked)."""
+    while QApplication.overrideCursor() is not None:
+        QApplication.restoreOverrideCursor()
+
 def mask_to_colored_pixmap(path, fg_rgba=(255,0,0,255), bg_rgba=(0,0,0,0)):
     """
     Read a binary-ish mask image and colorize:
@@ -53,12 +68,24 @@ class ResizeHandle(QGraphicsRectItem):
         self.setZValue(10_000)
 
         if idx in (0, 2):
-            self.setCursor(Qt.SizeFDiagCursor)
+            self._hover_cursor = Qt.SizeFDiagCursor
         else:
-            self.setCursor(Qt.SizeBDiagCursor)
+            self._hover_cursor = Qt.SizeBDiagCursor
 
         self.setAcceptHoverEvents(True)
         self.setAcceptedMouseButtons(Qt.LeftButton)
+
+    def hoverEnterEvent(self, event):
+        set_override_cursor(self._hover_cursor)
+        event.accept()
+
+    def hoverMoveEvent(self, event):
+        set_override_cursor(self._hover_cursor)
+        event.accept()
+
+    def hoverLeaveEvent(self, event):
+        clear_override_cursor()
+        event.accept()
 
     # bigger hit area
     def shape(self):
@@ -74,6 +101,7 @@ class ResizeHandle(QGraphicsRectItem):
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
             self.overlay.start_handle_drag(self.idx, event.scenePos())
+            set_override_cursor(self._hover_cursor)
             event.accept()
             return
         super().mousePressEvent(event)
@@ -83,8 +111,10 @@ class ResizeHandle(QGraphicsRectItem):
         event.accept()
 
     def mouseReleaseEvent(self, event):
+        clear_override_cursor()
         self.overlay.end_drag()
         event.accept()
+
 
 class DapiOverlayItem(QGraphicsPixmapItem):
 
@@ -93,11 +123,9 @@ class DapiOverlayItem(QGraphicsPixmapItem):
         self.setOpacity(1.0)
         self.setFlag(QGraphicsItem.ItemIsSelectable, True)
 
-        # self.handles = [ResizeHandle(i,self) for i in range(4)]
-        # self.update_handles()
-        self.handles = []  # will be created in attach_handles(scene)
+        self.setAcceptHoverEvents(True)
 
-        # drag state
+        self.handles = []  # will be created in attach_handles(scene)
         self._dragging_overlay = False
         self._dragging_handle = False
         self._active_handle_idx = None
@@ -120,10 +148,23 @@ class DapiOverlayItem(QGraphicsPixmapItem):
             p_scene = self.mapToScene(p_local)
             self.handles[idx].setPos(p_scene)
 
+    def hoverEnterEvent(self, event):
+        if not self._dragging_handle:
+            set_override_cursor(Qt.OpenHandCursor)
+        event.accept()
+
+    def hoverMoveEvent(self, event):
+        if not self._dragging_handle:
+            set_override_cursor(Qt.OpenHandCursor)
+        event.accept()
+
+    def hoverLeaveEvent(self, event):
+        if not self._dragging_handle:
+            clear_override_cursor()
+        event.accept()
+
     def mousePressEvent(self, event):
         scene_pt = event.scenePos()
-
-        # ✅ robust: get ALL items under cursor (sorted top->bottom)
         hits = self.scene().items(scene_pt)
 
         for it in hits:
@@ -135,15 +176,22 @@ class DapiOverlayItem(QGraphicsPixmapItem):
                 event.accept()
                 return
 
-        # else start dragging overlay
         if event.button() == Qt.LeftButton:
             self._dragging_overlay = True
             self._press_pos = scene_pt
             self._orig_transform = self.transform()
+
+            set_override_cursor(Qt.ClosedHandCursor)
             event.accept()
             return
 
         super().mousePressEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        self._dragging_handle = False
+        self._dragging_overlay = False
+        set_override_cursor(Qt.OpenHandCursor)  # 如果鼠标还在overlay内会是open hand
+        super().mouseReleaseEvent(event)
 
     def mouseMoveEvent(self, event):
         if self._dragging_handle:
@@ -182,6 +230,12 @@ class DapiOverlayItem(QGraphicsPixmapItem):
             sx = max(sx, 0.05)
             sy = max(sy, 0.05)
 
+            if event.modifiers() & Qt.ShiftModifier:
+                # 用“变化更大”的那个来主导，保证手感更跟手
+                s = sx if abs(sx - 1.0) >= abs(sy - 1.0) else sy
+                s = max(s, 0.05)
+                sx = sy = s
+
             # apply scale around fixed point (scene coords)
             T = QTransform()
             T.translate(fixed_pt.x(), fixed_pt.y())
@@ -208,11 +262,6 @@ class DapiOverlayItem(QGraphicsPixmapItem):
             return
 
         super().mouseMoveEvent(event)
-
-    def mouseReleaseEvent(self, event):
-        self._dragging_handle = False
-        self._dragging_overlay = False
-        super().mouseReleaseEvent(event)
 
     def attach_handles(self, scene):
         self.handles = [ResizeHandle(i, self) for i in range(4)]
@@ -256,6 +305,11 @@ class DapiOverlayItem(QGraphicsPixmapItem):
         sx = max(sx, 0.05)
         sy = max(sy, 0.05)
 
+        if QApplication.keyboardModifiers() & Qt.ShiftModifier:
+            s = sx if abs(sx - 1.0) >= abs(sy - 1.0) else sy
+            s = max(s, 0.05)
+            sx = sy = s
+
         T = QTransform()
         T.translate(fixed_pt.x(), fixed_pt.y())
         T.rotate(self.rotation())
@@ -293,7 +347,11 @@ class ManualAlignView(QGraphicsView):
         self.fit_bg_to_view()
         self.init_overlay_pose(scale=0.35)  # 0.25~0.5 自己调
 
-        self.setDragMode(QGraphicsView.ScrollHandDrag)
+        self.setDragMode(QGraphicsView.NoDrag)
+
+    def leaveEvent(self, event):
+        clear_override_cursor()
+        super().leaveEvent(event)
 
     def fit_bg_to_view(self):
         # 让视图自动缩放到刚好容纳底图
@@ -305,12 +363,6 @@ class ManualAlignView(QGraphicsView):
         self.fit_bg_to_view()
         # 注意：resize 时不要反复重置 overlay，否则用户对齐会被打断
 
-    # def wheelEvent(self, event):
-    #     factor = 1.1 if event.angleDelta().y()>0 else 0.9
-    #     T = QTransform(self.overlay.transform())
-    #     T.scale(factor, factor)
-    #     self.overlay.setTransform(T)
-    #     self.overlay.update_handles()
     def wheelEvent(self, event):
         event.ignore()
 
@@ -404,10 +456,10 @@ if __name__ == "__main__":
     #     print("Usage: python 2_manual_alignment.py he_mask.png dapi_mask.png")
     #     sys.exit(1)
 
-    he_path = "/Users/sicongy/Documents/GitHub/Project2/runs_202601161626/1_confirmed_he_dense_mask.png"
-    dapi_path ="/Users/sicongy/Documents/GitHub/Project2/runs_202601161626/1_confirmed_dapi_mask.png"
+    he_mask_path = "/Users/sicongy/Documents/GitHub/Project2/runs_202601161626/1_confirmed_he_dense_mask.png"
+    dapi_mask_path ="/Users/sicongy/Documents/GitHub/Project2/runs_202601161626/1_confirmed_dapi_mask.png"
 
     app = QApplication(sys.argv)
-    window = ManualAlignWindow(he_path, dapi_path)
+    window = ManualAlignWindow(he_mask_path, dapi_mask_path)
     window.show()
     sys.exit(app.exec_())
