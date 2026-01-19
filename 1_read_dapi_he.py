@@ -18,7 +18,7 @@ Image.MAX_IMAGE_PIXELS = None  # disable the check
 from PIL import Image, ImageDraw, ImageOps
 
 TILE_SIZE = (320, 320)   # 你可以改成 256×256，和 gallery 一致
-length=TILE_SIZE[0]
+length = TILE_SIZE[0]
 
 def make_na_tile(size=TILE_SIZE, bg=240):
     img = Image.new("RGB", size, (bg, bg, bg))
@@ -119,8 +119,9 @@ he_dense_mask = None
 dapi_img = None
 dapi_mask_img = None  # new for 3rd DAPI
 dapi_img_view = None  # 当前用于显示 & mask 的 DAPI（可旋转/翻转）
-dapi_btn_frame = None   # 容器，延迟显示
+dapi_lut_img = None   # 用来保存第二行的 LUT 彩色图 (uint8, 3-channel)
 
+dapi_btn_frame = None   # 容器，延迟显示
 dapi_gui_affine = np.eye(3, dtype=np.float32)
 dapi_orig_shape = None
 dapi_gui_shape = None
@@ -391,7 +392,9 @@ def update_dapi(threshold):
     threshold = int(threshold)
 
     # 1. LUT colored
+    global dapi_lut_img
     dapi_rgb = dapi_to_lut_rgb(dapi_img_view, lut, threshold=threshold)
+    dapi_lut_img = dapi_rgb
 
     # 2. blob mask
     dapi_mask_img = create_blob_mask_from_luted_dapi(dapi_rgb)
@@ -465,18 +468,56 @@ def update_grid():
         n_dapi = count_components(dapi_mask_img, min_area=2000)
         dapi_blob_count_var.set(f"DAPI blobs: {n_dapi}")
 
+def save_rgb_png(img_np, out_path):
+    """Save RGB (or gray) image as PNG in uint8."""
+    if img_np is None:
+        return
+    arr = img_np
+    if arr.ndim == 2:
+        arr = cv2.cvtColor(arr, cv2.COLOR_GRAY2RGB)
+    elif arr.ndim == 3 and arr.shape[2] == 3:
+        arr = arr.copy()
+    # uint16 -> uint8 (简单线性缩放到 0-255)
+    if arr.dtype == np.uint16:
+        arr8 = (arr / 256).clip(0, 255).astype(np.uint8)
+    else:
+        arr8 = arr.astype(np.uint8) if arr.dtype != np.uint8 else arr
+    Image.fromarray(arr8).save(out_path)
 
 def manual_alignment():
-    global he_dense_mask, dapi_mask_img
+    global he_orig, dapi_lut_img, he_dense_mask, dapi_mask_img, root, run_dir
+
     if he_dense_mask is None or dapi_mask_img is None:
         messagebox.showerror("Error", "Please load and threshold both H&E and DAPI first.")
         return
-
+    # ======================================================
+    # 1. Create run folder
+    # ======================================================
+    run_id = datetime.now().strftime("%Y%m%d%H%M")
+    run_dir = "runs_" + str(run_id)
+    os.makedirs(run_dir, exist_ok=True)
+    # ======================================================
+    # 2. Save low-level original images + masks INTO run folder
+    # ======================================================
+    he_img_path = os.path.join(run_dir, "1_he_level_image.png")
+    dapi_lut_path = os.path.join(run_dir, "1_dapi_lut.png")
+    Image.fromarray(he_orig).save(he_img_path)
+    cv2.imwrite(dapi_lut_path, dapi_lut_img)
+    he_mask_path = os.path.join(run_dir, "1_confirmed_he_dense_mask.png")
+    dapi_mask_path = os.path.join(run_dir, "1_confirmed_dapi_mask.png")
+    cv2.imwrite(he_mask_path, he_dense_mask)
+    cv2.imwrite(dapi_mask_path, dapi_mask_img)
+    # ======================================================
+    # 3. Save images_info.json INTO run folder
+    # ======================================================
+    save_current_levels_json(
+        json_path=os.path.join(run_dir, "images_info.json"),
+        run_id=run_id
+    )
     messagebox.showinfo("Manual Alignment", "TODO: launch manual alignment UI / script here.")
-    # 以后你可以像 confirm_selection 一样：
-    # - 保存当前 mask
-    # - 写 images_info.json
-    # - subprocess.Popen([... "2_manual_alignment.py", ...])
+    # ======================================================
+    # 4. Launch 2.py (IMPORTANT: keep GUI alive)
+    # ======================================================
     root.withdraw()
     subprocess.Popen([
         sys.executable,
@@ -484,7 +525,7 @@ def manual_alignment():
     ])
 
 def blob_matching():
-    global he_dense_mask, dapi_mask_img, root, run_dir
+    global he_orig, dapi_lut_img, he_dense_mask, dapi_mask_img, root, run_dir
 
     if he_dense_mask is None or dapi_mask_img is None:
         messagebox.showerror("Error", "Please load and threshold both H&E and DAPI.")
@@ -496,8 +537,12 @@ def blob_matching():
     run_dir = "runs_" + str(run_id)
     os.makedirs(run_dir, exist_ok=True)
     # ======================================================
-    # 2. Save masks INTO run folder
+    # 2. Save low-level original images + masks INTO run folder
     # ======================================================
+    he_img_path = os.path.join(run_dir, "1_he_level_image.png")
+    dapi_lut_path = os.path.join(run_dir, "1_dapi_lut.png")
+    Image.fromarray(he_orig).save(he_img_path)
+    cv2.imwrite(dapi_lut_path, dapi_lut_img)
     he_mask_path = os.path.join(run_dir, "1_confirmed_he_dense_mask.png")
     dapi_mask_path = os.path.join(run_dir, "1_confirmed_dapi_mask.png")
     cv2.imwrite(he_mask_path, he_dense_mask)
@@ -584,9 +629,9 @@ def rotate_dapi_ccw():
     H, W = dapi_gui_shape
 
     R_ccw = np.array([
-        [0,  1, 0     ],
+        [0,  1, 0],
         [-1, 0, W - 1],
-        [0,  0, 1     ]
+        [0,  0, 1]
     ], dtype=np.float32)
 
     dapi_gui_affine = R_ccw @ dapi_gui_affine
