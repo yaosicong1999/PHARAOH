@@ -2,17 +2,14 @@ import tkinter as tk
 from tkinter import filedialog
 from PIL import Image, ImageTk
 import numpy as np
-import tifffile
 import cv2
 import os
 from utils import read_image, read_ome_tiff_subifd, extract_hematoxylin_channel, enhance_hematoxylin_channel, dapi_to_lut_rgb
 from sklearn.cluster import DBSCAN
 from scipy import ndimage as ndi
-import subprocess
-import threading
+from pathlib import Path
 import sys
 import json
-from datetime import datetime
 import tkinter.messagebox as messagebox  # <-- add this at the top
 Image.MAX_IMAGE_PIXELS = None  # disable the check
 from PIL import Image, ImageDraw, ImageOps
@@ -66,11 +63,6 @@ def normalize_to_uint8(img):
     else:
         img = np.zeros_like(img)
     return img.astype(np.uint8)
-
-def make_slider_frame(parent, width):
-    frame = tk.Frame(parent, width=width)
-    frame.grid_propagate(False)
-    return frame
 
 def on_close():
     print("Window closed, exiting process.")
@@ -128,7 +120,6 @@ dapi_gui_shape = None
 
 he_slider = None  # H&E slider
 dapi_slider = None       # DAPI LUT slider
-_photo_refs = {}
 
 he_level = None
 dapi_level = None
@@ -140,10 +131,6 @@ dapi_blob_count_var = None
 
 
 # ---- Helper Functions ----
-def save_img_array(ary, filename):
-    img = Image.fromarray(ary)
-    img.save(filename)
-
 def clean_and_cluster_mask(mask, top_k=15, bridge_kernel=15, min_area=5000, dist_thresh=50):
     # Ensure binary
     mask_bin = (mask > 0).astype(np.uint8) * 255
@@ -246,21 +233,6 @@ def count_components(mask_u8, min_area=2000):
     areas = stats[1:, cv2.CC_STAT_AREA]  # skip background
     return int(np.sum(areas >= min_area))
 
-def pil_thumbnail(img, max_width=600, max_height=600):
-    if img.ndim == 2:
-        img_show = cv2.cvtColor(img, cv2.COLOR_GRAY2RGB)
-    else:
-        img_show = img.copy()
-    # Convert uint16 to uint8 if needed
-    if img_show.dtype == np.uint16:
-        img_show = (img_show / 256).astype(np.uint8)  # scale 16-bit to 8-bit
-    h, w = img_show.shape[:2]
-    scale = min(max_width / w, max_height / h)
-    new_w, new_h = max(1, int(w * scale)), max(1, int(h * scale))
-    pil_img = Image.fromarray(img_show)
-    pil_img = pil_img.resize((new_w, new_h), Image.LANCZOS)
-    return pil_img
-
 # ---- GUI Functions ----
 def select_he():
     global he_orig, he_h_proc, he_mask_img, he_dense_mask, he_slider, he_level, he_path
@@ -277,6 +249,8 @@ def select_he():
         create_he_slider()
     else:
         update_he(int(he_slider.get()))
+
+    update_confirm_button_state()
 
 def create_he_slider():
     global he_slider
@@ -335,6 +309,8 @@ def update_he(threshold):
         n_he = count_components(he_dense_mask, min_area=2000)
         he_blob_count_var.set(f"HE blobs: {n_he}")
 
+    update_confirm_button_state()
+
 def select_dapi():
     global dapi_img, dapi_img_view, dapi_slider, dapi_level, dapi_path
     global dapi_btn_frame, dapi_gui_affine, dapi_orig_shape, dapi_gui_shape
@@ -355,6 +331,9 @@ def select_dapi():
         update_dapi(int(dapi_slider.get()))
     if dapi_btn_frame is not None:
         dapi_btn_frame.grid(row=5, column=1, padx=5, pady=5, sticky="we")
+
+    update_confirm_button_state()
+    update_dapi_transform_buttons_state()
 
 def create_dapi_slider():
     global dapi_slider
@@ -415,6 +394,8 @@ def update_dapi(threshold):
     if dapi_blob_count_var is not None:
         n_dapi = count_components(dapi_mask_img, min_area=2000)
         dapi_blob_count_var.set(f"DAPI blobs: {n_dapi}")
+
+    update_confirm_button_state()
 
 def update_grid():
     # ---- HE original ----
@@ -484,88 +465,44 @@ def save_rgb_png(img_np, out_path):
         arr8 = arr.astype(np.uint8) if arr.dtype != np.uint8 else arr
     Image.fromarray(arr8).save(out_path)
 
-def manual_alignment():
-    global he_orig, dapi_lut_img, he_dense_mask, dapi_mask_img, root, run_dir
 
-    if he_dense_mask is None or dapi_mask_img is None:
-        messagebox.showerror("Error", "Please load and threshold both H&E and DAPI first.")
+def confirm_and_save():
+    global he_orig, dapi_lut_img, he_dense_mask, dapi_mask_img, RUN_DIR, RUN_ID
+
+    if he_dense_mask is None or dapi_mask_img is None or he_orig is None or dapi_lut_img is None:
+        messagebox.showerror("Error", "Please load & threshold both H&E and DAPI first.")
         return
+
+    os.makedirs(RUN_DIR, exist_ok=True)
+
     # ======================================================
-    # 1. Create run folder
+    # 1. Save low-level original images + masks INTO run folder
     # ======================================================
-    run_id = datetime.now().strftime("%Y%m%d%H%M")
-    run_dir = "runs_" + str(run_id)
-    os.makedirs(run_dir, exist_ok=True)
-    # ======================================================
-    # 2. Save low-level original images + masks INTO run folder
-    # ======================================================
-    he_img_path = os.path.join(run_dir, "1_he_level_image.png")
-    dapi_lut_path = os.path.join(run_dir, "1_dapi_lut.png")
+    he_img_path   = os.path.join(RUN_DIR, "1_he_level_image.png")
+    dapi_lut_path = os.path.join(RUN_DIR, "1_dapi_lut.png")
+    he_mask_path  = os.path.join(RUN_DIR, "1_confirmed_he_dense_mask.png")
+    dapi_mask_path= os.path.join(RUN_DIR, "1_confirmed_dapi_mask.png")
+
+    # he_orig 可能是 uint8/uint16；用你已有逻辑保存也行
     Image.fromarray(he_orig).save(he_img_path)
     cv2.imwrite(dapi_lut_path, dapi_lut_img)
-    he_mask_path = os.path.join(run_dir, "1_confirmed_he_dense_mask.png")
-    dapi_mask_path = os.path.join(run_dir, "1_confirmed_dapi_mask.png")
     cv2.imwrite(he_mask_path, he_dense_mask)
     cv2.imwrite(dapi_mask_path, dapi_mask_img)
+
     # ======================================================
-    # 3. Save images_info.json INTO run folder
+    # 2. Save images_info.json INTO run folder
     # ======================================================
     save_current_levels_json(
-        json_path=os.path.join(run_dir, "images_info.json"),
-        run_id=run_id
+        json_path=os.path.join(RUN_DIR, "images_info.json"),
+        RUN_ID=RUN_ID
     )
-    messagebox.showinfo("Manual Alignment", "TODO: launch manual alignment UI / script here.")
-    # ======================================================
-    # 4. Launch 2.py (IMPORTANT: keep GUI alive)
-    # ======================================================
-    root.withdraw()
-    subprocess.Popen([
-        sys.executable,
-        "2_manual_alignment.py",
-    ])
 
-def blob_matching():
-    global he_orig, dapi_lut_img, he_dense_mask, dapi_mask_img, root, run_dir
+    messagebox.showinfo("Saved", f"Step 1 outputs saved to:\n{RUN_DIR}\n\nYou can now run Step 2 in 0_pipeline.")
+    root.destroy()
+    sys.exit(0)
 
-    if he_dense_mask is None or dapi_mask_img is None:
-        messagebox.showerror("Error", "Please load and threshold both H&E and DAPI.")
-        return
-    # ======================================================
-    # 1. Create run folder
-    # ======================================================
-    run_id = datetime.now().strftime("%Y%m%d%H%M")
-    run_dir = "runs_" + str(run_id)
-    os.makedirs(run_dir, exist_ok=True)
-    # ======================================================
-    # 2. Save low-level original images + masks INTO run folder
-    # ======================================================
-    he_img_path = os.path.join(run_dir, "1_he_level_image.png")
-    dapi_lut_path = os.path.join(run_dir, "1_dapi_lut.png")
-    Image.fromarray(he_orig).save(he_img_path)
-    cv2.imwrite(dapi_lut_path, dapi_lut_img)
-    he_mask_path = os.path.join(run_dir, "1_confirmed_he_dense_mask.png")
-    dapi_mask_path = os.path.join(run_dir, "1_confirmed_dapi_mask.png")
-    cv2.imwrite(he_mask_path, he_dense_mask)
-    cv2.imwrite(dapi_mask_path, dapi_mask_img)
-    # ======================================================
-    # 3. Save images_info.json INTO run folder
-    # ======================================================
-    save_current_levels_json(
-        json_path=os.path.join(run_dir, "images_info.json"),
-        run_id=run_id
-    )
-    messagebox.showinfo("Confirmed", f"Run {run_id} created.\nLaunching blob matcher…")
-    # ======================================================
-    # 4. Launch 2.py (IMPORTANT: keep GUI alive)
-    # ======================================================
-    root.withdraw()
-    subprocess.Popen([
-        sys.executable,
-        "2_select_blobs.py",
-        he_mask_path,
-        dapi_mask_path,
-        run_dir,
-    ])
+
+
 
 def infer_dapi_orientation_case(dapi_gui_affine, tol=1e-4):
     """
@@ -583,13 +520,13 @@ def infer_dapi_orientation_case(dapi_gui_affine, tol=1e-4):
     )
 
 
-def save_current_levels_json(json_path="images_info.json", run_id=None):
+def save_current_levels_json(json_path="images_info.json", RUN_ID=None):
     global he_path, he_level, dapi_path, dapi_level, dapi_gui_affine
     if he_path is None or dapi_path is None:
         return
     dapi_orientation_case = infer_dapi_orientation_case(dapi_gui_affine)
     data = {
-        "run_id": run_id,
+        "RUN_ID": RUN_ID,
         "HE_path": he_path,
         "HE_level": he_level,
         "DAPI_path": dapi_path,
@@ -672,12 +609,46 @@ def flip_dapi_horizontal():
     update_grid()
     update_dapi(dapi_slider.get() if dapi_slider else 300)
 
+def update_confirm_button_state():
+    if (
+        he_orig is not None and
+        he_dense_mask is not None and
+        dapi_lut_img is not None and
+        dapi_mask_img is not None
+    ):
+        confirm_btn.config(state=tk.NORMAL)
+    else:
+        confirm_btn.config(state=tk.DISABLED)
 
+def update_dapi_transform_buttons_state():
+    enabled = (dapi_img_view is not None)
+
+    state = tk.NORMAL if enabled else tk.DISABLED
+    try:
+        btn_rotate_cw.config(state=state)
+        btn_rotate_ccw.config(state=state)
+        btn_flip_v.config(state=state)
+        btn_flip_h.config(state=state)
+    except Exception:
+        pass
 
 def main():
-    global root
+    global root, RUN_DIR, RUN_ID
     global he_orig_label, he_mask_label, he_dense_label
     global dapi_gray_label, dapi_lut_label, dapi_mask_label
+    global confirm_btn
+    global btn_rotate_cw, btn_rotate_ccw, btn_flip_v, btn_flip_h
+
+
+    RUN_DIR = Path(sys.argv[1]).resolve()
+    RUN_DIR.mkdir(parents=True, exist_ok=True)
+    name = RUN_DIR.name
+    if name.startswith("runs_"):
+        RUN_ID = name.replace("runs_", "", 1)
+    else:
+        RUN_ID = name
+    print(f"[INFO] RUN_DIR = {RUN_DIR}", flush=True)
+    print(f"[INFO] RUN_ID  = {RUN_ID}", flush=True)
 
     root = tk.Tk()
     root.protocol("WM_DELETE_WINDOW", on_close)
@@ -781,42 +752,39 @@ def main():
     dapi_btn_frame.grid(row=6, column=1, padx=5, pady=5)
     dapi_btn_frame.grid_propagate(False)
     btn_rotate_cw = tk.Button(
-        dapi_btn_frame, text="Rotate CW", command=rotate_dapi_cw
+        dapi_btn_frame, text="Rotate CW", command=rotate_dapi_cw, state=tk.DISABLED
     )
     btn_rotate_ccw = tk.Button(
-        dapi_btn_frame, text="Rotate CCW", command=rotate_dapi_ccw
+        dapi_btn_frame, text="Rotate CCW", command=rotate_dapi_ccw, state=tk.DISABLED
     )
     btn_flip_v = tk.Button(
-        dapi_btn_frame, text="Flip V", command=flip_dapi_vertical
+        dapi_btn_frame, text="Flip V", command=flip_dapi_vertical, state=tk.DISABLED
     )
     btn_flip_h = tk.Button(
-        dapi_btn_frame, text="Flip H", command=flip_dapi_horizontal
+        dapi_btn_frame, text="Flip H", command=flip_dapi_horizontal, state=tk.DISABLED
     )
 
     for btn in [btn_rotate_cw, btn_rotate_ccw, btn_flip_v, btn_flip_h]:
         btn.pack(side="left", expand=True, fill="x", padx=2)
-
 
     # -------------------------------
     # Action buttons (Confirm + Manual Alignment)
     # -------------------------------
     action_frame = tk.Frame(root)
     action_frame.grid(row=7, column=0, columnspan=2, padx=5, pady=10, sticky="we")
-
-    # 让 frame 内两列平均分
     action_frame.columnconfigure(0, weight=1)
     action_frame.columnconfigure(1, weight=1)
 
     confirm_btn = tk.Button(
-        action_frame, text="Blob Matching", command=blob_matching
+        action_frame,
+        text="Confirm & Save (Step 1)",
+        command=confirm_and_save,
+        state=tk.DISABLED
     )
-    confirm_btn.grid(row=0, column=0, padx=(0, 5), sticky="we")
+    confirm_btn.grid(row=0, column=0, columnspan=2, sticky="nsew", padx=10)
 
-    manual_btn = tk.Button(
-        action_frame, text="Manual Alignment", command=manual_alignment
-    )
-    manual_btn.grid(row=0, column=1, padx=(5, 0), sticky="we")
-    # ---- Start GUI ----
+    update_confirm_button_state()
+    update_dapi_transform_buttons_state()
     root.mainloop()
 
 if __name__ == "__main__":
