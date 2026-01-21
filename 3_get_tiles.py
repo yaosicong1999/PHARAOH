@@ -1,313 +1,357 @@
-from PIL import Image, ImageTk, ImageOps
 import os
-from sklearn.cluster import DBSCAN
-from scipy import ndimage as ndi
 import sys
 import json
-Image.MAX_IMAGE_PIXELS = None  # disable the check
+import time
+from pathlib import Path
+
 import numpy as np
 import cv2
 from scipy.spatial import cKDTree
 from shapely.geometry import MultiPoint, Polygon
-from my_utils import read_image, dapi_to_lut_rgb
+import threading
+import queue
+
 import tkinter as tk
-import os
-import time
+from tkinter import messagebox, ttk
+from PIL import Image, ImageTk, ImageOps
 
-STAGES = [
-    ("Loading data", 5),
-    ("Creating DAPI mask", 15),
-    ("Extracting blobs", 20),
-    ("Creating available mask", 10),
-    ("CVT sampling", 20),
-    ("Saving DAPI tiles", 15),
-    ("Saving HE tiles", 15),
-]
-def report_stage(stage_name):
-    print(f"[STAGE] {stage_name}", flush=True)
+Image.MAX_IMAGE_PIXELS = None
 
-ORIENTATION_CASES = {
-    0: np.array([[ 1,  0],
-                 [ 0,  1]], np.float32),  # identity
 
-    1: np.array([[ 0, -1],
-                 [ 1,  0]], np.float32),  # rot90 CW
+# =============================
+# Utils
+# =============================
+def ensure_dir(p: Path):
+    p.mkdir(parents=True, exist_ok=True)
 
-    2: np.array([[-1,  0],
-                 [ 0, -1]], np.float32),  # rot180
-
-    3: np.array([[ 0,  1],
-                 [-1,  0]], np.float32),  # rot90 CCW
-
-    4: np.array([[ 1,  0],
-                 [ 0, -1]], np.float32),  # flip vertical (up-down)
-
-    5: np.array([[-1,  0],
-                 [ 0,  1]], np.float32),  # flip horizontal (left-right)
-
-    6: np.array([[ 0,  1],
-                 [ 1,  0]], np.float32),  # rot90 CW then flip H  (== transpose)
-
-    7: np.array([[ 0, -1],
-                 [-1,  0]], np.float32),  # rot90 CW then flip V  (== anti-transpose)
-}
-
-def apply_orientation_to_tile(img, case_id):
+def apply_orientation_case(img: np.ndarray, case_id: int) -> np.ndarray:
     """
-    img: np.ndarray (H,W) or (H,W,3)
-    case_id: int in [0..7]
+    Apply orientation case to image (H,W) or (H,W,C).
+    case_id definition must match your Step1.
     """
+    if img is None:
+        return None
     if case_id == 0:
         return img
-    if case_id == 1:      # rot90 CW
+    if case_id == 1:   # rot90 CW
         return np.rot90(img, k=3)
-    if case_id == 2:      # rot180
+    if case_id == 2:   # rot180
         return np.rot90(img, k=2)
-    if case_id == 3:      # rot90 CCW
+    if case_id == 3:   # rot90 CCW
         return np.rot90(img, k=1)
-    if case_id == 4:      # flip vertical
+    if case_id == 4:   # flip LR
         return np.flipud(img)
-    if case_id == 5:      # flip horizontal
+    if case_id == 5:   # flip UD
         return np.fliplr(img)
-    if case_id == 6:      # rot90 CW + flip H (transpose)
-        if img.ndim == 3:
-            return np.transpose(np.rot90(img, k=3), (1, 0, 2))
-        else:
-            return np.transpose(np.rot90(img, k=3))
-    if case_id == 7:      # rot90 CW + flip V
-        return np.flipud(np.rot90(img, k=3))
+    if case_id == 6:   # transpose
+        if img.ndim == 2:
+            return img.T
+        return np.transpose(img, (1, 0, 2))
+    if case_id == 7:   # transverse (anti-diagonal): rot90 CCW + flip LR
+        return np.fliplr(np.rot90(img, k=1))
+    raise ValueError(f"Unknown case_id={case_id}")
 
-    raise ValueError(f"Unknown orientation case: {case_id}")
+def transform_points_xy(points_xy: np.ndarray, case_id: int, H: int, W: int) -> np.ndarray:
+    """
+    Transform (x,y) points consistently with apply_orientation_case(img, case_id).
+    H,W are ORIGINAL image shape (before orientation).
+    Returns points in oriented/display coordinates.
+    """
+    pts = np.asarray(points_xy, dtype=np.float32)
+    x = pts[:, 0]
+    y = pts[:, 1]
 
-def convert_ndarray(obj):
-    if isinstance(obj, np.ndarray):
-        return obj.tolist()
-    raise TypeError("Unknown type")
+    if case_id == 0:
+        xp, yp = x, y
+    elif case_id == 1:     # rot90 CW
+        xp = (H - 1) - y
+        yp = x
+    elif case_id == 2:     # rot180
+        xp = (W - 1) - x
+        yp = (H - 1) - y
+    elif case_id == 3:     # rot90 CCW
+        xp = y
+        yp = (W - 1) - x
+    elif case_id == 4:     # flip LR
+        xp = (W - 1) - x
+        yp = y
+    elif case_id == 5:     # flip UD
+        xp = x
+        yp = (H - 1) - y
+    elif case_id == 6:     # transpose
+        xp = y
+        yp = x
+    elif case_id == 7:     # transverse
+        xp = (H - 1) - y
+        yp = (W - 1) - x
+    else:
+        raise ValueError(f"Unknown case_id={case_id}")
 
-
+    return np.stack([xp, yp], axis=1).astype(np.int32)
 class StepTimer:
     def __init__(self):
         self.t0 = time.perf_counter()
         self.last = self.t0
-
     def mark(self, name):
         now = time.perf_counter()
-        print(f"[TIMER] {name:<40s}: {now - self.last:8.2f} s   (total {now - self.t0:8.2f} s)")
+        print(f"[TIMER] {name:<30s}: {now - self.last:8.2f}s (total {now - self.t0:8.2f}s)", flush=True)
         self.last = now
 
+def cv2_to_pil(img):
+    """cv2 image -> PIL.Image (RGB or L)."""
+    if img is None:
+        return None
+    if img.ndim == 2:
+        return Image.fromarray(img)
+    if img.shape[2] == 3:
+        rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        return Image.fromarray(rgb)
+    if img.shape[2] == 4:
+        rgba = cv2.cvtColor(img, cv2.COLOR_BGRA2RGBA)
+        return Image.fromarray(rgba)
+    return Image.fromarray(img)
 
-def clean_and_cluster_mask(mask, top_k=15, bridge_kernel=15, min_area=5000, dist_thresh=50):
-    # Ensure binary
-    mask_bin = (mask > 0).astype(np.uint8) * 255
-    # Fill holes
-    # mask_filled = ndi.binary_fill_holes(mask_bin > 0).astype(np.uint8) * 255
-    # Break thin bridges
-    kernel = np.ones((bridge_kernel, bridge_kernel), np.uint8)
-    mask_open = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
-    # Connected components
-    num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(mask_open)
-    if num_labels <= 1:
-        return mask_open  # nothing to process
-    # Extract centroids (ignore background)
-    centroids = centroids[1:]
-    areas = stats[1:, cv2.CC_STAT_AREA]
-    # Cluster components by spatial distance
-    clustering = DBSCAN(eps=dist_thresh, min_samples=1).fit(centroids)
-    cluster_masks = []
-    for cluster_id in np.unique(clustering.labels_):
-        members = np.where(clustering.labels_ == cluster_id)[0] + 1  # shift for bg
-        cluster_mask = np.isin(labels, members).astype(np.uint8) * 255
-        cluster_area = np.sum(cluster_mask > 0)
-        if cluster_area >= min_area:
-            cluster_masks.append(cluster_mask)
-    # Sort clusters by area
-    cluster_masks = sorted(cluster_masks, key=lambda m: np.sum(m > 0), reverse=True)
-    # Keep top_k clusters
-    mask_final = np.zeros_like(mask, dtype=np.uint8)
-    for cm in cluster_masks[:top_k]:
-        mask_final = cv2.bitwise_or(mask_final, cm)
-    return mask_final
+def load_image_any(path: Path):
+    if path is None or (not path.exists()):
+        return None
+    return cv2.imread(str(path), cv2.IMREAD_UNCHANGED)
 
-def filter_step(mask, min_area=5000):
-    num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(mask, connectivity=8)
-    filtered_mask = np.zeros_like(mask)
-    for i in range(1, num_labels):  # skip background (0)
+def fit_to_tile(pil_img: Image.Image, size=(420, 420), bg=240):
+    """Resize with aspect ratio and pad to fixed tile."""
+    canvas = Image.new("RGB", size, (bg, bg, bg))
+    if pil_img is None:
+        return canvas
+    if pil_img.mode not in ("RGB", "RGBA", "L"):
+        pil_img = pil_img.convert("RGB")
+    pil_contained = ImageOps.contain(pil_img, size)
+    x = (size[0] - pil_contained.width) // 2
+    y = (size[1] - pil_contained.height) // 2
+    if pil_contained.mode == "RGBA":
+        tmp = Image.new("RGBA", size, (bg, bg, bg, 255))
+        tmp.paste(pil_contained, (x, y), pil_contained)
+        return tmp.convert("RGB")
+    canvas.paste(pil_contained, (x, y))
+    return canvas
+
+def normalize_uint16_to_uint8(img16: np.ndarray) -> np.ndarray:
+    g = img16.astype(np.float32)
+    mn, mx = float(np.min(g)), float(np.max(g))
+    g = (g - mn) / (mx - mn + 1e-8)
+    return (g * 255.0).astype(np.uint8)
+
+def to_gray_uint8(img):
+    """
+    Accepts:
+      - (H,W) uint8/uint16/float
+      - (H,W,3) uint8/uint16/float
+    Returns:
+      - (H,W) uint8
+    """
+    if img is None:
+        return None
+    if img.ndim == 3:
+        if img.shape[2] == 3:
+            if img.dtype != np.uint8:
+                img8 = normalize_uint16_to_uint8(img[..., 0])  # 简单点：取一通道再归一
+                return img8
+            return cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        img = img[..., 0]
+    if img.dtype == np.uint8:
+        return img
+    return normalize_uint16_to_uint8(img)
+
+def draw_points_overlay(dapi_img, points_xy, tile_size=128, save_path=None):
+    g8 = to_gray_uint8(dapi_img)
+    base = cv2.cvtColor(g8, cv2.COLOR_GRAY2BGR)
+    half = int(tile_size) // 2
+    for i, (x, y) in enumerate(points_xy):
+        x, y = int(x), int(y)
+        x0, y0 = x - half, y - half
+        x1, y1 = x + half, y + half
+        cv2.rectangle(base, (x0, y0), (x1, y1), (0, 0, 255), 2)
+        cv2.circle(base, (x, y), 4, (0, 255, 0), -1)
+        cv2.putText(base, f"{i:02d}", (x + 5, y + 5),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,255,255), 1, cv2.LINE_AA)
+    if save_path:
+        cv2.imwrite(save_path, base)
+    return base
+
+
+# =============================
+# CVT sampling pipeline (来自你 test.py 的思路，内嵌进来)
+# =============================
+def apply_density_filter(mask_tissue_255: np.ndarray,
+                         density_8u: np.ndarray,
+                         mode="percentile",
+                         p=40,
+                         thr_fixed=30,
+                         morph_close=0,
+                         min_area=0):
+    assert mask_tissue_255.shape == density_8u.shape
+    tissue = (mask_tissue_255 > 0)
+    if tissue.sum() == 0:
+        return np.zeros_like(mask_tissue_255, dtype=np.uint8)
+
+    vals = density_8u[tissue]
+    thr = np.percentile(vals, p) if mode == "percentile" else thr_fixed
+    keep = tissue & (density_8u >= thr)
+    out = (keep.astype(np.uint8) * 255)
+
+    if morph_close and morph_close > 0:
+        k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (morph_close, morph_close))
+        out = cv2.morphologyEx(out, cv2.MORPH_CLOSE, k, iterations=1)
+
+    if min_area and min_area > 0:
+        bw = (out > 0).astype(np.uint8)
+        num, lab, stats, _ = cv2.connectedComponentsWithStats(bw, 8)
+        out2 = np.zeros_like(out)
+        for i in range(1, num):
+            if stats[i, cv2.CC_STAT_AREA] >= min_area:
+                out2[lab == i] = 255
+        out = out2
+
+    return out
+
+
+def make_tissue_mask_from_dapi_gray(
+    dapi_gray16: np.ndarray,
+    blur_ksize=13,
+    thr_mode="percentile",
+    thr_percentile=45,
+    thr_fixed=18,
+    morph_close=25,
+    morph_open=0,
+    min_area=3000
+):
+    # force 2D
+    if dapi_gray16.ndim == 3:
+        dapi_gray16 = dapi_gray16[..., 0]
+    if dapi_gray16.ndim != 2:
+        raise ValueError(f"dapi_gray16 must be 2D, got {dapi_gray16.shape}")
+
+    g8 = normalize_uint16_to_uint8(dapi_gray16)
+    blur_ksize = int(blur_ksize) | 1
+    density = cv2.GaussianBlur(g8, (blur_ksize, blur_ksize), 0)
+
+    if thr_mode == "otsu":
+        _, bw = cv2.threshold(density, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    elif thr_mode == "fixed":
+        _, bw = cv2.threshold(density, int(thr_fixed), 255, cv2.THRESH_BINARY)
+    else:
+        vals = density[density > 0]
+        if len(vals) == 0:
+            return np.zeros_like(density, dtype=np.uint8), density
+        thr = np.percentile(vals, thr_percentile)
+        _, bw = cv2.threshold(density, int(thr), 255, cv2.THRESH_BINARY)
+
+    if morph_open and morph_open > 0:
+        k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (morph_open, morph_open))
+        bw = cv2.morphologyEx(bw, cv2.MORPH_OPEN, k, iterations=1)
+
+    if morph_close and morph_close > 0:
+        k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (morph_close, morph_close))
+        bw = cv2.morphologyEx(bw, cv2.MORPH_CLOSE, k, iterations=1)
+
+    num, lab, stats, _ = cv2.connectedComponentsWithStats((bw > 0).astype(np.uint8), 8)
+    out = np.zeros_like(bw)
+    for i in range(1, num):
         if stats[i, cv2.CC_STAT_AREA] >= min_area:
-            filtered_mask[labels == i] = 255
-    return filtered_mask
+            out[lab == i] = 255
 
-def create_blob_mask_from_luted_dapi(luted_dapi, run_dir):
-    gray = cv2.cvtColor(luted_dapi, cv2.COLOR_BGR2GRAY)
+    return out, density
 
-    blur_ksize = 3;
-    threshold = 10
-    blur = cv2.GaussianBlur(gray, (blur_ksize, blur_ksize), 0)
-    _, mask = cv2.threshold(blur, threshold, 255, cv2.THRESH_BINARY)
 
-    min_area = 500
-    filtered_mask = filter_step(mask, min_area=min_area)
+def make_available_mask_boundary_only(mask_tissue255: np.ndarray, boundary_radius: int = 0):
+    """
+    只做“图像边界 buffer”，不做 tissue 内缩：
+      available = tissue ∩ inner_image_box
+    输出约定：0=available, 255=unavailable
+    """
+    h, w = mask_tissue255.shape[:2]
+    tissue = (mask_tissue255 > 0)
 
-    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
-    denoised = cv2.morphologyEx(filtered_mask, cv2.MORPH_OPEN, kernel, iterations=1)
-    denoised = cv2.morphologyEx(denoised, cv2.MORPH_CLOSE, kernel, iterations=1)
-    contours, _ = cv2.findContours(denoised, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
-    blurred = cv2.GaussianBlur(denoised, (7, 7), 0)
-    _, smooth_mask = cv2.threshold(blurred, 127, 255, cv2.THRESH_BINARY)
-    cv2.imwrite(os.path.join(run_dir, '3_dapi_mask_smooth.png'), smooth_mask)
+    if boundary_radius <= 0:
+        inner = np.ones((h, w), dtype=bool)
+    else:
+        inner = np.zeros((h, w), dtype=bool)
+        inner[boundary_radius:h - boundary_radius, boundary_radius:w - boundary_radius] = True
 
-    # mask_filled = ndi.binary_fill_holes(smooth_mask).astype(np.uint8) * 255
+    available = tissue & inner
+    return np.where(available, 0, 255).astype(np.uint8)
 
-    mask = (smooth_mask/255).astype(np.uint8)
-    # Ensure binary 0/1
-    # Invert mask to get holes as foreground
-    holes = 1 - mask
-    # Label connected components in the holes
-    labeled_holes, num_holes = ndi.label(holes)
-    # Count area of each hole
-    hole_areas = ndi.sum(np.ones_like(holes), labeled_holes, index=np.arange(1, num_holes + 1))
-    # Identify holes to fill (small ones)
-    small_holes_labels = np.arange(1, num_holes + 1)[hole_areas <= 800]
-    # Vectorized filling
-    mask_filled = mask.copy()
-    if len(small_holes_labels) > 0:
-        mask_filled[np.isin(labeled_holes, small_holes_labels)] = 1
-    # Convert to 0/255 and save
-    mask_filled = (mask_filled * 255).astype(np.uint8)
-    cv2.imwrite(os.path.join(run_dir, "3_dapi_mask_filled.png"), mask_filled)
 
-    mask_clean = clean_and_cluster_mask(mask_filled, top_k=50, bridge_kernel=15, min_area=2000, dist_thresh=50)
-    return mask_clean
-
-def get_valid_coords(mask_available, max_points=200_000):
+def get_valid_coords(mask_available, max_points=250_000, seed=0):
     ys, xs = np.where(mask_available == 0)
-    coords = np.column_stack((xs, ys))
+    coords = np.column_stack([xs, ys]).astype(np.int32)
     if len(coords) > max_points:
-        idx = np.random.choice(len(coords), max_points, replace=False)
+        rng = np.random.default_rng(seed)
+        idx = rng.choice(len(coords), max_points, replace=False)
         coords = coords[idx]
     return coords
 
-## For sampling:
-# ============================================================
-# --- 1. Create mask of available areas
-# ============================================================
-def create_available_mask(mask, giant_tiles_dict):
-    """
-    Create a binary mask for available areas:
-      0 = available (can sample)
-      255 = unavailable
-    Uses:
-      - only giant tiles from `giant_tiles_dict`
-    Small patches are NOT marked as available.
-    """
-    mask_available = np.ones_like(mask, dtype=np.uint8) * 255  # start unavailable
 
-    # Mark all giant blob tiles as available
-    for squares in giant_tiles_dict.values():
-        for sq in squares:
-            x0, y0, w, h = int(sq['x0']), int(sq['y0']), int(sq['w']), int(sq['h'])
-            mask_available[y0:y0+h, x0:x0+w] = 0
-
-    return mask_available
-
-# ============================================================
-# --- 2. Initialize random points
-# ============================================================
-def initialize_points(mask_available, N_total, existing_points, MIN_DIST=35, MIN_HOLE_DIST=15):
-    coords_valid = get_valid_coords(mask_available)
-
-    hole_coords = np.column_stack(np.where(mask_available > 0))
-    hole_tree = cKDTree(hole_coords) if len(hole_coords) > 0 else None
-
-    points = existing_points.copy()
+def initialize_points(coords_valid, N, min_dist, seed=0):
+    rng = np.random.default_rng(seed)
+    points = []
     attempts = 0
-    while len(points) < N_total and attempts < 50000:
-        idx = np.random.randint(len(coords_valid))
-        x, y = coords_valid[idx]
-        if any(np.linalg.norm(np.array([x, y]) - p) < MIN_DIST for p in points):
-            attempts += 1
-            continue
-        if hole_tree is not None and hole_tree.query([x, y])[0] < MIN_HOLE_DIST:
-            attempts += 1
-            continue
-        points = np.vstack([points, [x, y]])
+    while len(points) < N and attempts < 500000:
+        x, y = coords_valid[rng.integers(0, len(coords_valid))]
+        if points:
+            d = np.linalg.norm(np.asarray(points) - np.asarray([x, y]), axis=1)
+            if np.any(d < min_dist):
+                attempts += 1
+                continue
+        points.append([x, y])
         attempts += 1
-    return points
+    if len(points) < N:
+        print(f"[WARN] only initialized {len(points)}/{N} points (min_dist too large or region too small).", flush=True)
+    return np.asarray(points, dtype=np.float32)
 
-# ============================================================
-# --- 3. Enforce minimal spacing (asymmetric version)
-# ============================================================
-def enforce_min_distances(points, coords_valid, min_dist, n_existing=0):
-    """
-    Keep at least min_dist between points.
-    Existing points (first n_existing) are fixed — only new ones move.
-    """
+
+def enforce_min_distances(points, coords_valid, min_dist, seed=0):
+    rng = np.random.default_rng(seed)
+    if len(points) < 2:
+        return points
     tree = cKDTree(points)
-    pairs = tree.query_pairs(min_dist)
-
-    for i, j in pairs:
-        d = np.linalg.norm(points[i] - points[j])
-        if d < min_dist:
-            shift = (min_dist - d) / 2
-            vec = points[j] - points[i]
-            if np.all(vec == 0):
-                vec = np.random.randn(2)
-            vec = vec / np.linalg.norm(vec) * shift
-
-            # existing vs new
-            if i < n_existing and j >= n_existing:
-                # move only new point j
-                new_j = points[j] + vec * 2
-                points[j] = coords_valid[np.argmin(np.sum((coords_valid - new_j) ** 2, axis=1))]
-            elif j < n_existing and i >= n_existing:
-                # move only new point i
-                new_i = points[i] - vec * 2
-                points[i] = coords_valid[np.argmin(np.sum((coords_valid - new_i) ** 2, axis=1))]
-            else:
-                # both are new -> move both
-                new_i = points[i] - vec
-                new_j = points[j] + vec
-                points[i] = coords_valid[np.argmin(np.sum((coords_valid - new_i) ** 2, axis=1))]
-                points[j] = coords_valid[np.argmin(np.sum((coords_valid - new_j) ** 2, axis=1))]
-
+    pairs = list(tree.query_pairs(min_dist))
+    if not pairs:
+        return points
+    for (i, j) in pairs:
+        points[j] = coords_valid[rng.integers(0, len(coords_valid))]
     return points
 
-# ============================================================
-# --- 4. Main CVT iteration
-# ============================================================
-def cvt_masked(mask_available, N_POINTS=60, existing_points=None, MIN_DIST=35, MIN_HOLE_DIST=15, ITERATIONS=50):
-    ys_valid, xs_valid = np.where(mask_available == 0)
-    coords_valid = np.column_stack((xs_valid, ys_valid))
 
-    if existing_points is None:
-        existing_points = np.zeros((0, 2), dtype=float)
-    n_existing = len(existing_points)
+def cvt_masked(mask_available, N_POINTS=80, MIN_DIST=7, ITERATIONS=50, seed=0):
+    coords_valid = get_valid_coords(mask_available, seed=seed)
+    if len(coords_valid) == 0:
+        raise ValueError("No available pixels to sample from. (mask_available==0 is empty)")
 
-    # Initialize only new points
-    points_new = initialize_points(mask_available, N_POINTS - n_existing, existing_points, MIN_DIST, MIN_HOLE_DIST)
-    points = np.vstack([existing_points, points_new])
+    points = initialize_points(coords_valid, N_POINTS, MIN_DIST, seed=seed)
+    if len(points) == 0:
+        raise ValueError("Failed to initialize any points. Check MIN_DIST / mask size.")
+
+    N = len(points)
 
     for it in range(ITERATIONS):
-        tree_points = cKDTree(points)
-        dist, idxs = tree_points.query(coords_valid)
+        tree = cKDTree(points)
+        _, idxs = tree.query(coords_valid)
 
         new_points = points.copy()
-        # Only move the new points (keep existing ones fixed)
-        for i in range(n_existing, N_POINTS):
+        for i in range(N):
             region_idx = np.where(idxs == i)[0]
-            if len(region_idx) > 0:
-                centroid = coords_valid[region_idx].mean(axis=0)
-                nearest_idx = np.argmin(np.sum((coords_valid[region_idx] - centroid) ** 2, axis=1))
-                new_points[i] = coords_valid[region_idx[nearest_idx]]
-            else:
+            if len(region_idx) == 0:
                 new_points[i] = coords_valid[np.random.randint(len(coords_valid))]
+            else:
+                sub = coords_valid[region_idx]
+                centroid = sub.mean(axis=0)
+                k = np.argmin(np.sum((sub - centroid) ** 2, axis=1))
+                new_points[i] = sub[k]
 
-        points = enforce_min_distances(new_points, coords_valid, MIN_DIST, n_existing)
+        points = enforce_min_distances(new_points, coords_valid, MIN_DIST, seed=seed + it + 1)
 
-    return points
+    return points.astype(np.int32)
 
-# ============================================================
-# --- 5. Evaluate uniformity (NDI metric)
-# ============================================================
+
 def normalized_dispersion_index_corrected(points, mask, alpha=0.4, beta=0.4, gamma=0.2):
     points = np.array(points, dtype=float)
     N = len(points)
@@ -329,460 +373,706 @@ def normalized_dispersion_index_corrected(points, mask, alpha=0.4, beta=0.4, gam
     term3 = std_d / mean_d if mean_d > 0 else 0
     return alpha * term1 + beta * term2 - gamma * term3
 
-
-def erode_available_region(mask_available, erosion_radius):
+def _tile_to_xywh(p):
     """
-    Shrink the available regions (0) by eroding them inward by `erosion_radius`.
-
-    mask_available: np.ndarray, 0=available, 255=unavailable
-    erosion_radius: number of pixels to shrink available regions
+    Normalize tile spec to (x0, y0, w, h).
+    Accepts:
+      - dict with x0,y0,w,h
+      - tuple/list (x0,y0,w,h)
     """
-    # Create a circular kernel
-    kernel = cv2.getStructuringElement(
-        cv2.MORPH_ELLIPSE,
-        (2 * erosion_radius + 1, 2 * erosion_radius + 1)
-    )
+    if isinstance(p, dict):
+        return float(p["x0"]), float(p["y0"]), float(p["w"]), float(p["h"])
+    if isinstance(p, (list, tuple)) and len(p) == 4:
+        return float(p[0]), float(p[1]), float(p[2]), float(p[3])
+    raise ValueError(f"Unsupported tile format: {type(p)} {p}")
 
-    # Dilate unavailable regions (255) to shrink available regions
-    eroded = cv2.dilate(mask_available, kernel, borderType=cv2.BORDER_CONSTANT, borderValue=255)
 
-    return eroded
-
-def combine_patches_with_sampled(patches, new_points, patch_size):
-    """
-    Create a combined patch list:
-    - Existing small patches remain unchanged
-    - New sampled points are converted into square patches
-    """
-    new_patches = []
-
-    # --- Keep existing small patches ---
-    for p in patches:
-        if p['type'] == 'small':
-            new_patches.append(p.copy())
-
-    # --- Add new points as square patches ---
-    half_size = patch_size // 2
-    for i, pt in enumerate(new_points):
-        cx, cy = int(round(pt[0])), int(round(pt[1]))
-        patch = {
-            'x0': cx - half_size,
-            'y0': cy - half_size,
-            'w': patch_size,
-            'h': patch_size,
-            'cx': cx,
-            'cy': cy,
-            'area': patch_size**2,
-            'type': 'sampled'
-        }
-        new_patches.append(patch)
-
-    return new_patches
-
-def save_dapi_patches(dapi_rgb,
-                      patches,
-                      output_folder,
-                      rescale_factor=1.0
-                      ):
+def save_dapi_tiles(
+    dapi_rgb,
+    tiles,
+    output_folder,
+    rescale_factor=1.0,
+    prefix="tile",          # file/key prefix
+    start_index=0,          # in case you want to append
+):
     if not os.path.exists(output_folder):
         os.makedirs(output_folder)
-    counts = {}
-    saved_patches = []
-    h_img, w_img = dapi_rgb.shape[:2]
-    output_dict= {}
 
-    for p in patches:
-        if p['type'] == 'giant':
-            continue
-        patch_type = p['type']
-        counts.setdefault(patch_type, 0)
-        x0 = int(round(p["x0"] * rescale_factor))
-        y0 = int(round(p["y0"] * rescale_factor))
-        w = int(round(p["w"] * rescale_factor))
-        h = int(round(p["h"] * rescale_factor))
+    saved_tiles = []
+    output_dict = {}
+
+    h_img, w_img = dapi_rgb.shape[:2]
+
+    for i, p in enumerate(tiles, start=start_index):
+        x0f, y0f, wf, hf = _tile_to_xywh(p)
+
+        x0 = int(round(x0f * rescale_factor))
+        y0 = int(round(y0f * rescale_factor))
+        w  = int(round(wf  * rescale_factor))
+        h  = int(round(hf  * rescale_factor))
+
         x0 = max(0, x0)
         y0 = max(0, y0)
         x1 = min(w_img, x0 + w)
         y1 = min(h_img, y0 + h)
-        patch_img = dapi_rgb[y0:y1, x0:x1]
-        # ------------------------
-        # 1. Save original patch
-        # ------------------------
-        filename = f"{patch_type}_tile_{counts[patch_type]:02d}_dapi.png"
+
+        # skip invalid (can happen after clamp)
+        if x1 <= x0 or y1 <= y0:
+            continue
+
+        tile_img = dapi_rgb[y0:y1, x0:x1]
+
+        key = f"{prefix}_{i:03d}"
+        filename = f"{key}_dapi.png"
         filepath = os.path.join(output_folder, filename)
-        cv2.imwrite(filepath, cv2.cvtColor(patch_img, cv2.COLOR_RGB2BGR))
+
+        # dapi_rgb is RGB; cv2 wants BGR
+        cv2.imwrite(filepath, cv2.cvtColor(tile_img, cv2.COLOR_RGB2BGR))
+
         info = {
             "x0": x0, "y0": y0,
             "w": x1 - x0, "h": y1 - y0,
             "cx": (x0 + x1) / 2, "cy": (y0 + y1) / 2,
-            "type": patch_type,
-            "id": counts[patch_type],
+            "type": "sampled",
+            "id": i,
             "filename": filename,
-            "img": patch_img
+            "img": tile_img,
         }
-        saved_patches.append(info)
-        output_dict[f"{patch_type}_tile_{counts[patch_type]:02d}"] = {k: v for k, v in info.items() if k not in ("img", "img_rf")}
-        counts[patch_type] += 1
-    print(f"Saved patches in '{output_folder}':")
-    for t, c in counts.items():
-        print(f"  {t.capitalize()} patches: {c}")
+        saved_tiles.append(info)
+        output_dict[key] = {k: v for k, v in info.items() if k not in ("img", "img_rf")}
 
-    # Save to JSON
-    with open(f"{output_folder}/dapi_tile_info.json", "w") as f:
-        json.dump(output_dict, f, default=convert_ndarray, indent=4)
-    return saved_patches
+    print(f"Saved DAPI tiles in '{output_folder}': {len(saved_tiles)}")
 
-def save_he_patches(he_rgb, patches, h_mat, output_folder, rescale_factor=1.0, margin_ratio=0.1):
+    with open(os.path.join(output_folder, "dapi_tile_info.json"), "w") as f:
+        json.dump(output_dict, f, indent=4)
+
+    return saved_tiles
+
+
+def save_he_tiles(
+    he_rgb,
+    tiles,
+    h_mat,
+    output_folder,
+    rescale_factor=1.0,
+    margin_ratio=0.1,
+    prefix="tile",
+    start_index=0,
+    debug_first_n=0,   # >0 就打印前 n 个 tile 的 corners/transform
+):
     if not os.path.exists(output_folder):
         os.makedirs(output_folder)
 
-    counts = {}
-    he_patches = []
+    he_tiles = []
     output_dict = {}
-    H = np.array(h_mat)
+    H = np.array(h_mat, dtype=float)
     h_img, w_img = he_rgb.shape[:2]
 
-    for p in patches:
-        if p['type'] == 'giant':
+    for i, p in enumerate(tiles, start=start_index):
+        x0f, y0f, wf, hf = _tile_to_xywh(p)
+
+        # enlarge around center in DAPI space (still in tile coordinate system)
+        mw = float(wf) * (1.0 + float(margin_ratio))
+        mh = float(hf) * (1.0 + float(margin_ratio))
+        x0_centered = float(x0f) - (mw - float(wf)) / 2.0
+        y0_centered = float(y0f) - (mh - float(hf)) / 2.0
+        x1_centered = x0_centered + mw
+        y1_centered = y0_centered + mh
+
+        corners = np.array(
+            [
+                [x0_centered, y0_centered],
+                [x1_centered, y0_centered],
+                [x1_centered, y1_centered],
+                [x0_centered, y1_centered],
+            ],
+            dtype=float,
+        )
+
+        # affine: (x',y') = A*[x,y] + t
+        transformed = np.dot(H[:, :2], corners.T).T + H[:, 2]
+
+        if debug_first_n and (i - start_index) < debug_first_n:
+            print(f"[DEBUG] tile {i}:")
+            print("H:\n", H)
+            print("corners (DAPI coords):\n", corners)
+            print("transformed (HE coords, before rescale):\n", transformed)
+            print("HE image shape:", he_rgb.shape)
+
+        xs = transformed[:, 0] * float(rescale_factor)
+        ys = transformed[:, 1] * float(rescale_factor)
+
+        min_x = int(np.floor(xs.min()))
+        max_x = int(np.ceil(xs.max()))
+        min_y = int(np.floor(ys.min()))
+        max_y = int(np.ceil(ys.max()))
+
+        # clamp
+        min_x = max(0, min_x)
+        min_y = max(0, min_y)
+        max_x = min(w_img, max_x)
+        max_y = min(h_img, max_y)
+
+        if max_x <= min_x or max_y <= min_y:
             continue
 
-        patch_type = p['type']
-        counts.setdefault(patch_type, 0)
+        tile_img = he_rgb[min_y:max_y, min_x:max_x]
 
-        x0, y0, w, h = p["x0"], p["y0"], p["w"], p["h"]
-        mw, mh = int(round(w * (1 + margin_ratio))), int(round(h * (1 + margin_ratio)))
-        x0_centered, y0_centered = int(round(x0 - (mw - w) / 2)), int(round(y0 - (mh - h) / 2))
-        x1, y1 = x0_centered + mw, y0_centered + mh
-
-        corners = np.array([[x0_centered, y0_centered],
-                            [x1, y0_centered],
-                            [x1, y1],
-                            [x0_centered, y1]], dtype=float)
-
-        transformed = np.dot(H[:, :2], corners.T).T + H[:, 2]
-        min_x = max(0, int(round(transformed[:, 0].min() * rescale_factor)))
-        max_x = min(w_img, int(round(transformed[:, 0].max() * rescale_factor)))
-        min_y = max(0, int(round(transformed[:, 1].min() * rescale_factor)))
-        max_y = min(h_img, int(round(transformed[:, 1].max() * rescale_factor)))
-
-        patch_img = he_rgb[min_y:max_y, min_x:max_x]
-
-        filename = f"{patch_type}_tile_{counts[patch_type]:02d}_he.png"
-        cv2.imwrite(os.path.join(output_folder, filename), cv2.cvtColor(patch_img, cv2.COLOR_RGB2BGR))
+        key = f"{prefix}_{i:03d}"
+        filename = f"{key}_he.png"
+        cv2.imwrite(os.path.join(output_folder, filename), cv2.cvtColor(tile_img, cv2.COLOR_RGB2BGR))
 
         info = {
             "x0": min_x, "y0": min_y,
             "w": max_x - min_x, "h": max_y - min_y,
             "cx": (min_x + max_x) / 2, "cy": (min_y + max_y) / 2,
-            "type": patch_type,
-            "id": counts[patch_type],
+            "type": "sampled",
+            "id": i,
             "filename": filename,
-            "img": patch_img
+            "img": tile_img,
         }
-        he_patches.append(info)
-        output_dict[f"{patch_type}_tile_{counts[patch_type]:02d}"] = {k: v for k, v in info.items() if k != "img"}
-        counts[patch_type] += 1
+        he_tiles.append(info)
+        output_dict[key] = {k: v for k, v in info.items() if k != "img"}
 
-    print(f"Saved H&E patches in '{output_folder}':")
-    for t, c in counts.items():
-        print(f"  {t.capitalize()} patches: {c}")
-    # Save to JSON
-    with open(f"{output_folder}/he_tile_info.json", "w") as f:
-        json.dump(output_dict, f, default=convert_ndarray, indent=4)
-    return he_patches
+    print(f"Saved H&E tiles in '{output_folder}': {len(he_tiles)}")
 
+    with open(os.path.join(output_folder, "he_tile_info.json"), "w") as f:
+        json.dump(output_dict, f, indent=4)
 
-def save_patch_overlay_cv2(image, final_patches, mask,
-                                 show_giant=True, show_small=True,
-                                 save_path=None, alpha=0.4):
-    """
-    Draw blobs and patch centroids correctly with OpenCV.
-    Returns RGB overlay.
-    """
-    # Ensure BGR
-    if len(image.shape) == 2:
-        overlay = cv2.cvtColor(image.astype(np.uint8), cv2.COLOR_GRAY2BGR)
-    else:
-        overlay = cv2.cvtColor(np.clip(image,0,255).astype(np.uint8), cv2.COLOR_RGB2BGR)
+    return he_tiles
 
-    # Connected components
-    num_labels, labels = cv2.connectedComponents(mask.astype(np.uint8))
+def centroids_to_tiles(points_xy, tile_size):
+    half = tile_size / 2.0
+    tiles = []
+    for (x, y) in points_xy:
+        tiles.append({"x0": float(x - half), "y0": float(y - half), "w": float(tile_size), "h": float(tile_size)})
+    return tiles
 
-    # Map label → blob info
-    blob_info = {}
-    for i in range(1, num_labels):
-        blob = (labels==i)
-        M = cv2.moments(blob.astype(np.uint8))
-        if M['m00']==0: continue
-        cx = int(round(M['m10']/M['m00']))
-        cy = int(round(M['m01']/M['m00']))
-        blob_info[i] = {'mask': blob, 'cx': cx, 'cy': cy}
+# =============================
+# GUI App
+# =============================
+class ProgressDialog(tk.Toplevel):
+    def __init__(self, parent, title="Working..."):
+        super().__init__(parent)
+        self.title(title)
+        self.resizable(False, False)
 
-    # Prepare overlay layer
-    overlay_layer = overlay.copy()
-    small_count = giant_count = 0
-    green = (0,255,0)
+        self._t0 = time.perf_counter()
+        self._running = True
+        self._stage_i = 0
+        self._stage_total = 0
+        self._stage_name = "Starting..."
+        self._suffix = ""
 
-    for p in final_patches:
-        ctype = p['type']
-        if (ctype=='small' and not show_small) or (ctype=='giant' and not show_giant):
-            continue
+        self.var = tk.DoubleVar(value=0.0)
 
-        px, py = int(round(p['cx'])), int(round(p['cy']))
+        # 顶部状态行
+        self.lbl = tk.Label(self, text="", anchor="w")
+        self.lbl.pack(side="top", fill="x", padx=12, pady=(12, 6))
 
-        # Match patch to blob
-        for info in blob_info.values():
-            if info['cx']==px and info['cy']==py:
-                # Choose color
-                color = (0,255,255) if ctype=='small' else (0,0,255)  # BGR: yellow or red
-                idx = np.where(info['mask'])
-                overlay_layer[idx[0], idx[1]] = cv2.addWeighted(overlay_layer[idx[0], idx[1]],
-                                                               1-alpha,
-                                                               np.full_like(overlay_layer[idx[0], idx[1]], color),
-                                                               alpha, 0)
-                break
-        # Centroid
-        cv2.circle(overlay_layer, (px, py), 5, green, -1)
+        self.pb = ttk.Progressbar(
+            self, orient="horizontal", mode="determinate",
+            maximum=100.0, variable=self.var, length=420
+        )
+        self.pb.pack(side="top", fill="x", padx=12, pady=(0, 10))
 
-        # Rectangle only for small
-        if ctype=='small':
-            x0, y0, w, h = map(int, (p['x0'], p['y0'], p['w'], p['h']))
-            cv2.rectangle(overlay_layer, (x0,y0), (x0+w, y0+h), (0,255,255), 2)  # yellow rectangle
-            text = f"S{small_count}"
-            small_count += 1
+        self.txt = tk.Text(self, height=12, width=70)
+        self.txt.pack(side="top", fill="both", expand=True, padx=12, pady=(0, 12))
+        self.txt.configure(state="disabled")
+
+        self.btn_close = tk.Button(self, text="Close", state="disabled", command=self.destroy)
+        self.btn_close.pack(side="bottom", pady=(0, 12))
+
+        self.transient(parent)
+        self.grab_set()
+
+        # start auto elapsed update
+        self._tick_elapsed()
+
+    def start_elapsed(self):
+        def tick():
+            if not self._running:
+                return
+            elapsed = time.perf_counter() - self._t0
+            self.lbl.config(
+                text=f"{self.lbl.cget('text').split(' | ')[0]} | Elapsed: {elapsed:.1f}s"
+            )
+            self.after(200, tick)
+
+        tick()
+
+    def stop_elapsed(self):
+        self._running = False
+        # freeze final header (once)
+        try:
+            self.lbl.config(text=self._format_header())
+        except tk.TclError:
+            pass
+
+    def _format_header(self):
+        elapsed = time.perf_counter() - self._t0
+        suffix = self._suffix or ""
+        if self._stage_total > 0 and self._stage_i > 0:
+            return f"STAGE {self._stage_i}/{self._stage_total}  {self._stage_name}   Elapsed: {elapsed:,.1f}s{suffix}"
         else:
-            text = f"G{giant_count}"
-            giant_count += 1
+            return f"{self._stage_name}   Elapsed: {elapsed:,.1f}s{suffix}"
 
-        cv2.putText(overlay_layer, text, (px-10, py+5),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,255,255), 1, cv2.LINE_AA)
+    def _tick_elapsed(self):
+        if not self._running:
+            return
+        try:
+            self.lbl.config(text=self._format_header())
+            self.after(200, self._tick_elapsed)
+        except tk.TclError:
+            return
 
-    if save_path:
-        cv2.imwrite(save_path, overlay_layer)
+    def set_stage(self, i: int, total: int, name: str):
+        self._stage_i = int(i)
+        self._stage_total = int(total)
+        self._stage_name = str(name)
+        self.lbl.config(text=self._format_header())
 
-    return cv2.cvtColor(overlay_layer, cv2.COLOR_BGR2RGB)
+    def set_status(self, s: str):
+        # 兼容旧接口：仅更新 stage_name
+        self._stage_name = str(s)
+        self.lbl.config(text=self._format_header())
 
-def draw_dapi_patches_cv2(dapi_rgb, all_patches,
-                           show_small_only=True,
-                           show_sampled_only=True,
-                           save_path=None,
-                           display=False):
-    """
-    Draw DAPI patches on the image with labels at patch centroids using OpenCV.
+    def set_progress(self, p: float):
+        self.var.set(float(p))
 
-    Parameters:
-    - dapi_rgb: np.ndarray (HxWx3), DAPI RGB image
-    - all_patches: list of dicts with keys ['x0','y0','w','h','type']
-    - show_small_only: bool, if True, draw only 'small' patches
-    - show_sampled_only: bool, if True, draw only 'sampled' patches
-    - save_path: str or None, if given, save the overlay
-    - display: bool, if True, show window via cv2.imshow
-    Returns:
-    - overlay_rgb: np.ndarray, HxWx3 RGB image with overlays
-    """
+    def log(self, s: str):
+        self.txt.configure(state="normal")
+        self.txt.insert("end", s.rstrip() + "\n")
+        self.txt.see("end")
+        self.txt.configure(state="disabled")
 
-    # Make a copy and convert to BGR for OpenCV
-    overlay_bgr = cv2.cvtColor(np.clip(dapi_rgb, 0, 255).astype(np.uint8), cv2.COLOR_RGB2BGR)
+    def enable_close(self):
+        self.btn_close.config(state="normal")
 
-    # Define colors (BGR)
-    color_dict = {
-        'small': (0, 255, 255),   # yellow
-        'sampled': (0, 0, 255),   # red
-        'other': (0, 255, 0),      # green
-    }
+    def mark_done(self):
+        self._suffix = " (Done)"
+        self.lbl.config(text=self._format_header())
 
-    for i, p in enumerate(all_patches):
-        patch_type = p.get('type', 'other')
+    def mark_failed(self):
+        self._suffix = " (Failed)"
+        self.lbl.config(text=self._format_header())
 
-        # Skip based on flags
-        if patch_type == 'small' and not show_small_only:
-            continue
-        if patch_type == 'sampled' and not show_sampled_only:
-            continue
+class Step3SamplingApp(tk.Tk):
+    def __init__(self, run_dir: Path):
+        super().__init__()
+        self.run_dir = run_dir
 
-        color = color_dict.get(patch_type, color_dict['other'])
-        x0, y0, w, h = map(int, (p['x0'], p['y0'], p['w'], p['h']))
+        self.title("Step 3 — CVT sampling draft")
 
-        # Draw rectangle
-        cv2.rectangle(overlay_bgr, (x0, y0), (x0 + w, y0 + h), color, 2)
+        # 3 panels
+        self.tile_size = (420, 420)
 
-        # Draw centroid label
-        cx, cy = x0 + w // 2, y0 + h // 2
-        cv2.putText(overlay_bgr, f"{i:02d}", (cx - 10, cy + 5),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.4, color, 1, cv2.LINE_AA)
+        # runtime state
+        self.has_sampling_outputs = False
 
-    # Convert back to RGB for Tkinter or PIL
-    overlay_rgb = cv2.cvtColor(overlay_bgr, cv2.COLOR_BGR2RGB)
+        self.sampling_counter = 0
 
-    # Save if requested
-    if save_path is not None:
-        cv2.imwrite(save_path, overlay_bgr)
+        # orientation case (from images_info.json)
+        self.case_id = 0
+        info_path = self.run_dir / "images_info.json"
+        if info_path.exists():
+            try:
+                info = json.load(open(info_path, "r"))
+                self.case_id = int(info.get("DAPI_orientation_case", 0))
+            except Exception as e:
+                print(f"[WARN] failed to read DAPI_orientation_case: {e}", flush=True)
+        print(f"[INFO] DAPI_orientation_case={self.case_id}", flush=True)
 
-    # Display if requested
-    if display:
-        cv2.imshow("DAPI Patches", overlay_bgr)
-        cv2.waitKey(0)
-        cv2.destroyAllWindows()
+        # -------- layout
+        top = tk.Frame(self)
+        top.pack(side="top", fill="x", padx=12, pady=(10, 6))
 
-    return overlay_rgb
+        tk.Label(
+            top,
+            text=f"RUN_DIR: {self.run_dir}",
+            anchor="w",
+            font=("Helvetica", 12, "bold"),
+        ).pack(side="left", fill="x", expand=True)
+
+        mid = tk.Frame(self)
+        mid.pack(side="top", fill="x", padx=12, pady=(6, 6))
+
+        self.panel_left  = self._make_image_panel(mid, "DAPI Image(LUT-ed)")
+        self.panel_mid   = self._make_image_panel(mid, "Available Mask for Tile Centroids")
+        self.panel_right = self._make_image_panel(mid, "Sampled Tile Centroids")
+
+        self.panel_left.grid(row=0, column=0, padx=8, sticky="n")
+        self.panel_mid.grid(row=0, column=1, padx=8, sticky="n")
+        self.panel_right.grid(row=0, column=2, padx=8, sticky="n")
+
+        mid.columnconfigure(0, weight=1)
+        mid.columnconfigure(1, weight=1)
+        mid.columnconfigure(2, weight=1)
+
+        bottom = tk.Frame(self)
+        bottom.pack(side="top", fill="x", padx=12, pady=(2, 12))
+
+        self.btn_sampling = tk.Button(
+            bottom, text="Sample tile centroids",
+            command=self.on_sampling_clicked
+        )
+        self.btn_sampling.pack(side="left", fill="x", expand=True, padx=(0, 8))
+
+        self.btn_extract = tk.Button(
+            bottom, text="Extract current tiles",
+            command=self.on_extract_clicked,
+            state="disabled"
+        )
+        self.btn_extract.pack(side="left", fill="x", expand=True, padx=(8, 0))
+
+        # load initial images
+        self._load_initial_left()
+        self._set_placeholder(self.panel_mid, "Not Available Now")
+        self._set_placeholder(self.panel_right, "Not Available Now")
+
+        self.update_idletasks()
+        self.minsize(self.winfo_width(), self.winfo_height())
+
+    def _make_image_panel(self, parent, title):
+        frame = tk.Frame(parent)
+        tk.Label(frame, text=title, font=("Helvetica", 12, "bold")).pack(side="top", pady=(0, 6))
+        lbl = tk.Label(frame)
+        lbl.pack(side="top")
+        frame._img_label = lbl
+        return frame
+
+    def _set_panel_image(self, panel_frame, cv_img, apply_orientation=True):
+        if apply_orientation:
+            cv_img = apply_orientation_case(cv_img, self.case_id)
+        pil = cv2_to_pil(cv_img)
+        tile = fit_to_tile(pil, size=self.tile_size)
+        tk_img = ImageTk.PhotoImage(tile)
+        panel_frame._img_label.configure(image=tk_img)
+        panel_frame._img_label.image = tk_img
+
+    def _set_placeholder(self, panel_frame, text="placeholder"):
+        w, h = self.tile_size  # (W,H)
+        img = np.full((h, w, 3), 240, np.uint8)
+
+        font = cv2.FONT_HERSHEY_SIMPLEX
+        font_scale = 1.0
+        thickness = 2
+        color = (80, 80, 80)
+
+        # --- compute centered position ---
+        (tw, th), baseline = cv2.getTextSize(text, font, font_scale, thickness)
+        x = (w - tw) // 2
+        y = (h - th) // 2 + th  # y is baseline in cv2.putText
+
+        cv2.putText(img, text, (x, y), font, font_scale, color, thickness, cv2.LINE_AA)
+
+        # IMPORTANT: placeholder must NOT be rotated/flipped
+        self._set_panel_image(panel_frame, img, apply_orientation=False)
+
+    def _load_initial_left(self):
+        img_dir = self.run_dir / "1_dapi_lut.png"
+
+        img = load_image_any(img_dir)
+
+        if img is None:
+            self._set_placeholder(self.panel_left, "missing DAPI-luted")
+            messagebox.showwarning("Missing", f"Can't find {img_dir.name} in RUN_DIR.")
+            return
+
+        self._set_panel_image(self.panel_left, img, apply_orientation=False)
+
+    # --------------------------
+    # Button callbacks
+    # --------------------------
+    def on_sampling_clicked(self):
+        """
+        这里直接跑你 test.py 的 CVT sampling pipeline
+        """
+        try:
+            timer = StepTimer()
+
+            self.sampling_counter += 1
+            seed = int(time.time() * 1000) % (2 ** 31 - 1)
+            print(f"[INFO] Sampling seed = {seed}", flush=True)
+
+            info_path = self.run_dir / "images_info.json"
+            if not info_path.exists():
+                raise FileNotFoundError(f"missing {info_path}")
+
+            info = json.load(open(info_path, "r"))
+            DAPI_PATH = info["DAPI_path"]
+            DAPI_LEVEL = int(info["DAPI_level"])
+            print(f"[INFO] DAPI_PATH={DAPI_PATH}", flush=True)
+            print(f"[INFO] DAPI_LEVEL={DAPI_LEVEL}", flush=True)
+
+            # 读 dapi（沿用你的 my_utils.read_image）
+            from my_utils import read_image
+            dapi16, _ = read_image(DAPI_PATH, keep_16bit=True, level=DAPI_LEVEL)
+            timer.mark("Read DAPI")
+
+            # debug preview
+            cv2.imwrite(str(self.run_dir / "3_dbg_dapi_gray.png"), normalize_uint16_to_uint8(dapi16))
+            timer.mark("Save gray preview")
+
+            # tissue mask + density
+            mask_tissue, density = make_tissue_mask_from_dapi_gray(
+                dapi16,
+                blur_ksize=13,
+                thr_mode="percentile",
+                thr_percentile=45,
+                morph_close=25,
+                morph_open=0,
+                min_area=3000
+            )
+            cv2.imwrite(str(self.run_dir / "3_dbg_tissue_mask.png"), mask_tissue)
+
+            mask_dense = apply_density_filter(
+                mask_tissue, density,
+                mode="percentile",
+                p=40,
+                morph_close=11
+            )
+            cv2.imwrite(str(self.run_dir / "3_dbg_density_mask.png"), mask_dense)
+            timer.mark("Make tissue+density mask")
+
+            # boundary-only available mask
+            TILE_SIZE = 600
+            TILE_SIZE = TILE_SIZE / (2 ** (DAPI_LEVEL - 1))  # 你之前的写法，先沿用
+            buffer = 10 / (2 ** (DAPI_LEVEL - 1))
+            boundary_radius = int(np.ceil(TILE_SIZE * np.sqrt(2) / 2)) + int(buffer)
+
+            avail = make_available_mask_boundary_only(mask_dense, boundary_radius=boundary_radius)
+            avail_path = self.run_dir / "3_dbg_available_after_erode.png"
+            cv2.imwrite(str(avail_path), avail)
+            timer.mark("Make available mask (boundary)")
+
+            # CVT
+            MIN_DIST = TILE_SIZE * 1.5
+            points_xy = cvt_masked(
+                avail,
+                N_POINTS=80,
+                MIN_DIST=MIN_DIST,
+                ITERATIONS=50,
+                seed=seed
+            )
+            timer.mark("CVT sampling")
+            # ndi_score = normalized_dispersion_index_corrected(points_xy, avail)
+            # print("NDI Score:", ndi_score)
+
+            tiles = centroids_to_tiles(points_xy, tile_size=TILE_SIZE)
+
+            # 保存到 self，供 Extract 按钮使用
+            self.current_points_xy = points_xy
+            self.current_tiles = tiles
+            self.current_tile_size = TILE_SIZE
+            self.current_dapi_level = DAPI_LEVEL
+
+            # save points
+            out_json = self.run_dir / "sampled_points.json"
+            json.dump({"dapi_level": DAPI_LEVEL, "points_xy": points_xy.tolist()},
+                      open(out_json, "w"), indent=2)
+            timer.mark("Save points json")
+
+            # overlay —— 用 raw dapi16 + raw points_xy 画
+            overlay_bgr = draw_points_overlay(
+                dapi16, points_xy,
+                tile_size=TILE_SIZE,
+                save_path=str(self.run_dir / "3_sampled_overlay.png")
+            )
+            timer.mark("Save overlay")
+
+            # ---- update GUI: mid & right images
+            mid_img = load_image_any(avail_path)
+            right_img = load_image_any(self.run_dir / "3_sampled_overlay.png")
+            if mid_img is None:
+                mid_img = avail  # fallback (single channel)
+            if right_img is None:
+                right_img = overlay_bgr
+
+            self._set_panel_image(self.panel_mid, mid_img)
+            self._set_panel_image(self.panel_right, right_img)
+
+            # enable extract button
+            self.btn_extract.config(state="normal")
+            self.has_sampling_outputs = True
+
+            print("[DONE] sampling finished.", flush=True)
+
+        except Exception as e:
+            messagebox.showerror("Sampling failed", str(e))
+            raise
+
+    def on_extract_clicked(self):
+        if not self.has_sampling_outputs:
+            messagebox.showwarning("Not ready", "Please run sampling first.")
+            return
+
+        def worker(q):
+            timer0 = time.perf_counter()
+
+            STAGE_TOTAL = 3  # 你现在的 extract 基本就 3 个大阶段：load/import/dapi/he（可自行改）
+
+            def report_stage(i, name):
+                q.put(("stage", (i, STAGE_TOTAL, name)))
+
+            def tick(p, msg=None):
+                q.put(("progress", p))
+                if msg:
+                    q.put(("log", msg))
+
+            # ---------- read inputs ----------
+            report_stage(1, "Loading configs / inputs")
+            info_path = self.run_dir / "images_info.json"
+            if not info_path.exists():
+                raise FileNotFoundError(f"missing {info_path}")
+            info = json.load(open(info_path, "r"))
+
+            DAPI_PATH = info["DAPI_path"]
+            HE_PATH = info["HE_path"]
+            DAPI_LEVEL = int(info["DAPI_level"])
+            HE_LEVEL = int(info["HE_level"])
+
+            lut_path = "glasbey_inverted.lut"
+            lut = np.fromfile(lut_path, dtype=np.uint8).reshape(256, 3)
+
+
+            sampled_path = self.run_dir / "sampled_points.json"
+            if not sampled_path.exists():
+                raise FileNotFoundError(f"missing {sampled_path}, run sampling first.")
+            sampled = json.load(open(sampled_path, "r"))
+            points_xy = np.asarray(sampled["points_xy"], dtype=np.int32)
+
+            # use tiles generated from latest sampling
+            if not hasattr(self, "current_tiles") or self.current_tiles is None:
+                raise RuntimeError("No tiles found. Please click 'Sample tile centroid' first.")
+            tiles = self.current_tiles
+            output_folder = self.run_dir / "tiles"
+            ensure_dir(output_folder)
+
+            tick(5, f"DAPI_LEVEL={DAPI_LEVEL}, HE_LEVEL={HE_LEVEL}")
+            tick(8, f"Output: {output_folder}")
+
+            # ---------- imports from your project ----------
+            report_stage(1, "Importing project utils")
+            from my_utils import read_image, dapi_to_lut_rgb
+            tick(12)
+
+            report_stage(2, "Saving DAPI tiles")
+            dapi_img2, _ = read_image(DAPI_PATH, keep_16bit=True, level=1)
+            tick(20, f"Read DAPI level=1 shape={getattr(dapi_img2, 'shape', None)}")
+
+            # lut 可能是 None：你可以在这里 fallback 到你默认 lut
+            if lut is None:
+                raise RuntimeError("lut is None; please load/build LUT (info['DAPI_lut'] or your default LUT).")
+
+            dapi_rgb2 = dapi_to_lut_rgb(dapi_img2, lut, threshold=300)
+            tick(30, "Applied LUT to DAPI")
+
+            dapi_tiles = save_dapi_tiles(
+                dapi_rgb2, tiles, str(output_folder),
+                rescale_factor=2 ** (DAPI_LEVEL - 1)
+            )
+            tick(55, f"Saved DAPI tiles: {len(dapi_tiles) if hasattr(dapi_tiles, '__len__') else 'done'}")
+
+            # overlays（你这边用 dapi_rgb 还是 dapi_rgb2：按你之前逻辑）
+            # 你原代码里用的是 dapi_rgb（可能是 level=DAPI_LEVEL 的 LUT 图）
+            # 这里如果没有 dapi_rgb，就用 dapi_rgb2 先顶着
+            dapi_rgb_for_overlay = dapi_rgb2
+            tick(65, "Saved DAPI overlay")
+
+            # ------------------------------
+            # 6. Save HE tiles using transformation
+            # ------------------------------
+            report_stage(3, "Saving HE tiles")
+
+            path_clicked = self.run_dir / "clicked_blob_initial_alignment.json"
+            path_manual = self.run_dir / "manual_initial_alignment.json"
+
+            if path_clicked.exists():
+                data = json.load(open(path_clicked, "r"))
+                q.put(("log", f"[INFO] Using alignment from: {path_clicked.name}"))
+            elif path_manual.exists():
+                data = json.load(open(path_manual, "r"))
+                q.put(("log", f"[INFO] Using alignment from: {path_manual.name}"))
+            else:
+                raise FileNotFoundError(
+                    "Neither clicked_blob_initial_alignment.json nor manual_initial_alignment.json found.")
+
+            h_mat = data["H_mat"]
+            tick(72, "Loaded initial alignment")
+
+            he_img2, _ = read_image(HE_PATH, keep_16bit=True, level=1)
+            tick(78, f"Read HE level=1 shape={getattr(he_img2, 'shape', None)}")
+
+            he_tiles = save_he_tiles(
+                he_img2, tiles, h_mat, str(output_folder),
+                rescale_factor=2 ** (HE_LEVEL - 1),
+                margin_ratio=0.2
+            )
+            tick(95, f"Saved HE tiles: {len(he_tiles) if hasattr(he_tiles, '__len__') else 'done'}")
+
+            # done
+            dt = time.perf_counter() - timer0
+            q.put(("log", f"[DONE] Extract finished in {dt:.2f}s"))
+
+        # run with progress dialog
+        self._run_with_progress("Extracting tiles...", worker)
+
+    def _run_with_progress(self, title, worker_fn):
+        dlg = ProgressDialog(self, title=title)
+        q = queue.Queue()
+
+        def pump():
+            try:
+                while True:
+                    kind, payload = q.get_nowait()
+                    if kind == "stage":
+                        i, total, name = payload
+                        dlg.set_stage(i, total, name)
+                        dlg.log(f"[STAGE] {i}/{total} {name}")
+                    elif kind == "progress":
+                        dlg.set_progress(payload)
+                    elif kind == "log":
+                        dlg.log(payload)
+                    elif kind == "done":
+                        dlg.mark_done()
+                        dlg.stop_elapsed()
+                        dlg.set_progress(100)
+                        dlg.enable_close()
+                        return
+                    elif kind == "error":
+                        dlg.log("[ERROR] " + str(payload))
+                        dlg.mark_failed()
+                        dlg.stop_elapsed()
+                        dlg.enable_close()
+                        return
+            except queue.Empty:
+                pass
+            self.after(100, pump)
+
+        def bg():
+            try:
+                worker_fn(q)
+                q.put(("done", None))
+            except Exception as e:
+                q.put(("error", str(e)))
+
+        threading.Thread(target=bg, daemon=True).start()
+        pump()
+
+def main():
+    if len(sys.argv) < 2:
+        print("Usage: python 3.py <RUN_DIR>")
+        sys.exit(2)
+
+    run_dir = Path(sys.argv[1]).resolve()
+    if not run_dir.exists():
+        print(f"[ERROR] RUN_DIR not found: {run_dir}")
+        sys.exit(2)
+
+    app = Step3SamplingApp(run_dir)
+    app.mainloop()
 
 
 if __name__ == "__main__":
-    print("[INFO] STEP 3 started: Tile Extraction", flush=True)
-    print("[PROGRESS] 0/100", flush=True)
-    timer = StepTimer()
-
-    # ------------------------------
-    # 0. Read configuration from JSON
-    # ------------------------------
-    report_stage("Loading data")
-    HE_LEVEL = None
-    DAPI_LEVEL = None
-    RUN_DIR = sys.argv[1]
-    output_folder = os.path.join(RUN_DIR, "tiles")
-    json_path = os.path.join(RUN_DIR, "images_info.json")
-    try:
-        with open(json_path, "r") as f:
-            data = json.load(f)
-            HE_LEVEL = data.get("HE_level", None)
-            DAPI_LEVEL = data.get("DAPI_level", None)
-            HE_PATH = data.get("HE_path", None)
-            DAPI_PATH = data.get("DAPI_path", None)
-            case_id = data["DAPI_orientation_case"]
-            print(f"Read levels from JSON: HE_PATH={HE_PATH}, HE_level={HE_LEVEL}, DAPI_PATH={DAPI_PATH}, DAPI_level={DAPI_LEVEL}")
-    except FileNotFoundError:
-        print(f"Warning: {json_path} not found.")
-    timer.mark("Read config & paths")
-
-    # ------------------------------
-    # 0.5 Load LUT and DAPI image
-    # ------------------------------
-    lut_path = "/Users/sicongy/Documents/GitHub/rotation_1/LUT/glasbey_inverted.lut"
-    lut = np.fromfile(lut_path, dtype=np.uint8).reshape(256, 3)
-
-    dapi_img, dapi_level = read_image(DAPI_PATH, keep_16bit=True, level=4)
-    dapi_rgb = dapi_to_lut_rgb(dapi_img, lut, threshold=300)
-    cv2.imwrite(os.path.join(RUN_DIR, '3_dapi_rgb.png'), dapi_rgb)
-    timer.mark("Load DAPI + LUT + LUT RGB")
-
-    # ------------------------------
-    # 1. Compute DAPI mask
-    # ------------------------------
-    report_stage("Creating DAPI mask")
-    dapi_mask = create_blob_mask_from_luted_dapi(dapi_rgb, RUN_DIR)
-    cv2.imwrite(os.path.join(RUN_DIR, '3_dapi_mask_final.png'), dapi_mask)
-    timer.mark("Create DAPI blob mask")
-
-    # ------------------------------
-    # 2. Extract blobs and classify patches
-    # ------------------------------
-    report_stage("Extracting blobs")
-    min_area, max_area = 500, 10000
-    margin_ratio = 0.5
-    mask = dapi_mask.astype(np.uint8)
-    num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(mask, connectivity=8)
-
-    patches = []
-    square_size = 128
-    giant_tiles_dict = {}
-
-    total = num_labels - 1
-    for idx, i in enumerate(range(1, num_labels), 1):
-        area = stats[i, cv2.CC_STAT_AREA]
-        if area < min_area:
-            continue
-        cx, cy = centroids[i]
-        x, y, w, h = stats[i, cv2.CC_STAT_LEFT], stats[i, cv2.CC_STAT_TOP], stats[i, cv2.CC_STAT_WIDTH], stats[i, cv2.CC_STAT_HEIGHT]
-        if area > max_area:
-            # Giant blob: tile internally and record single patch
-            patch_type = "giant"
-            blob_mask = (labels == i).astype(np.uint8)
-            ys, xs = np.where(blob_mask)
-            y_min, y_max = ys.min(), ys.max()
-            x_min, x_max = xs.min(), xs.max()
-            tiles = []
-            for y0 in range(y_min, y_max, square_size):
-                for x0 in range(x_min, x_max, square_size):
-                    y1, x1 = min(y0 + square_size, mask.shape[0]), min(x0 + square_size, mask.shape[1])
-                    if np.any(blob_mask[y0:y1, x0:x1] > 0):
-                        tiles.append({'x0': x0, 'y0': y0, 'w': x1-x0, 'h': y1-y0})
-            giant_tiles_dict[i] = tiles
-            patches.append({"x0": x_min, "y0": y_min, "w": x_max-x_min, "h": y_max-y_min,
-                            "cx": cx, "cy": cy, "area": area, "type": patch_type})
-        else:
-            # Small blob: add margin
-            patch_type = "small"
-            mw, mh = int(w * (1 + margin_ratio)), int(h * (1 + margin_ratio))
-            x0, y0 = int(x - (mw - w)/2), int(y - (mh - h)/2)
-            x0, y0 = max(0, x0), max(0, y0)
-            mw, mh = min(mw, mask.shape[1] - x0), min(mh, mask.shape[0] - y0)
-            patches.append({"x0": x0, "y0": y0, "w": mw, "h": mh,
-                            "cx": cx, "cy": cy, "area": area, "type": patch_type})
-
-    overlay_small = save_patch_overlay_cv2(dapi_rgb, patches, mask,
-                                           show_giant=False, show_small=True, save_path=os.path.join(RUN_DIR, '3_blobs_small.png'))
-    overlay_giant = save_patch_overlay_cv2(dapi_rgb, patches, mask,
-                                           show_giant=True, show_small=False, save_path=os.path.join(RUN_DIR, '3_blobs_giant.png'))
-    overlay_both = save_patch_overlay_cv2(dapi_rgb, patches, mask,
-                                          show_giant=True, show_small=True, save_path=os.path.join(RUN_DIR, '3_blobs_both.png'))
-    timer.mark("Extract blobs & classify patches")
-
-    # ------------------------------
-    # 3. Create mask of available regions for sampling
-    # ------------------------------
-    report_stage("Creating available mask")
-    mask_available = create_available_mask(mask, giant_tiles_dict)
-    cv2.imwrite(os.path.join(RUN_DIR, '3_dapi_mask_available.png'), mask_available)
-    MIN_DIST = 100
-    N_total = 60
-    mask_available_eroded = erode_available_region(mask_available, erosion_radius=int(MIN_DIST/np.sqrt(2)))
-    cv2.imwrite(os.path.join(RUN_DIR, '3_dapi_mask_available_eroded.png'), mask_available_eroded)
-    timer.mark("Create & erode available mask")
-
-    # ------------------------------
-    # 4. Evenly sample new points with masked CVT
-    # ------------------------------
-    report_stage("CVT sampling")
-    small_centroids = np.array([[int(round(p['cx'])), int(round(p['cy']))]
-                                for p in patches if p['type'] == 'small'])
-
-    all_points = cvt_masked(mask_available_eroded, N_POINTS=N_total, existing_points=small_centroids,
-                            MIN_DIST=MIN_DIST, MIN_HOLE_DIST=15, ITERATIONS=50)
-    ndi_score = normalized_dispersion_index_corrected(all_points, mask_available)
-    print("NDI Score:", ndi_score)
-    new_points = all_points[len(small_centroids):]
-
-    # ------------------------------
-    # 4.5 Combine patches with sampled points
-    # ------------------------------
-    patch_size = int(np.ceil(MIN_DIST/np.sqrt(2)))
-    all_patches = combine_patches_with_sampled(patches, new_points, patch_size)
-    timer.mark("Masked CVT sampling")
-
-    # ------------------------------
-    # 5. Save DAPI patches
-    # ------------------------------
-    report_stage("Saving DAPI tiles")
-    dapi_img2, _ = read_image(DAPI_PATH, keep_16bit=True, level=1)
-    dapi_rgb2 = dapi_to_lut_rgb(dapi_img2, lut, threshold=300)
-    dapi_patches = save_dapi_patches(dapi_rgb2, all_patches, output_folder, rescale_factor=8.0)
-    draw_dapi_patches_cv2(dapi_rgb, all_patches, show_small_only=True, show_sampled_only=False, save_path=os.path.join(RUN_DIR, '3_dapi_patches_overlay_small.png'))
-    draw_dapi_patches_cv2(dapi_rgb, all_patches, show_small_only=False, show_sampled_only=True, save_path=os.path.join(RUN_DIR, '3_dapi_patches_overlay_sampled.png'))
-    draw_dapi_patches_cv2(dapi_rgb, all_patches, show_small_only=True, show_sampled_only=True, save_path=os.path.join(RUN_DIR, '3_dapi_patches_overlay_both.png'))
-    timer.mark("Save DAPI tiles")
-
-    # ------------------------------
-    # 6. Save HE patches using transformation
-    # ------------------------------
-    report_stage("Saving HE tiles")
-    with open(os.path.join(RUN_DIR, "clicked_blob_initial_alignment.json"), "r") as f:
-        data = json.load(f)
-    h_mat = data["H_mat"]
-    he_img2, _ = read_image(HE_PATH, keep_16bit=True, level=1)
-    he_patches = save_he_patches(he_img2, all_patches, h_mat, output_folder, rescale_factor=8.0, margin_ratio=0.2)
-    timer.mark("Save HE tiles using transformation")
-
-    # ------------------------------
-    # 7. Show patch gallery
-    # ------------------------------
-    print("[DONE] STEP 3 finished", flush=True)
+    main()

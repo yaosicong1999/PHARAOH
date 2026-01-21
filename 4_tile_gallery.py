@@ -439,6 +439,7 @@ def main():
         raise RuntimeError("Usage: python 4_tile_gallery.py <tiles_folder>")
     output_folder = sys.argv[1]
 
+    output_folder = output_folder + "/tiles/"
     with open(os.path.join(output_folder, "dapi_tile_info.json"), "r") as f:
         dapi_info = json.load(f)
     with open(os.path.join(output_folder, "he_tile_info.json"), "r") as f:

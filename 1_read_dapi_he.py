@@ -10,7 +10,7 @@ from scipy import ndimage as ndi
 from pathlib import Path
 import sys
 import json
-import tkinter.messagebox as messagebox  # <-- add this at the top
+import tkinter.messagebox as messagebox
 Image.MAX_IMAGE_PIXELS = None  # disable the check
 from PIL import Image, ImageDraw, ImageOps
 
@@ -99,7 +99,7 @@ ORIENTATION_CASES = {
 }
 
 # ---- Load LUT once ----
-lut_path = "/Users/sicongy/Documents/GitHub/rotation_1/LUT/glasbey_inverted.lut"
+lut_path = "glasbey_inverted.lut"
 lut = np.fromfile(lut_path, dtype=np.uint8).reshape(256, 3)
 
 # ---- Global storage ----

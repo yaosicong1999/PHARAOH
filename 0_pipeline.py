@@ -16,6 +16,7 @@ STEP1_SCRIPT = "1_read_dapi_he.py"
 STEP2A_SCRIPT = "2a_blob_matching.py"
 STEP2B_SCRIPT = "2b_manual_alignment.py"
 STEP3_SCRIPT = "3_get_tiles.py"
+STEP4_SCRIPT = "4_tile_gallery.py"   # 你自己的文件名
 # =========================
 # Helpers
 # =========================
@@ -39,6 +40,14 @@ def step3_done(run_dir: Path) -> bool:
     he_info   = tiles_dir / "he_tile_info.json"
     return dapi_info.exists() and he_info.exists()
 
+def step4_done(run_dir: Path) -> bool:
+    nuclei_dir = run_dir / "nuclei_patches"
+    if not nuclei_dir.is_dir():
+        return False
+    nuclei_info = nuclei_dir / "nuclei_centroids_global.json"
+    return nuclei_info.exists()
+
+
 def status_text(done: bool) -> str:
     return "FINISHED ✅" if done else "NOT FINISHED ❌"
 
@@ -49,8 +58,8 @@ def status_style(done: bool) -> str:
 class PipelineWindow(QWidget):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Overall Pipeline *** Step 1-3")
-        self.resize(860, 320)
+        self.setWindowTitle("Overall Pipeline *** Step 1-4")
+        self.resize(860, 420)
 
         self.proc = None  # QProcess
         self.active_step = None
@@ -102,6 +111,11 @@ class PipelineWindow(QWidget):
         self.lbl_step3_status.setStyleSheet(status_style(False))
         self.btn_step3.clicked.connect(lambda: self.run_step("3"))
 
+        self.btn_step4 = QPushButton("Run Step 4: Find Nuclei + Extract Nuclei Patches")
+        self.lbl_step4_status = QLabel(status_text(False))
+        self.lbl_step4_status.setStyleSheet(status_style(False))
+        self.btn_step4.clicked.connect(lambda: self.run_step("4"))
+
         # Header row
         hdr1 = QLabel("Step 1: Select Images")
         hdr1.setStyleSheet("font-size: 14px; font-weight: 700;")
@@ -109,40 +123,49 @@ class PipelineWindow(QWidget):
         hdr2.setStyleSheet("font-size: 14px; font-weight: 700;")
         hdr3 = QLabel("Step 3: Tile Extraction")
         hdr3.setStyleSheet("font-size: 14px; font-weight: 700;")
+        hdr4 = QLabel("Step 4: Nuclei Patches")
+        hdr4.setStyleSheet("font-size: 14px; font-weight: 700;")
 
         grid.addWidget(hdr1, 0, 0, alignment=Qt.AlignLeft)
         grid.addWidget(hdr2, 0, 1, alignment=Qt.AlignLeft)
         grid.addWidget(hdr3, 3, 0, 1, 2, alignment=Qt.AlignLeft)  # row=3 col=0 span2
+        grid.addWidget(hdr4, 6, 0, 1, 2, alignment=Qt.AlignLeft)
 
         # Buttons row
         grid.addWidget(self.btn_step1, 1, 0)
         grid.addWidget(step2_btn_box, 1, 1)
         grid.addWidget(self.btn_step3, 4, 0, 1, 2)
+        grid.addWidget(self.btn_step4, 7, 0, 1, 2)
 
         # Status row
         s1 = QHBoxLayout()
         s1.addWidget(QLabel("Status:"))
         s1.addWidget(self.lbl_step1_status)
         s1.addStretch(1)
-
         s2 = QHBoxLayout()
         s2.addWidget(QLabel("Status:"))
         s2.addWidget(self.lbl_step2_status)
         s2.addStretch(1)
-
         s3 = QHBoxLayout()
         s3.addWidget(QLabel("Status:"))
         s3.addWidget(self.lbl_step3_status)
         s3.addStretch(1)
+        s4 = QHBoxLayout()
+        s4.addWidget(QLabel("Status:"))
+        s4.addWidget(self.lbl_step4_status)
+        s4.addStretch(1)
 
         w_s1 = QWidget(); w_s1.setLayout(s1)
         w_s2 = QWidget(); w_s2.setLayout(s2)
         w_s3 = QWidget();
         w_s3.setLayout(s3)
+        w_s4 = QWidget();
+        w_s4.setLayout(s4)
 
         grid.addWidget(w_s1, 2, 0)
         grid.addWidget(w_s2, 2, 1)
         grid.addWidget(w_s3, 5, 0, 1, 2)
+        grid.addWidget(w_s4, 8, 0, 1, 2)
 
         box.setLayout(grid)
 
@@ -186,29 +209,30 @@ class PipelineWindow(QWidget):
         done1 = bool(run_dir) and step1_done(run_dir)
         done2 = bool(run_dir) and step2_done(run_dir)
         done3 = bool(run_dir) and step3_done(run_dir)
+        done4 = bool(run_dir) and step4_done(run_dir)
 
         # ---- statuses ----
         self.lbl_step1_status.setText(status_text(done1))
         self.lbl_step1_status.setStyleSheet(status_style(done1))
-
         self.lbl_step2_status.setText(status_text(done2))
         self.lbl_step2_status.setStyleSheet(status_style(done2))
-
         self.lbl_step3_status.setText(status_text(done3))
         self.lbl_step3_status.setStyleSheet(status_style(done3))
+        self.lbl_step4_status.setText(status_text(done4))
+        self.lbl_step4_status.setStyleSheet(status_style(done4))
 
         idle = (self.proc is None)
 
         # Step1：需要 run_dir + idle；done 后禁用
         self.btn_step1.setEnabled(bool(run_dir) and idle and (not done1))
-
         # Step2：必须 Step1 done + idle；done 后禁用
         can_run_step2 = bool(run_dir) and done1 and idle and (not done2)
         self.btn_step2a.setEnabled(can_run_step2)
         self.btn_step2b.setEnabled(can_run_step2)
-
         # Step3：必须 Step2 done + idle；done 后禁用
         self.btn_step3.setEnabled(bool(run_dir) and done2 and idle and (not done3))
+        # Step4：必须 Step3 done + idle；done 后禁用
+        self.btn_step4.setEnabled(bool(run_dir) and done3 and idle and (not done4))
 
     # ---------------------
     # Run steps
@@ -237,6 +261,9 @@ class PipelineWindow(QWidget):
         elif step_id == "3":
             script = STEP3_SCRIPT
             args = [str(run_dir)]
+        elif step_id == "4":
+            script = STEP4_SCRIPT
+            args = [str(run_dir)]
         else:
             raise ValueError(step_id)
 
@@ -263,6 +290,7 @@ class PipelineWindow(QWidget):
         self.btn_step2a.setEnabled(False)
         self.btn_step2b.setEnabled(False)
         self.btn_step3.setEnabled(False)
+        self.btn_step4.setEnabled(False)
 
         self.proc.start()
 
@@ -287,7 +315,7 @@ class PipelineWindow(QWidget):
         self.refresh_status()
         run_dir = self.get_run_dir()
 
-        if step == 1:
+        if step == "1":
             ok = bool(run_dir) and step1_done(run_dir)
             if ok:
                 QMessageBox.information(self, "Step 1 Saved", "Step 1 outputs detected (images_info.json found).")
@@ -315,6 +343,15 @@ class PipelineWindow(QWidget):
                 QMessageBox.warning(self, "Step 3 Not Saved",
                                     "Step 3 window/process ended without producing tiles.\n"
                                     "tiles/ is empty (or missing), so Step 3 is NOT finished.")
+            return
+        if step == "4":
+            ok = bool(run_dir) and step4_done(run_dir)
+            if ok:
+                QMessageBox.information(self, "Step 4 Saved", "Step 4 outputs detected (nuclei/ has nuclei_info.json).")
+            else:
+                QMessageBox.warning(self, "Step 4 Not Saved",
+                                    "Step 4 ended without producing nuclei outputs.\n"
+                                    "nuclei/ is empty (or missing), so Step 4 is NOT finished.")
             return
         # fallback (shouldn't happen)
         if exitCode != 0:
