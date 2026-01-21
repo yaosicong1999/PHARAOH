@@ -492,6 +492,8 @@ def confirm_and_save():
     # ======================================================
     # 2. Save images_info.json INTO run folder
     # ======================================================
+    update_he(int(he_slider.get()))
+    update_dapi(int(dapi_slider.get()))
     save_current_levels_json(
         json_path=os.path.join(RUN_DIR, "images_info.json"),
         RUN_ID=RUN_ID
@@ -500,7 +502,6 @@ def confirm_and_save():
     messagebox.showinfo("Saved", f"Step 1 outputs saved to:\n{RUN_DIR}\n\nYou can now run Step 2 in 0_pipeline.")
     root.destroy()
     sys.exit(0)
-
 
 
 
@@ -522,9 +523,17 @@ def infer_dapi_orientation_case(dapi_gui_affine, tol=1e-4):
 
 def save_current_levels_json(json_path="images_info.json", RUN_ID=None):
     global he_path, he_level, dapi_path, dapi_level, dapi_gui_affine
+    global he_dense_mask, dapi_mask_img
+
     if he_path is None or dapi_path is None:
         return
+
+    min_area = 2000
+    he_blob_count = int(count_components(he_dense_mask, min_area=min_area)) if he_dense_mask is not None else 0
+    dapi_blob_count = int(count_components(dapi_mask_img, min_area=min_area)) if dapi_mask_img is not None else 0
+
     dapi_orientation_case = infer_dapi_orientation_case(dapi_gui_affine)
+
     data = {
         "RUN_ID": RUN_ID,
         "HE_path": he_path,
@@ -533,7 +542,12 @@ def save_current_levels_json(json_path="images_info.json", RUN_ID=None):
         "DAPI_level": dapi_level,
         "DAPI_gui_affine": dapi_gui_affine.tolist(),
         "DAPI_orientation_case": int(dapi_orientation_case),
+
+        "blob_count_min_area": int(min_area),
+        "HE_blob_count": he_blob_count,
+        "DAPI_blob_count": dapi_blob_count,
     }
+
     with open(json_path, "w") as f:
         json.dump(data, f, indent=2)
 
