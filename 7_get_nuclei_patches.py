@@ -9,6 +9,8 @@ from my_utils import (
     read_image,
     dapi_to_lut_rgb,
     segment_super_dark_nuclei_full,
+    open_ome_level_lazy,
+    read_he_patch
 )
 
 def fmt_time(sec):
@@ -93,11 +95,16 @@ def refine_nucleus_center_from_patch(
     y1 = min(H, y_global + half)
     x0 = max(0, x_global - half)
     x1 = min(W, x_global + half)
-    crop = img[y0:y1, x0:x1]
+    crop = read_he_patch(img, x0, y0, patch_length, patch_length)
+
     if crop.size == 0:
         raise ValueError(
             f"Empty H&E crop at (x_global={x_global}, y_global={y_global})"
         )
+    if type == "dapi":
+        crop = dapi_to_lut_rgb(crop, lut, threshold=300)
+        print("LUT-ed dapi crop!")
+
     # ===============================
     # ========= default case: do not refine =========
     # ===============================
@@ -256,16 +263,20 @@ def main(run_dir):
 
     print("[INFO] Loading full-res images. This could take about 1 min ⚠️", flush=True)
 
-    he_img, *_ = read_image(HE_PATH, keep_16bit=True, level=0)
 
+    # he_img, *_ = read_image(HE_PATH, keep_16bit=True, level=0)
+    tif_he, he_img = open_ome_level_lazy(HE_PATH, series=0, level=0)
+
+    global lut
     lut_path = images_info.get(
         "DAPI_LUT",
-        "/Users/sicongy/Documents/GitHub/rotation_1/LUT/glasbey_inverted.lut",
+        "../../glasbey_inverted.lut",
     )
     lut = np.fromfile(lut_path, dtype=np.uint8).reshape(256, 3)
 
-    dapi_img, *_ = read_image(DAPI_PATH, keep_16bit=True, level=0)
-    dapi_rgb = dapi_to_lut_rgb(dapi_img, lut, threshold=300)
+    # dapi_img, *_ = read_image(DAPI_PATH, keep_16bit=True, level=0)
+    # dapi_rgb = dapi_to_lut_rgb(dapi_img, lut, threshold=300)
+    tif_dapi, dapi_img = open_ome_level_lazy(DAPI_PATH, series=0, level=0)
 
     out_dir = "../nuclei_patches"
     os.makedirs(out_dir, exist_ok=True)
@@ -286,7 +297,8 @@ def main(run_dir):
         yA_global = int(round(dapi_info["y0"] * S + yA_tile * S))
 
         output_xA_global, output_yA_global, _, _ = refine_nucleus_center_from_patch(
-            dapi_rgb,
+            # dapi_rgb,
+            dapi_img,
             xA_global, yA_global,
             xA_tile, yA_tile,
             tile_id, nucleus_id,
@@ -328,11 +340,7 @@ def main(run_dir):
             save_patch=True,
             save_overlay=True,
         )
-        output_coord_record[i - 1]["he_centroid_global"] = [
-            float(output_xB_global),
-            float(output_yB_global),
-        ]
-
+        output_coord_record[i - 1]["he_centroid_global"] = [float(output_xB_global), float(output_yB_global)]
         print(f"[PROGRESS] HE {i}/{total}", flush=True)
 
     out_json = os.path.join(out_dir, "nuclei_centroids_global.json")
@@ -349,5 +357,3 @@ if __name__ == "__main__":
     if len(sys.argv) < 2:
         raise RuntimeError("Usage: python 7_refine_nuclei_centroids.py <RUN_DIR>")
     main(sys.argv[1])
-
-    # main("/Users/sicongy/PycharmProjects/iStar/tkinter_version_v3/runs_202512182051/tiles/")
