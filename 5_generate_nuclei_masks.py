@@ -1,10 +1,3 @@
-from skimage import color, exposure
-from skimage.morphology import disk, opening, closing, remove_small_objects, remove_small_holes
-from skimage.morphology import local_maxima
-from skimage.segmentation import watershed
-from scipy import ndimage as ndi
-from skimage.transform import rescale
-from PIL import Image
 import warnings
 import os
 import sys
@@ -12,8 +5,6 @@ from glob import glob
 import numpy as np
 from PIL import Image
 import cv2
-from skimage.transform import resize
-from concurrent.futures import ProcessPoolExecutor
 import time
 from functools import partial
 from concurrent.futures import ProcessPoolExecutor, as_completed
