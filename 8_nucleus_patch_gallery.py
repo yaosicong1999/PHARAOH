@@ -1,42 +1,13 @@
-# 0_gallery.py
 from PIL import Image, ImageTk, ImageOps
 import tkinter as tk
 from tkinter import ttk, messagebox
 import numpy as np
 import cv2
 import os
-import subprocess
-import threading
 import json
 import sys
-import time
-import traceback
+from pathlib import Path
 
-ORIENTATION_CASES = {
-    0: np.array([[ 1,  0],
-                 [ 0,  1]], np.float32),  # identity
-
-    1: np.array([[ 0, -1],
-                 [ 1,  0]], np.float32),  # rot90 CW
-
-    2: np.array([[-1,  0],
-                 [ 0, -1]], np.float32),  # rot180
-
-    3: np.array([[ 0,  1],
-                 [-1,  0]], np.float32),  # rot90 CCW
-
-    4: np.array([[ 1,  0],
-                 [ 0, -1]], np.float32),  # flip vertical (up-down)
-
-    5: np.array([[-1,  0],
-                 [ 0,  1]], np.float32),  # flip horizontal (left-right)
-
-    6: np.array([[ 0,  1],
-                 [ 1,  0]], np.float32),  # rot90 CW then flip H  (== transpose)
-
-    7: np.array([[ 0, -1],
-                 [-1,  0]], np.float32),  # rot90 CW then flip V  (== anti-transpose)
-}
 def apply_orientation_to_patch(img, case_id):
     """
     img: np.ndarray (H,W) or (H,W,3)
@@ -63,8 +34,6 @@ def apply_orientation_to_patch(img, case_id):
         return np.flipud(np.rot90(img, k=3))
 
     raise ValueError(f"Unknown orientation case: {case_id}")
-
-
 
 def show_nucleus_patch_in_memory(
         tile_id,
@@ -153,6 +122,77 @@ def show_nucleus_patch_in_memory(
             )
         return pad_to_fixed_size(Image.fromarray(img))
 
+    def calculate_affine_ransac():
+        """
+        Fit affine from dapi_centroid_global -> he_centroid_global using RANSAC.
+        Uses nuclei_centroids_global.json under run_dir.
+        Saves to: RUN_DIR/dapi_to_he_affine_level0.json
+        """
+        try:
+            run_dir = Path(output_folder).resolve().parent  # nuclei_dir/.. = RUN_DIR
+            info_path = Path(output_folder) / "nuclei_centroids_global.json"
+            if not info_path.exists():
+                messagebox.showerror("Missing file", f"Cannot find:\n{info_path}")
+                return
+
+            with open(info_path, "r") as f:
+                nuclei_info = json.load(f)
+
+            if len(nuclei_info) < 3:
+                messagebox.showerror("Not enough points", "Need at least 3 nucleus pairs to estimate affine.")
+                return
+
+            # src: DAPI, dst: HE
+            src = np.array([x["dapi_centroid_global"] for x in nuclei_info], dtype=np.float32)
+            dst = np.array([x["he_centroid_global"] for x in nuclei_info], dtype=np.float32)
+
+            # ---- RANSAC affine ----
+            # NOTE: threshold can be tuned. 3~10 px usually OK depending on noise.
+            M, inliers = cv2.estimateAffine2D(
+                src, dst,
+                method=cv2.RANSAC,
+                ransacReprojThreshold=5.0,
+                maxIters=5000,
+                confidence=0.99,
+                refineIters=10
+            )
+
+            if M is None:
+                messagebox.showerror("RANSAC failed", "cv2.estimateAffine2D returned None. Try adjusting threshold or check point order.")
+                return
+
+            inlier_count = int(inliers.sum()) if inliers is not None else 0
+            total = len(nuclei_info)
+
+            # 2x3 -> 3x3
+            H = np.eye(3, dtype=float)
+            H[:2, :3] = M
+
+            out = {
+                "from": "dapi_level0",
+                "to": "he_level0",
+                "method": "cv2.estimateAffine2D(RANSAC)",
+                "ransacReprojThreshold": 5.0,
+                "maxIters": 5000,
+                "confidence": 0.99,
+                "refineIters": 10,
+                "num_points": total,
+                "num_inliers": inlier_count,
+                "affine_2x3": M.tolist(),
+                "affine_3x3": H.tolist(),
+            }
+
+            out_path = run_dir / "dapi_to_he_affine_level0.json"
+            with open(out_path, "w") as f:
+                json.dump(out, f, indent=2)
+
+            messagebox.showinfo(
+                "Affine estimated",
+                f"Saved:\n{out_path}\n\nInliers: {inlier_count}/{total}\n\nM (2x3):\n{M}"
+            )
+
+        except Exception as e:
+            messagebox.showerror("Error", str(e))
 
     # ---------- Core ----------
     def update_images():
@@ -232,29 +272,36 @@ def show_nucleus_patch_in_memory(
     # ---------- Buttons ----------
     btn_prev = ttk.Button(root, text="⟨ Previous", command=prev_patch)
     btn_next = ttk.Button(root, text="Next ⟩", command=next_patch)
-    btn_reload = ttk.Button(
+
+    btn_calc = ttk.Button(
         root,
-        text="⟳ Refresh",
+        text="🧮 Calculate alignment matrix",
         style="Gallery.TButton",
-        command=update_images
+        command=calculate_affine_ransac
     )
-    btn_prev.grid(row=3, column=0, sticky="w")
-    btn_reload.grid(row=3, column=1, columnspan=2)
-    btn_next.grid(row=3, column=3, sticky="e")
+
+    btn_prev.grid(row=3, column=0, sticky="w", pady=(8, 8))
+    btn_calc.grid(row=3, column=1, columnspan=2, pady=(8, 8))
+    btn_next.grid(row=3, column=3, sticky="e", pady=(8, 8))
+
     update_images()
     root.mainloop()
 
 def main():
     if len(sys.argv) < 2:
         raise RuntimeError("Usage: python 8_nucleus_gallery.py <patches_folder>")
-    output_folder = sys.argv[1]
 
-    tiles_folder = sys.argv[1]
-    # tiles_folder = '/Users/sicongy/PycharmProjects/iStar/tkinter_version_v3/runs_202512182051/tiles/'
-    output_folder = os.path.join(tiles_folder, "../nuclei_patches/")
-    with open(os.path.join(output_folder, "nuclei_centroids_global.json"), "r") as f:
+    run_dir = Path(sys.argv[1]).resolve()
+    nuclei_dir = run_dir / "nuclei_patches"
+
+    info_path = nuclei_dir / "nuclei_centroids_global.json"
+    if not info_path.exists():
+        raise FileNotFoundError(f"Missing nuclei info: {info_path}")
+
+    with open(info_path, "r") as f:
         nuclei_info = json.load(f)
-    with open(os.path.join(output_folder, "../images_info.json"), "r") as f:
+
+    with open(os.path.join(nuclei_dir, "../images_info.json"), "r") as f:
         case_id = json.load(f)['DAPI_orientation_case']
 
     tile_id = [x['tile_id'] for x in nuclei_info]
@@ -263,7 +310,7 @@ def main():
     show_nucleus_patch_in_memory(
         tile_id=tile_id,
         nucleus_id=nucleus_id,
-        output_folder=output_folder,
+        output_folder=nuclei_dir,
         case_id=case_id
     )
 

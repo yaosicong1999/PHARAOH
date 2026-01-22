@@ -171,6 +171,52 @@ def eval_one(s, tx, ty, A, B, H, W):
     score = iou(A, B_st)
     return score, s, tx, ty
 
+def coarse_search_ds_parallel_cached(maskA, maskB,
+                                     ds=4,
+                                     scale_range=(1.3, 2.0),
+                                     scale_step=0.02,
+                                     shift_range=50,
+                                     shift_step=5,
+                                     n_jobs=None):
+    if n_jobs is None:
+        n_jobs = max(cpu_count() - 1, 1)
+
+    A = downsample(maskA, ds)
+    B = downsample(maskB, ds)
+    H, W = A.shape
+
+    # ---- cache B_s_padded for each scale (huge speedup) ----
+    scales = np.arange(scale_range[0], scale_range[1] + 1e-9, scale_step)
+    B_cache = {}
+    for s in scales:
+        B_s = cv2.resize(B, None, fx=s, fy=s, interpolation=cv2.INTER_NEAREST)
+        B_s, _, _, _, _ = pad_or_crop(B_s, (H, W))
+        B_cache[float(s)] = B_s
+
+    shifts = list(range(-shift_range, shift_range + 1, shift_step))
+
+    def eval_one_cached(s, tx, ty):
+        B_s = B_cache[float(s)]
+        B_st = warp(B_s, 1.0, tx, ty, (H, W))
+        score = iou(A, B_st)
+        return score, s, tx, ty
+
+    tasks = (
+        delayed(eval_one_cached)(s, tx, ty)
+        for s in scales
+        for tx in shifts
+        for ty in shifts
+    )
+
+    results = Parallel(n_jobs=n_jobs, backend="loky", verbose=0)(tasks)
+    best_score, best_s, best_tx, best_ty = max(results, key=lambda x: x[0])
+
+    return {
+        "scale": float(best_s),
+        "tx": float(best_tx * ds),
+        "ty": float(best_ty * ds),
+        "score_ds": float(best_score)
+    }
 
 def coarse_search_ds_parallel(maskA, maskB,
                               ds=4,
@@ -235,7 +281,9 @@ def refine_full(maskA, maskB, init,
         n_jobs = max(cpu_count() - 1, 1)
 
     H, W = maskA.shape
-    s0, tx0, ty0 = init["scale"], init["tx"], init["ty"]
+    s0 = float(init["scale"])
+    tx0 = int(round(init["tx"]))
+    ty0 = int(round(init["ty"]))
 
     scales = [s0 * 0.985, s0, s0 * 1.015]
     shifts_x = range(tx0 - shift_delta, tx0 + shift_delta + 1, shift_step)
@@ -480,21 +528,29 @@ if __name__ == "__main__":
         maskB_raw = read_mask(he_path)
         maskB, paste_x0, paste_y0, crop_x0, crop_y0 = pad_or_crop(maskB_raw, maskA.shape)
         # -------- Stage 1 (parallel coarse) --------
-        coarse = coarse_search_ds_parallel(
+        # coarse = coarse_search_ds_parallel(
+        #     maskA, maskB,
+        #     ds=4,
+        #     scale_range=(1.3, 2.0),
+        #     scale_step=0.02,
+        #     shift_range=50,  # <- 注意这里传的是“ds坐标”范围
+        #     shift_step=5  # <- ds坐标步长
+        # )
+        coarse = coarse_search_ds_parallel_cached(
             maskA, maskB,
             ds=4,
             scale_range=(1.3, 2.0),
-            scale_step=0.015,
-            shift_range=100,
-            shift_step=10
+            scale_step=0.02,
+            shift_range=50,
+            shift_step=5
         )
         print("  Coarse:", coarse)
         # -------- Stage 2 (parallel refine) --------
         final = refine_full(
             maskA, maskB,
             coarse,
-            shift_delta=20,
-            shift_step=4
+            shift_delta=25,
+            shift_step=3
         )
         print("  Final:", final)
         # -------- Final warp --------

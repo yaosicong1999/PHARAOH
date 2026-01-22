@@ -39,9 +39,9 @@ def apply_orientation_case(img: np.ndarray, case_id: int) -> np.ndarray:
         return np.rot90(img, k=2)
     if case_id == 3:   # rot90 CCW
         return np.rot90(img, k=1)
-    if case_id == 4:   # flip LR
+    if case_id == 4:   # flip UD
         return np.flipud(img)
-    if case_id == 5:   # flip UD
+    if case_id == 5:   # flip LR
         return np.fliplr(img)
     if case_id == 6:   # transpose
         if img.ndim == 2:
@@ -51,43 +51,6 @@ def apply_orientation_case(img: np.ndarray, case_id: int) -> np.ndarray:
         return np.fliplr(np.rot90(img, k=1))
     raise ValueError(f"Unknown case_id={case_id}")
 
-def transform_points_xy(points_xy: np.ndarray, case_id: int, H: int, W: int) -> np.ndarray:
-    """
-    Transform (x,y) points consistently with apply_orientation_case(img, case_id).
-    H,W are ORIGINAL image shape (before orientation).
-    Returns points in oriented/display coordinates.
-    """
-    pts = np.asarray(points_xy, dtype=np.float32)
-    x = pts[:, 0]
-    y = pts[:, 1]
-
-    if case_id == 0:
-        xp, yp = x, y
-    elif case_id == 1:     # rot90 CW
-        xp = (H - 1) - y
-        yp = x
-    elif case_id == 2:     # rot180
-        xp = (W - 1) - x
-        yp = (H - 1) - y
-    elif case_id == 3:     # rot90 CCW
-        xp = y
-        yp = (W - 1) - x
-    elif case_id == 4:     # flip LR
-        xp = (W - 1) - x
-        yp = y
-    elif case_id == 5:     # flip UD
-        xp = x
-        yp = (H - 1) - y
-    elif case_id == 6:     # transpose
-        xp = y
-        yp = x
-    elif case_id == 7:     # transverse
-        xp = (H - 1) - y
-        yp = (W - 1) - x
-    else:
-        raise ValueError(f"Unknown case_id={case_id}")
-
-    return np.stack([xp, yp], axis=1).astype(np.int32)
 class StepTimer:
     def __init__(self):
         self.t0 = time.perf_counter()
@@ -426,7 +389,6 @@ def save_dapi_tiles(
         filename = f"{key}_dapi.png"
         filepath = os.path.join(output_folder, filename)
 
-        # dapi_rgb is RGB; cv2 wants BGR
         cv2.imwrite(filepath, cv2.cvtColor(tile_img, cv2.COLOR_RGB2BGR))
 
         info = {
@@ -850,7 +812,7 @@ class Step3SamplingApp(tk.Tk):
             MIN_DIST = TILE_SIZE * 1.5
             points_xy = cvt_masked(
                 avail,
-                N_POINTS=80,
+                N_POINTS=120,
                 MIN_DIST=MIN_DIST,
                 ITERATIONS=50,
                 seed=seed
@@ -965,7 +927,7 @@ class Step3SamplingApp(tk.Tk):
             if lut is None:
                 raise RuntimeError("lut is None; please load/build LUT (info['DAPI_lut'] or your default LUT).")
 
-            dapi_rgb2 = dapi_to_lut_rgb(dapi_img2, lut, threshold=300)
+            dapi_rgb2 = dapi_to_lut_rgb(dapi_img2, lut, threshold=500)
             tick(30, "Applied LUT to DAPI")
 
             dapi_tiles = save_dapi_tiles(

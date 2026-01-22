@@ -1,7 +1,7 @@
-# 0_gallery.py
 from PIL import Image, ImageTk, ImageOps
 import tkinter as tk
 from tkinter import ttk, messagebox
+from pathlib import Path
 import numpy as np
 import cv2
 import os
@@ -12,31 +12,6 @@ import sys
 import time
 import traceback
 
-ORIENTATION_CASES = {
-    0: np.array([[ 1,  0],
-                 [ 0,  1]], np.float32),  # identity
-
-    1: np.array([[ 0, -1],
-                 [ 1,  0]], np.float32),  # rot90 CW
-
-    2: np.array([[-1,  0],
-                 [ 0, -1]], np.float32),  # rot180
-
-    3: np.array([[ 0,  1],
-                 [-1,  0]], np.float32),  # rot90 CCW
-
-    4: np.array([[ 1,  0],
-                 [ 0, -1]], np.float32),  # flip vertical (up-down)
-
-    5: np.array([[-1,  0],
-                 [ 0,  1]], np.float32),  # flip horizontal (left-right)
-
-    6: np.array([[ 0,  1],
-                 [ 1,  0]], np.float32),  # rot90 CW then flip H  (== transpose)
-
-    7: np.array([[ 0, -1],
-                 [-1,  0]], np.float32),  # rot90 CW then flip V  (== anti-transpose)
-}
 def apply_orientation_to_tile(img, case_id):
     """
     img: np.ndarray (H,W) or (H,W,3)
@@ -109,6 +84,58 @@ def show_tile_gallery_in_memory(
     info_label.grid(row=2, column=0, columnspan=5)
 
     # ---------- Utils ----------
+    # ----------------------------
+    # File-based step completion
+    # ----------------------------
+    tiles_dir = Path(output_folder)                # .../RUN_DIR/tiles
+    run_dir = tiles_dir.parent                     # .../RUN_DIR
+
+    # all tile bases (tile_000, tile_001, ...)
+    tile_bases = []
+    for d in dapi_tiles:
+        base = d["filename"].replace("_dapi.png", "")
+        tile_bases.append(base)
+
+    def _all_exist(relpaths):
+        # relpaths: list[str] relative to tiles_dir
+        for rp in relpaths:
+            if not (tiles_dir / rp).exists():
+                return False
+        return True
+
+    def step5_done_by_files():
+        return (tiles_dir / "nuclei_mask_info.json").exists()
+
+    def step6_done_by_files():
+        return (tiles_dir / "standout_nuclei.json").exists()
+    def step7_done_by_files():
+        return (run_dir / "nuclei_patches" / "nuclei_centroids_global.json").exists()
+
+    def refresh_button_states(running=False):
+        """
+        running=True: disable all buttons (when a subprocess is running)
+        running=False: enable/disable according to file existence
+        """
+        if running:
+            btn_run5.config(state="disabled")
+            btn_run6.config(state="disabled")
+            btn_run7.config(state="disabled")
+            return
+
+        s5 = step5_done_by_files()
+        s6 = step6_done_by_files()
+        s7 = step7_done_by_files()
+
+        # allow re-run step5 anytime
+        btn_run5.config(state="normal")
+        # step6 only if step5 done
+        btn_run6.config(state=("normal" if s5 else "disabled"))
+        # step7 only if step6 done
+        btn_run7.config(state=("normal" if s6 else "disabled"))
+
+        btn_prev.config(state="normal")
+        btn_next.config(state="normal")
+        btn_reload.config(state="normal")
     def pad_to_fixed_size(img_pil):
         img_pil = ImageOps.contain(img_pil, display_size)
         canvas = Image.new("RGB", display_size, bg_color)
@@ -156,38 +183,9 @@ def show_tile_gallery_in_memory(
             )
         return pad_to_fixed_size(Image.fromarray(img))
 
-    # def launch_nuclei_masking_with_progress(root):
-    #     progress_win = tk.Toplevel(root)
-    #     progress_win.title("Running Nuclei Masking...")
-    #     progress_win.geometry("420x160")
-    #     progress_win.resizable(False, False)
-    #     tk.Label(
-    #         progress_win,
-    #         text="Nuclei masking is running…",
-    #         font=("Arial", 12)
-    #     ).pack(pady=(15, 5))
-    #     progress_var = tk.DoubleVar(value=0)
-    #     progress_bar = ttk.Progressbar(
-    #         progress_win,
-    #         variable=progress_var,
-    #         maximum=100,
-    #         length=360
-    #     )
-    #     progress_bar.pack(pady=10)
-    #     status_label = tk.Label(progress_win, text="Starting…")
-    #     status_label.pack(pady=(5, 10))
-    #     threading.Thread(
-    #         target=run_process,
-    #         args=(progress_var, status_label, progress_win),
-    #         daemon=True
-    #     ).start()
-    #     messagebox.showinfo(
-    #         "Launched",
-    #         "Nuclei masking has been launched.\nYou can monitor progress here."
-    #     )
-
     def launch_script_with_progress(root, script_name, title):
         start_time = time.time()
+        refresh_button_states(running=True)
         progress_win = tk.Toplevel(root)
         progress_win.title(title)
         progress_win.geometry("420x160")
@@ -275,24 +273,20 @@ def show_tile_gallery_in_memory(
                         "Done",
                         f"{script_name} finished successfully!\nLaunching next step..."
                     )
+                    root.after(0, on_reload)
                     progress_win.destroy()
+                    root.after(0, lambda: refresh_button_states(running=False))
                     if script_name == "7_get_nuclei_patches.py":
-                        go_next = messagebox.askyesno(
+                        messagebox.showinfo(
                             "Step 7 Finished",
-                            "Nucleus patch cropping finished.\nProceed to Step 8?"
+                            "Nucleus patch extracted.\nYou can open the nuclei patch gallery manually (Step 8)."
                         )
-                        if go_next:
-                            subprocess.Popen(
-                                [
-                                    sys.executable,
-                                    "8_nucleus_patch_gallery.py",
-                                    output_folder
-                                ]
-                            )
                     break
 
             proc.wait()
+            root.after(0, lambda: refresh_button_states(running=False))
         except Exception as e:
+            root.after(0, lambda: refresh_button_states(running=False))
             messagebox.showerror(
                 "Error",
                 f"Failed to run {script_name}:\n{e}"
@@ -384,9 +378,19 @@ def show_tile_gallery_in_memory(
         idx[0] = (idx[0] - 1) % len(dapi_tiles)
         update_images()
 
+    def on_reload():
+        update_images()
+        refresh_button_states(running=False)
+
     # ---------- Buttons ----------
     btn_prev = ttk.Button(root, text="⟨ Previous", command=prev_tile)
     btn_next = ttk.Button(root, text="Next ⟩", command=next_tile)
+    btn_reload = ttk.Button(
+        root,
+        text="⟳ Refresh",
+        style="Gallery.TButton",
+        command=on_reload
+    )
     btn_run5 = ttk.Button(
         root,
         text="▶  Run Nuclei Masking",
@@ -401,6 +405,7 @@ def show_tile_gallery_in_memory(
         root,
         text="▶  Run Standout Nuclei Detection",
         style="Gallery.TButton",
+        state="disabled",
         command=lambda: launch_script_with_progress(
             root,
             "6_find_standout_nuclei.py",
@@ -411,6 +416,7 @@ def show_tile_gallery_in_memory(
         root,
         text="▶  Run Nucleus Patch Cropping",
         style="Gallery.TButton",
+        state="disabled",
         command=lambda: launch_script_with_progress(
             root,
             "7_get_nuclei_patches.py",
@@ -418,19 +424,13 @@ def show_tile_gallery_in_memory(
         )
     )
 
-    btn_reload = ttk.Button(
-        root,
-        text="⟳ Refresh",
-        style="Gallery.TButton",
-        command=update_images
-    )
-    btn_prev.grid(row=3, column=0)
-    btn_next.grid(row=3, column=2)
-    btn_reload.grid(row=3, column=4)
-    btn_run5.grid(row=4, column=0)
-    btn_run6.grid(row=4, column=2)
-    btn_run7.grid(row=4, column=4)
-
+    btn_prev.grid(row=3, column=0, pady=(0, 6))
+    btn_next.grid(row=3, column=2, pady=(0, 6))
+    btn_reload.grid(row=3, column=4, pady=(0, 6))
+    btn_run5.grid(row=4, column=0, pady=(10, 16))
+    btn_run6.grid(row=4, column=2, pady=(10, 16))
+    btn_run7.grid(row=4, column=4, pady=(10, 16))
+    refresh_button_states(running=False)
     update_images()
     root.mainloop()
 

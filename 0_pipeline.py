@@ -16,7 +16,9 @@ STEP1_SCRIPT = "1_read_dapi_he.py"
 STEP2A_SCRIPT = "2a_blob_matching.py"
 STEP2B_SCRIPT = "2b_manual_alignment.py"
 STEP3_SCRIPT = "3_get_tiles.py"
-STEP4_SCRIPT = "4_tile_gallery.py"   # 你自己的文件名
+STEP4_SCRIPT = "4_tile_gallery.py"
+STEP5_SCRIPT = "8_nucleus_patch_gallery.py"
+STEP6_SCRIPT = "9_final_alignment.py"
 # =========================
 # Helpers
 # =========================
@@ -47,6 +49,8 @@ def step4_done(run_dir: Path) -> bool:
     nuclei_info = nuclei_dir / "nuclei_centroids_global.json"
     return nuclei_info.exists()
 
+def alignment_done(run_dir: Path) -> bool:
+    return (run_dir / "dapi_to_he_affine_level0.json").exists()
 
 def status_text(done: bool) -> str:
     return "FINISHED ✅" if done else "NOT FINISHED ❌"
@@ -54,11 +58,16 @@ def status_text(done: bool) -> str:
 def status_style(done: bool) -> str:
     return "color: #15803d; font-weight: 600;" if done else "color: #b45309; font-weight: 600;"
 
+def ready_text() -> str:
+    return "READY ▶"
+
+def ready_style() -> str:
+    return "color: #1d4ed8; font-weight: 600;"
 
 class PipelineWindow(QWidget):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Overall Pipeline *** Step 1-4")
+        self.setWindowTitle("Overall Pipeline *** Step 1-6")
         self.resize(860, 420)
 
         self.proc = None  # QProcess
@@ -79,7 +88,7 @@ class PipelineWindow(QWidget):
         top_row.addWidget(self.btn_new_dir)
 
         # ---- Step 1 UI ----
-        self.btn_step1 = QPushButton("Run Step 1: Select Images")
+        self.btn_step1 = QPushButton("Run Step 1: Image Selection")
         self.lbl_step1_status = QLabel(status_text(False))
         self.lbl_step1_status.setStyleSheet(status_style(False))
         self.btn_step1.clicked.connect(lambda: self.run_step("1"))
@@ -91,51 +100,63 @@ class PipelineWindow(QWidget):
         self.lbl_step2_status.setStyleSheet(status_style(False))
         self.btn_step2a.clicked.connect(lambda: self.run_step("2a"))
         self.btn_step2b.clicked.connect(lambda: self.run_step("2b"))
-
         step2_btn_box = QWidget()
         step2_btn_layout = QVBoxLayout(step2_btn_box)
         step2_btn_layout.setContentsMargins(0, 0, 0, 0)
         step2_btn_layout.setSpacing(8)
         step2_btn_layout.addWidget(self.btn_step2a)
         step2_btn_layout.addWidget(self.btn_step2b)
-
-        # ---- Layout group box ----
         box = QGroupBox("Pipeline")
         grid = QGridLayout()
         grid.setHorizontalSpacing(20)
         grid.setVerticalSpacing(14)
 
         # ---- Step 3 UI ----
-        self.btn_step3 = QPushButton("Run Step 3: Get Tiles")
+        self.btn_step3 = QPushButton("Run Step 3: Tile Extraction")
         self.lbl_step3_status = QLabel(status_text(False))
         self.lbl_step3_status.setStyleSheet(status_style(False))
         self.btn_step3.clicked.connect(lambda: self.run_step("3"))
-
-        self.btn_step4 = QPushButton("Run Step 4: Find Nuclei + Extract Nuclei Patches")
+        self.btn_step4 = QPushButton("Run Step 4: Nuclei Patch Extraction")
         self.lbl_step4_status = QLabel(status_text(False))
         self.lbl_step4_status.setStyleSheet(status_style(False))
         self.btn_step4.clicked.connect(lambda: self.run_step("4"))
+        self.btn_step5 = QPushButton("Run Step 5: Nuclei Patch Gallery + Final Alignment Calculation")
+        self.lbl_step5_status = QLabel(status_text(False))
+        self.lbl_step5_status.setStyleSheet(status_style(False))
+        self.btn_step5.clicked.connect(lambda: self.run_step("5"))
+        self.btn_step6 = QPushButton("Run Step 6: Final Alignment Display")
+        self.lbl_step6_status = QLabel(status_text(False))
+        self.lbl_step6_status.setStyleSheet(status_style(False))
+        self.btn_step6.clicked.connect(lambda: self.run_step("6"))
 
         # Header row
         hdr1 = QLabel("Step 1: Select Images")
         hdr1.setStyleSheet("font-size: 14px; font-weight: 700;")
-        hdr2 = QLabel("Step 2: Initial Alignment")
+        hdr2 = QLabel("Step 2: Get Initial Alignment")
         hdr2.setStyleSheet("font-size: 14px; font-weight: 700;")
-        hdr3 = QLabel("Step 3: Tile Extraction")
+        hdr3 = QLabel("Step 3: Extract Tiles")
         hdr3.setStyleSheet("font-size: 14px; font-weight: 700;")
-        hdr4 = QLabel("Step 4: Nuclei Patches")
+        hdr4 = QLabel("Step 4: Extract Nuclei Patches")
         hdr4.setStyleSheet("font-size: 14px; font-weight: 700;")
+        hdr5 = QLabel("Step 5: View Nuclei Patches and Get Final Alignment")
+        hdr5.setStyleSheet("font-size: 14px; font-weight: 700;")
+        hdr6 = QLabel("Step 6: View Final Alignment")
+        hdr6.setStyleSheet("font-size: 14px; font-weight: 700;")
 
         grid.addWidget(hdr1, 0, 0, alignment=Qt.AlignLeft)
         grid.addWidget(hdr2, 0, 1, alignment=Qt.AlignLeft)
-        grid.addWidget(hdr3, 3, 0, 1, 2, alignment=Qt.AlignLeft)  # row=3 col=0 span2
-        grid.addWidget(hdr4, 6, 0, 1, 2, alignment=Qt.AlignLeft)
+        grid.addWidget(hdr3, 3, 0, alignment=Qt.AlignLeft)
+        grid.addWidget(hdr4, 3, 1, alignment=Qt.AlignLeft)
+        grid.addWidget(hdr5, 6, 0, alignment=Qt.AlignLeft)
+        grid.addWidget(hdr6, 6, 1, alignment=Qt.AlignLeft)
 
         # Buttons row
         grid.addWidget(self.btn_step1, 1, 0)
         grid.addWidget(step2_btn_box, 1, 1)
-        grid.addWidget(self.btn_step3, 4, 0, 1, 2)
-        grid.addWidget(self.btn_step4, 7, 0, 1, 2)
+        grid.addWidget(self.btn_step3, 4, 0)
+        grid.addWidget(self.btn_step4, 4, 1)
+        grid.addWidget(self.btn_step5, 7, 0)
+        grid.addWidget(self.btn_step6, 7, 1)
 
         # Status row
         s1 = QHBoxLayout()
@@ -154,18 +175,28 @@ class PipelineWindow(QWidget):
         s4.addWidget(QLabel("Status:"))
         s4.addWidget(self.lbl_step4_status)
         s4.addStretch(1)
+        s5 = QHBoxLayout()
+        s5.addWidget(QLabel("Status:"))
+        s5.addWidget(self.lbl_step5_status)
+        s5.addStretch(1)
+        s6 = QHBoxLayout()
+        s6.addWidget(QLabel("Status:"))
+        s6.addWidget(self.lbl_step6_status)
+        s6.addStretch(1)
 
         w_s1 = QWidget(); w_s1.setLayout(s1)
         w_s2 = QWidget(); w_s2.setLayout(s2)
-        w_s3 = QWidget();
-        w_s3.setLayout(s3)
-        w_s4 = QWidget();
-        w_s4.setLayout(s4)
+        w_s3 = QWidget(); w_s3.setLayout(s3)
+        w_s4 = QWidget(); w_s4.setLayout(s4)
+        w_s5 = QWidget(); w_s5.setLayout(s5)
+        w_s6 = QWidget(); w_s6.setLayout(s6)
 
         grid.addWidget(w_s1, 2, 0)
         grid.addWidget(w_s2, 2, 1)
-        grid.addWidget(w_s3, 5, 0, 1, 2)
-        grid.addWidget(w_s4, 8, 0, 1, 2)
+        grid.addWidget(w_s3, 5, 0)
+        grid.addWidget(w_s4, 5, 1)
+        grid.addWidget(w_s5, 8, 0)
+        grid.addWidget(w_s6, 8, 1)
 
         box.setLayout(grid)
 
@@ -212,6 +243,7 @@ class PipelineWindow(QWidget):
         done4 = bool(run_dir) and step4_done(run_dir)
 
         # ---- statuses ----
+        idle = (self.proc is None)
         self.lbl_step1_status.setText(status_text(done1))
         self.lbl_step1_status.setStyleSheet(status_style(done1))
         self.lbl_step2_status.setText(status_text(done2))
@@ -220,8 +252,21 @@ class PipelineWindow(QWidget):
         self.lbl_step3_status.setStyleSheet(status_style(done3))
         self.lbl_step4_status.setText(status_text(done4))
         self.lbl_step4_status.setStyleSheet(status_style(done4))
-
-        idle = (self.proc is None)
+        can_view_step5 = bool(run_dir) and done4 and idle
+        align_ok = bool(run_dir) and alignment_done(run_dir)
+        can_view_step6 = bool(run_dir) and done4 and align_ok and idle
+        self.lbl_step5_status.setText(ready_text() if can_view_step5 else "LOCKED 🔒")
+        self.lbl_step5_status.setStyleSheet(ready_style() if can_view_step5 else status_style(False))
+        if can_view_step6:
+            self.lbl_step6_status.setText(ready_text())
+            self.lbl_step6_status.setStyleSheet(ready_style())
+        else:
+            if bool(run_dir) and done4 and idle and (not align_ok):
+                self.lbl_step6_status.setText("MISSING FINAL ALIGNMENT 🔒")
+                self.lbl_step6_status.setStyleSheet(status_style(False))
+            else:
+                self.lbl_step6_status.setText("LOCKED 🔒")
+                self.lbl_step6_status.setStyleSheet(status_style(False))
 
         # Step1：需要 run_dir + idle；done 后禁用
         self.btn_step1.setEnabled(bool(run_dir) and idle and (not done1))
@@ -233,6 +278,10 @@ class PipelineWindow(QWidget):
         self.btn_step3.setEnabled(bool(run_dir) and done2 and idle and (not done3))
         # Step4：必须 Step3 done + idle；done 后禁用
         self.btn_step4.setEnabled(bool(run_dir) and done3 and idle and (not done4))
+        # Step5：必须 Step4 done + idle
+        self.btn_step5.setEnabled(can_view_step5)
+        # Step6：必须 Step4 done + idle
+        self.btn_step6.setEnabled(can_view_step6)
 
     # ---------------------
     # Run steps
@@ -264,6 +313,12 @@ class PipelineWindow(QWidget):
         elif step_id == "4":
             script = STEP4_SCRIPT
             args = [str(run_dir)]
+        elif step_id == "5":
+            script = STEP5_SCRIPT
+            args = [str(run_dir)]
+        elif step_id == "6":
+            script = STEP6_SCRIPT
+            args = [str(run_dir)]
         else:
             raise ValueError(step_id)
 
@@ -291,6 +346,8 @@ class PipelineWindow(QWidget):
         self.btn_step2b.setEnabled(False)
         self.btn_step3.setEnabled(False)
         self.btn_step4.setEnabled(False)
+        self.btn_step5.setEnabled(False)
+        self.btn_step6.setEnabled(False)
 
         self.proc.start()
 
