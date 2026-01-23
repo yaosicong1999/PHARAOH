@@ -11,6 +11,8 @@ from skimage.segmentation import watershed
 from scipy import ndimage as ndi
 from skimage.transform import rescale
 from PIL import Image
+from pathlib import Path
+import matplotlib.pyplot as plt
 
 
 def read_image(path, keep_16bit=True, series=0, page=0, level=None,
@@ -283,19 +285,212 @@ def overlay_contours(rgb_tile, labeled_mask):
     return overlay
 
 # --- Full pipeline ---
-def segment_super_dark_nuclei_full(rgb_tile, upsample_scale=2, n_smooth=2, intensity_threshold=0.7):
+import numpy as np
+import cv2
+from skimage import color
+
+# ----------------------------
+# Helper: watershed split
+# ----------------------------
+def split_touching_objects_watershed(
+    mask_dark,
+    min_area=30,
+    opening_ksize=3,
+    dist_frac=0.45,
+    peak_min_dist=6,
+    debug=False,
+    debug_prefix=None,
+):
+    """
+    mask_dark: bool / {0,1} / {0,255} nuclei foreground mask
+    Returns:
+      labels: int32 (0=bg, 1..K instances)
+      mask_clean: uint8 (0/255)
+    """
+    mask = mask_dark.astype(np.uint8)
+    if mask.max() == 1:
+        mask *= 255
+
+    # --- optional: opening to cut thin bridges ---
+    if opening_ksize and opening_ksize > 0:
+        k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (opening_ksize, opening_ksize))
+        mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, k, iterations=1)
+
+    # --- remove tiny components ---
+    num, lab, stats, _ = cv2.connectedComponentsWithStats((mask > 0).astype(np.uint8), 8)
+    mask2 = np.zeros_like(mask)
+    for i in range(1, num):
+        if stats[i, cv2.CC_STAT_AREA] >= int(min_area):
+            mask2[lab == i] = 255
+    mask = mask2
+
+    if mask.sum() == 0:
+        return np.zeros_like(mask, dtype=np.int32), mask
+
+    # --- distance transform ---
+    dist = cv2.distanceTransform((mask > 0).astype(np.uint8), cv2.DIST_L2, 5)
+    dist_norm = cv2.normalize(dist, None, 0, 1.0, cv2.NORM_MINMAX)
+
+    # --- sure foreground (seeds) ---
+    sure_fg = (dist_norm > float(dist_frac)).astype(np.uint8) * 255
+
+    # --- enforce min distance between seeds (simple erosion) ---
+    if peak_min_dist and peak_min_dist > 0:
+        k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * peak_min_dist + 1, 2 * peak_min_dist + 1))
+        sure_fg = cv2.erode(sure_fg, k, iterations=1)
+
+    n_markers, markers = cv2.connectedComponents((sure_fg > 0).astype(np.uint8))
+    markers = markers.astype(np.int32)
+
+    # unknown = mask - sure_fg
+    unknown = ((mask > 0) & (sure_fg == 0)).astype(np.uint8) * 255
+
+    # watershed needs 3-channel image; use mask edges works OK, or pass original RGB if you want
+    img_ws = cv2.cvtColor(mask, cv2.COLOR_GRAY2BGR)
+
+    # background label must be 1; unknown=0
+    markers = markers + 1
+    markers[unknown > 0] = 0
+
+    markers_ws = cv2.watershed(img_ws, markers)  # boundaries -> -1
+
+    labels = np.zeros_like(markers_ws, dtype=np.int32)
+    labels[markers_ws > 1] = markers_ws[markers_ws > 1] - 1
+
+    # --- remove tiny labels again & relabel to 1..K ---
+    out = np.zeros_like(labels, dtype=np.int32)
+    cur = 1
+    for lab_id in range(1, labels.max() + 1):
+        area = int(np.sum(labels == lab_id))
+        if area >= int(min_area):
+            out[labels == lab_id] = cur
+            cur += 1
+
+    mask_clean = (out > 0).astype(np.uint8) * 255
+
+    if debug:
+        print(
+            f"[DEBUG watershed] cc_in={num-1}, seeds={n_markers-1}, out_labels={out.max()}, "
+            f"mask_px={int((mask_clean>0).sum())}",
+            flush=True
+        )
+
+    if debug_prefix:
+        cv2.imwrite(f"{debug_prefix}_mask_in.png", mask)
+        cv2.imwrite(f"{debug_prefix}_dist.png", (dist_norm * 255).astype(np.uint8))
+        cv2.imwrite(f"{debug_prefix}_sure_fg.png", sure_fg)
+        cv2.imwrite(f"{debug_prefix}_mask_out.png", mask_clean)
+
+    return out, mask_clean
+
+
+# ----------------------------
+# Main: your function, patched
+# ----------------------------
+def segment_super_dark_nuclei_full(
+    rgb_tile,
+    upsample_scale=2,
+    n_smooth=2,
+    intensity_threshold=0.7,
+    # NEW knobs:
+    split=True,
+    split_opening_ksize=3,
+    split_dist_frac=0.42,
+    split_peak_min_dist=6,
+    min_label_size=30,
+    debug=False,
+    debug_prefix=None,
+):
     tile_up = upsample_tile(rgb_tile, scale=upsample_scale)
+
+    # ---- your original H channel extraction ----
     try:
         _, H, E = normalizeStaining(tile_up)
         H_gray = color.rgb2gray(H)
     except Exception as e:
-        # fallback: 用 rgb 灰度或 green 通道（Hematoxylin 对 G 通道往往更敏感一点）
-        # 1) 灰度
         H_gray = color.rgb2gray(tile_up)
-        # 或 2) green channel
-        # H_gray = tile_up[..., 1] / 255.0
+
     H_smooth = morphological_smooth(H_gray, n=n_smooth)
-    mask_dark = threshold_super_dark(H_smooth, intensity_threshold=intensity_threshold)
-    labeled_mask = separate_and_label(mask_dark, min_label_size=30)
+    mask_dark = threshold_super_dark(H_smooth, intensity_threshold=float(intensity_threshold))
+
+    # ---- DEBUG prints ----
+    if debug:
+        md = mask_dark.astype(np.uint8)
+        frac = float(md.mean()) if md.max() <= 1 else float((md > 0).mean())
+        print(
+            f"[DEBUG seg] tile_up={tile_up.shape} H_gray={H_gray.shape} "
+            f"H_gray min/max=({H_gray.min():.3f},{H_gray.max():.3f}) "
+            f"mask_dark_fg_frac={frac:.4f}",
+            flush=True
+        )
+
+    # ---- KEY CHANGE: split touching nuclei here ----
+    if split:
+        labeled_mask, mask_clean = split_touching_objects_watershed(
+            mask_dark,
+            min_area=int(min_label_size),
+            opening_ksize=int(split_opening_ksize),
+            dist_frac=float(split_dist_frac),
+            peak_min_dist=int(split_peak_min_dist),
+            debug=debug,
+            debug_prefix=debug_prefix,
+        )
+        # 你仍然想返回原始 mask_dark：就返回 mask_dark，不替换
+    else:
+        # keep your old behavior
+        labeled_mask = separate_and_label(mask_dark, min_label_size=int(min_label_size))
+
     overlay = overlay_contours(tile_up, labeled_mask)
     return labeled_mask, mask_dark
+
+
+def plot_cell_centroid(
+    cells,
+    he=None,
+    color="red",
+    save_name=None,
+    save_fig=True,
+    dot_size=5,
+    dpi=100,          # ⭐ 统一 DPI
+):
+    print("Directly working on transformed coordinates...")
+
+    if he is not None:
+        height_pixels, width_pixels = he.shape[:2]
+    else:
+        width_pixels = int(np.ceil(cells.x_centroid.max()))
+        height_pixels = int(np.ceil(cells.y_centroid.max()))
+
+    # ⭐ 核心：figsize × dpi = 像素
+    figsize = (width_pixels / dpi, height_pixels / dpi)
+
+    fig, ax = plt.subplots(figsize=figsize, dpi=dpi)
+
+    if he is not None:
+        ax.imshow(he)
+
+    ax.scatter(
+        cells.x_centroid,
+        cells.y_centroid,
+        s=dot_size,
+        c=color,
+        marker="o",
+        linewidths=0,
+    )
+
+    ax.set_xlim(0, width_pixels)
+    ax.set_ylim(height_pixels, 0)  # y 轴向下
+    ax.axis("off")
+
+    print("saving the plot...")
+    if save_fig:
+        save_path = Path(save_name) if save_name else Path("cell_centroids.png")
+        plt.savefig(
+            save_path,
+            dpi=dpi,
+            bbox_inches="tight",
+            pad_inches=0,
+        )
+        plt.close(fig)
+    else:
+        plt.show()
