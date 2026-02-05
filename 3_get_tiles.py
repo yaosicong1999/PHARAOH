@@ -349,6 +349,97 @@ def _tile_to_xywh(p):
         return float(p[0]), float(p[1]), float(p[2]), float(p[3])
     raise ValueError(f"Unsupported tile format: {type(p)} {p}")
 
+def save_dapi_tiles_intensity(
+    dapi_gray16,
+    tiles,
+    output_folder,
+    rescale_factor=1.0,
+    prefix="tile",
+    start_index=0,
+    save_u16=True,
+    save_u8_preview=True,
+):
+    """
+    Crop intensity DAPI tiles from uint16 grayscale image.
+    Saves:
+      - <key>_dapi_u16.png  (uint16 PNG)   [optional]
+      - <key>_dapi_u8.png   (uint8 preview) [optional]
+    """
+    if dapi_gray16.ndim == 3:
+        dapi_gray16 = dapi_gray16[..., 0]
+    if dapi_gray16.dtype != np.uint16:
+        # 如果 read_image 给你的不是 uint16，这里也能容错
+        dapi_gray16 = dapi_gray16.astype(np.uint16)
+
+    if not os.path.exists(output_folder):
+        os.makedirs(output_folder)
+
+    h_img, w_img = dapi_gray16.shape[:2]
+
+    out_meta = {}
+
+    for i, p in enumerate(tiles, start=start_index):
+        x0f, y0f, wf, hf = _tile_to_xywh(p)
+
+        x0 = int(round(x0f * rescale_factor))
+        y0 = int(round(y0f * rescale_factor))
+        w  = int(round(wf  * rescale_factor))
+        h  = int(round(hf  * rescale_factor))
+
+        x0 = max(0, x0)
+        y0 = max(0, y0)
+        x1 = min(w_img, x0 + w)
+        y1 = min(h_img, y0 + h)
+
+        if x1 <= x0 or y1 <= y0:
+            continue
+
+        tile16 = dapi_gray16[y0:y1, x0:x1]
+
+        key = f"{prefix}_{i:03d}"
+
+        fn_u16 = None
+        fn_u8 = None
+
+        if save_u16:
+            fn_u16 = f"{key}_dapi_u16.png"
+            cv2.imwrite(os.path.join(output_folder, fn_u16), tile16)
+
+        if save_u8_preview:
+            fn_u8 = f"{key}_dapi_u8.png"
+            tile8 = normalize_uint16_to_uint8(tile16)
+            cv2.imwrite(os.path.join(output_folder, fn_u8), tile8)
+
+        out_meta[key] = {
+            "x0": x0, "y0": y0,
+            "w": int(x1 - x0), "h": int(y1 - y0),
+            "cx": float((x0 + x1) / 2), "cy": float((y0 + y1) / 2),
+            "id": int(i),
+            "filename_dapi_u16": fn_u16,
+            "filename_dapi_u8": fn_u8,
+        }
+
+    # merge into existing json if exists
+    json_path = os.path.join(output_folder, "dapi_tile_info.json")
+    if os.path.exists(json_path):
+        try:
+            old = json.load(open(json_path, "r"))
+        except Exception:
+            old = {}
+    else:
+        old = {}
+
+    # 把 intensity 文件名写回去（不覆盖你已有的 LUT 字段）
+    for k, v in out_meta.items():
+        if k not in old:
+            old[k] = {}
+        old[k].update(v)
+
+    with open(json_path, "w") as f:
+        json.dump(old, f, indent=4)
+
+    print(f"Saved DAPI intensity tiles in '{output_folder}': {len(out_meta)}")
+    return out_meta
 
 def save_dapi_tiles(
     dapi_rgb,
@@ -919,28 +1010,35 @@ class Step3SamplingApp(tk.Tk):
             from my_utils import read_image, dapi_to_lut_rgb
             tick(12)
 
-            report_stage(2, "Saving DAPI tiles")
-            dapi_img2, _ = read_image(DAPI_PATH, keep_16bit=True, level=1)
-            tick(20, f"Read DAPI level=1 shape={getattr(dapi_img2, 'shape', None)}")
+            report_stage(2, "Saving DAPI tiles (intensity + LUT)")
 
-            # lut 可能是 None：你可以在这里 fallback 到你默认 lut
-            if lut is None:
-                raise RuntimeError("lut is None; please load/build LUT (info['DAPI_lut'] or your default LUT).")
+            # === 读 intensity：强制用灰度 uint16 ===
+            dapi16_lvl1, _ = read_image(DAPI_PATH, keep_16bit=True, level=1)
+            if dapi16_lvl1.ndim == 3:
+                dapi16_lvl1 = dapi16_lvl1[..., 0]
+            tick(20, f"Read DAPI level=1 (u16) shape={getattr(dapi16_lvl1, 'shape', None)} dtype={dapi16_lvl1.dtype}")
 
-            dapi_rgb2 = dapi_to_lut_rgb(dapi_img2, lut, threshold=500)
-            tick(30, "Applied LUT to DAPI")
+            # === [NEW] 先保存 intensity tiles（后面所有mask都用这个）===
+            save_dapi_tiles_intensity(
+                dapi16_lvl1,
+                tiles,
+                str(output_folder),
+                rescale_factor=2 ** (DAPI_LEVEL - 1),
+                prefix="tile",
+                start_index=0,
+                save_u16=True,
+                save_u8_preview=True,
+            )
+            tick(30, "Saved DAPI intensity tiles (u16 + u8 preview)")
+
+            dapi_rgb2 = dapi_to_lut_rgb(dapi16_lvl1, lut, threshold=1200)
+            tick(38, "Applied LUT to DAPI")
 
             dapi_tiles = save_dapi_tiles(
                 dapi_rgb2, tiles, str(output_folder),
                 rescale_factor=2 ** (DAPI_LEVEL - 1)
             )
-            tick(55, f"Saved DAPI tiles: {len(dapi_tiles) if hasattr(dapi_tiles, '__len__') else 'done'}")
-
-            # overlays（你这边用 dapi_rgb 还是 dapi_rgb2：按你之前逻辑）
-            # 你原代码里用的是 dapi_rgb（可能是 level=DAPI_LEVEL 的 LUT 图）
-            # 这里如果没有 dapi_rgb，就用 dapi_rgb2 先顶着
-            dapi_rgb_for_overlay = dapi_rgb2
-            tick(65, "Saved DAPI overlay")
+            tick(55, f"Saved DAPI LUT tiles: {len(dapi_tiles) if hasattr(dapi_tiles, '__len__') else 'done'}")
 
             # ------------------------------
             # 6. Save HE tiles using transformation
