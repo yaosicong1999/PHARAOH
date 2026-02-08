@@ -433,8 +433,62 @@ class FinalAlignmentApp(tk.Tk):
         self.refresh_images()
         self.minsize(self.winfo_width(), self.winfo_height())
 
+        # click panels to enlarge
+        self.panels[0].lbl.bind(
+            "<Button-1>",
+            lambda e: self.show_large_view(
+                "DAPI + nuclei",
+                apply_orientation_case(
+                    draw_points(
+                        self.dapi_rgb,
+                        self.dapi_pts0 / DISPLAY_SCALE,
+                        color=(0, 255, 0),
+                        r=6
+                    ),
+                    self.case_id
+                )
+            )
+        )
+        self.panels[1].lbl.bind(
+            "<Button-1>",
+            lambda e: self.show_large_view(
+                "HE + nuclei",
+                draw_points(
+                    self.he_rgb,
+                    self.he_pts0 / DISPLAY_SCALE,
+                    color=(255, 0, 0),
+                    r=6
+                )
+            )
+        )
+        self.panels[2].lbl.bind(
+            "<Button-1>",
+            lambda e: self.show_large_view(
+                "Overlay",
+                self.he_dapi_overlay
+            )
+        )
+        self.panels[3].lbl.bind(
+            "<Button-1>",
+            lambda e: self.show_large_view(
+                "Overlay",
+                self.he_dapi_overlay
+            )
+        )
+        # panel 3: Cells on H&E (from saved png if exists)
+        def open_cells_panel():
+            if self.cells_overlay_path.exists():
+                img = cv2.imread(str(self.cells_overlay_path), cv2.IMREAD_COLOR)
+                if img is None:
+                    messagebox.showwarning("Failed", f"Cannot read: {self.cells_overlay_path}", parent=self)
+                    return
+                self.show_large_view("Cells on H&E", img)
+            else:
+                messagebox.showinfo("Not loaded", "Cells overlay not available yet.\nClick 'Load cell data' first.",
+                                    parent=self)
 
-    # =============================
+        self.panels[3].lbl.bind("<Button-1>", lambda e: open_cells_panel())
+
     def refresh_images(self):
         # -------- panel 1 (DAPI + nuclei) --------
         dapi_pts_lvl2 = self.dapi_pts0 / DISPLAY_SCALE
@@ -477,6 +531,50 @@ class FinalAlignmentApp(tk.Tk):
         self.panels[idx].lbl.configure(image=tkimg)
         self.panels[idx].lbl.image = tkimg
 
+    def show_large_view(self, title: str, bgr_img: np.ndarray):
+        """
+        Show the SAME image (DISPLAY_LEVEL) in a larger window,
+        without fit_to_tile().
+        """
+        if bgr_img is None:
+            return
+
+        h, w = bgr_img.shape[:2]
+
+        # ---- limit window size to screen ----
+        sw = self.winfo_screenwidth()
+        sh = self.winfo_screenheight()
+        max_w = int(sw * 0.85)
+        max_h = int(sh * 0.85)
+
+        scale = min(1.0, max_w / w, max_h / h)
+        disp_w = int(w * scale)
+        disp_h = int(h * scale)
+
+        # ---- convert to PIL ----
+        rgb = cv2.cvtColor(bgr_img, cv2.COLOR_BGR2RGB)
+        pil = Image.fromarray(rgb)
+        if scale < 1.0:
+            pil = pil.resize((disp_w, disp_h), Image.BILINEAR)
+
+        tk_img = ImageTk.PhotoImage(pil)
+
+        win = tk.Toplevel(self)
+        win.title(title)
+        win.resizable(True, True)
+
+        lbl = tk.Label(win, image=tk_img, bg="black")
+        lbl.image = tk_img
+        lbl.pack(expand=True, fill="both")
+
+        # ---- size + center ----
+        win.update_idletasks()
+        x = (sw - disp_w) // 2
+        y = (sh - disp_h) // 2
+        win.geometry(f"{disp_w}x{disp_h}+{x}+{y}")
+
+        win.bind("<Escape>", lambda e: win.destroy())
+
     def _set_placeholder(self, idx, text):
         img = np.full((TILE_SIZE[1], TILE_SIZE[0], 3), BG_COLOR, np.uint8)
 
@@ -503,11 +601,12 @@ class FinalAlignmentApp(tk.Tk):
         )
 
         self._set_panel(idx, img)
+
+
     def toggle_floating(self):
         self._panel3_show_overlay = not self._panel3_show_overlay
         self._update_panel3_fast()
 
-    # =============================
     def load_cell_data(self):
         # --- pick file ---
         self.focus_force()
