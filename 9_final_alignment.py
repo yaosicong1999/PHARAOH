@@ -9,9 +9,7 @@ from tkinter import messagebox, filedialog
 from PIL import Image, ImageTk, ImageOps
 from ome_types import from_tiff
 import pandas as pd
-
 from my_utils import read_image, dapi_to_lut_rgb, plot_cell_centroid
-
 Image.MAX_IMAGE_PIXELS = None
 
 
@@ -22,7 +20,6 @@ DISPLAY_LEVEL = 4
 DISPLAY_SCALE = 2 ** DISPLAY_LEVEL
 TILE_SIZE = (420, 420)
 BG_COLOR = (240, 240, 240)
-
 
 # =============================
 # Utils
@@ -154,6 +151,49 @@ def load_affine(path: Path):
         f"Raw affine_2x3 value head={str(data.get('affine_2x3'))[:200]}"
     )
 
+def load_homography(path: Path):
+    """
+    Load perspective transform (homography) from json.
+    Returns:
+      H2 (2x3), H3 (3x3)
+    Notes:
+      - For true perspective warp, ALWAYS use H3 with cv2.warpPerspective.
+      - H2 is provided only for backward compatibility; it drops the 3rd row.
+    """
+    data = json.load(open(path, "r"))
+    print(f"[DEBUG] homography json keys: {list(data.keys())}", flush=True)
+
+    H3 = None
+
+    # ---- accept a few possible keys ----
+    for k in ("homography_3x3", "H_mat", "H", "matrix_3x3"):
+        if k in data:
+            H3 = np.array(data[k], dtype=np.float32)
+            print(f"[DEBUG] {k} shape={H3.shape}", flush=True)
+            break
+
+    if H3 is None:
+        raise ValueError(
+            f"[ERROR] No homography found in json.\n"
+            f"Expected one of keys: homography_3x3 / H_mat / H / matrix_3x3\n"
+            f"Got keys: {list(data.keys())}"
+        )
+
+    if H3.shape != (3, 3):
+        raise ValueError(
+            f"[ERROR] Invalid homography shape: {H3.shape}, expected (3,3).\n"
+            f"Raw value head={str(H3)[:200]}"
+        )
+
+    # Optional sanity: ensure bottom-right not 0 (scale ambiguity is OK, but all-zero is bad)
+    if abs(float(H3[2, 2])) < 1e-12:
+        print("[WARN] H[2,2] is ~0; homography scale may be unusual. Still returning H.", flush=True)
+
+    # Provide 2x3 "compat" affine-like slice (NOT a true perspective transform)
+    H2 = H3[:2, :].copy().astype(np.float32)
+
+    return H2, H3
+
 def transform_xy_affine(xy: np.ndarray, A2x3: np.ndarray) -> np.ndarray:
     """
     xy: (N,2) float32
@@ -163,6 +203,36 @@ def transform_xy_affine(xy: np.ndarray, A2x3: np.ndarray) -> np.ndarray:
     xy = np.asarray(xy, dtype=np.float32).reshape(-1, 1, 2)
     out = cv2.transform(xy, A2x3)  # affine transform
     return out[:, 0, :]
+
+def transform_xy_perspective(xy: np.ndarray, H3x3: np.ndarray) -> np.ndarray:
+    """
+    xy:    (N,2) float32
+    H3x3:  (3,3) float32 homography
+    return:(N,2) float32
+
+    Applies perspective transform:
+      [x', y', w']^T = H * [x, y, 1]^T
+      (x', y') = (x'/w', y'/w')
+    """
+    xy = np.asarray(xy, dtype=np.float32).reshape(-1, 2)
+    H = np.asarray(H3x3, dtype=np.float32)
+
+    if H.shape != (3, 3):
+        raise ValueError(f"H3x3 must be (3,3), got {H.shape}")
+
+    # ---- homogeneous coordinates ----
+    ones = np.ones((xy.shape[0], 1), dtype=np.float32)
+    xy_h = np.concatenate([xy, ones], axis=1)          # (N,3)
+
+    # ---- apply homography ----
+    proj = (H @ xy_h.T).T                               # (N,3)
+
+    # ---- normalize by w ----
+    w = proj[:, 2:3]
+    eps = 1e-8
+    out = proj[:, 0:2] / np.maximum(w, eps)
+
+    return out.astype(np.float32)
 
 def transform_coordinates(coords_xy, homography_3x3):
     """
@@ -209,16 +279,34 @@ def cells_to_he_pixels(cell_csv_gz: Path, affine_json: Path, dapi_ome_tif: Path)
     xy_dapi = transform_coordinates(xy_stage, H_stage2dapi)
     print(f"[DEBUG] xy_dapi(level0 px) min={xy_dapi.min(axis=0)} max={xy_dapi.max(axis=0)}", flush=True)
 
-    # dapi(level0 px) -> he(level0 px) using affine
-    A2, _ = load_affine(affine_json)
-    ones = np.ones((xy_dapi.shape[0], 1), dtype=np.float32)
-    xy1 = np.concatenate([xy_dapi.astype(np.float32), ones], axis=1)   # (N,3)
-    xy_he = (xy1 @ A2.T).astype(np.float32)                            # (N,2)
-    print(f"[DEBUG] xy_he(level0 px) min={xy_he.min(axis=0)} max={xy_he.max(axis=0)}", flush=True)
+    # # dapi(level0 px) -> he(level0 px) using affine
+    # A2, _ = load_affine(affine_json)
+    # ones = np.ones((xy_dapi.shape[0], 1), dtype=np.float32)
+    # xy1 = np.concatenate([xy_dapi.astype(np.float32), ones], axis=1)   # (N,3)
+    # xy_he = (xy1 @ A2.T).astype(np.float32)                            # (N,2)
+    # print(f"[DEBUG] xy_he(level0 px) min={xy_he.min(axis=0)} max={xy_he.max(axis=0)}", flush=True)
+
+    # dapi(level0 px) -> he(level0 px) using homography
+    _, H3 = load_homography(affine_json)
+    xy = xy_dapi.astype(np.float32)  # (N,2)
+    ones = np.ones((xy.shape[0], 1), dtype=np.float32)
+    xy1 = np.concatenate([xy, ones], axis=1)  # (N,3)
+    # apply homography
+    proj = (xy1 @ H3.T).astype(np.float32)  # (N,3)
+    # normalize by w
+    w = proj[:, 2:3]
+    eps = 1e-8
+    xy_he = proj[:, 0:2] / np.maximum(w, eps)  # (N,2)
+    print(
+        f"[DEBUG] xy_he(level0 px) "
+        f"min={xy_he.min(axis=0)} max={xy_he.max(axis=0)}",
+        flush=True
+    )
 
     df.loc[:, "x_centroid"] = xy_he[:, 0]
     df.loc[:, "y_centroid"] = xy_he[:, 1]
     return df
+
 # =============================
 # GUI App
 # =============================
@@ -259,14 +347,31 @@ class FinalAlignmentApp(tk.Tk):
         self.dapi_pts0 = np.array([x["dapi_centroid_global"] for x in nuclei], np.float32)
         self.he_pts0   = np.array([x["he_centroid_global"]   for x in nuclei], np.float32)
 
-        # -------- affine --------
-        self.A2, self.A3 = load_affine(run_dir / "dapi_to_he_affine_level0.json")  # A2: (2,3)
+        # # -------- affine --------
+        # self.A2, self.A3 = load_affine(run_dir / "dapi_to_he_affine_level0.json")  # A2: (2,3)
+        # # ---------- precompute floating overlay (NO orientation) ----------
+        # H_disp = self.A2.copy()
+        # H_disp[:, 2] /= DISPLAY_SCALE
+        # self.warped_dapi = cv2.warpAffine(
+        #     self.dapi_rgb,
+        #     H_disp,
+        #     (self.he_rgb.shape[1], self.he_rgb.shape[0]),
+        #     flags=cv2.INTER_LINEAR,
+        #     borderMode=cv2.BORDER_CONSTANT,
+        # )
 
-        # ---------- precompute floating overlay (NO orientation) ----------
-        H_disp = self.A2.copy()
-        H_disp[:, 2] /= DISPLAY_SCALE
-
-        self.warped_dapi = cv2.warpAffine(
+        # # -------- perspective --------
+        # H_level0: dapi(level0) -> he(level0)  (3x3)
+        _, self.H3 = load_affine(run_dir / "dapi_to_he_affine_level0.json")  # A2: (2,3)
+        s = float(DISPLAY_SCALE)
+        S = np.array([[s, 0, 0],
+                      [0, s, 0],
+                      [0, 0, 1]], dtype=np.float32)
+        S_inv = np.array([[1 / s, 0, 0],
+                          [0, 1 / s, 0],
+                          [0, 0, 1]], dtype=np.float32)
+        H_disp = (S_inv @ self.H3 @ S).astype(np.float32)
+        self.warped_dapi = cv2.warpPerspective(
             self.dapi_rgb,
             H_disp,
             (self.he_rgb.shape[1], self.he_rgb.shape[0]),
@@ -277,7 +382,6 @@ class FinalAlignmentApp(tk.Tk):
         print("[DEBUG] he_rgb first pixel (BGR):", self.he_rgb[0, 0], flush=True)
         print("[DEBUG] dapi_rgb first pixel (BGR):", self.dapi_rgb[0, 0], flush=True)
         self.he_dapi_overlay = cv2.addWeighted(self.he_rgb, 0.7, self.warped_dapi, 0.8, 0)
-
         out_path = self.run_dir / "9_overlay.png"
         cv2.imwrite(str(out_path), self.he_dapi_overlay)
         print(f"[DEBUG] wrote overlay to {out_path}", flush=True)
@@ -385,7 +489,7 @@ class FinalAlignmentApp(tk.Tk):
         (tw, th), baseline = cv2.getTextSize(text, font, font_scale, thickness)
 
         x = (TILE_SIZE[0] - tw) // 2
-        y = (TILE_SIZE[1] + th) // 2  # 注意：putText 用的是 baseline
+        y = (TILE_SIZE[1] + th) // 2
 
         cv2.putText(
             img,
@@ -435,10 +539,11 @@ class FinalAlignmentApp(tk.Tk):
 
         # --- load & transform ---
         try:
-            affine_json = self.run_dir / "dapi_to_he_affine_level0.json"
+            # affine_json = self.run_dir / "dapi_to_he_affine_level0.json"
+            perspective_json = self.run_dir / "dapi_to_he_homography_level0.json"
             df = cells_to_he_pixels(
                 path,
-                affine_json=affine_json,
+                affine_json=perspective_json,
                 dapi_ome_tif=Path(self.info["DAPI_path"]),
             )
             print("[DEBUG] HE image level2 shape:", self.he_rgb.shape, flush=True)
@@ -476,7 +581,6 @@ class FinalAlignmentApp(tk.Tk):
         except Exception as e:
             messagebox.showerror("Load failed", str(e), parent=self)
             raise
-
 
 # =============================
 # main
