@@ -9,7 +9,7 @@ from PyQt5.QtWidgets import (
     QApplication, QGraphicsView, QGraphicsScene,
     QGraphicsItem, QGraphicsRectItem, QGraphicsPixmapItem,
     QVBoxLayout, QWidget, QPushButton, QHBoxLayout,
-    QMessageBox, QDialog, QLabel, QProgressBar
+    QMessageBox, QDialog, QLabel, QProgressBar, QFileDialog
 )
 from my_utils import mask_to_rgba, warp_mask, overlay_rgba_on_bgr
 
@@ -539,6 +539,40 @@ class ManualAlignView(QGraphicsView):
         dst = np.array([[p.x(), p.y()] for p in dst_qt], dtype=np.float32)
         return src, dst
 
+    def apply_homography_to_overlay(self, H_gui2he: np.ndarray):
+        """
+        Apply a 3x3 homography that maps overlay-local coords (GUI DAPI pixels)
+        directly to scene coords (HE pixels).
+        NOTE: This sets overlay pose immediately (rotation=0, pos=(0,0), transform=H).
+        """
+        H = np.asarray(H_gui2he, dtype=np.float64)
+        if H.shape != (3, 3):
+            raise ValueError(f"H_gui2he must be (3,3), got {H.shape}")
+
+        # normalize for numerical stability
+        if abs(H[2, 2]) > 1e-12:
+            H = H / H[2, 2]
+
+        # OpenCV H:
+        # x' = (h11 x + h12 y + h13)/(h31 x + h32 y + h33)
+        # y' = (h21 x + h22 y + h23)/(h31 x + h32 y + h33)
+        #
+        # Qt QTransform uses:
+        # x' = (m11 x + m21 y + m31)/(m13 x + m23 y + m33)
+        # y' = (m12 x + m22 y + m32)/(m13 x + m23 y + m33)
+        qtT = QTransform(
+            float(H[0, 0]), float(H[1, 0]), float(H[2, 0]),  # m11 m12 m13
+            float(H[0, 1]), float(H[1, 1]), float(H[2, 1]),  # m21 m22 m23
+            float(H[0, 2]), float(H[1, 2]), float(H[2, 2])  # m31 m32 m33
+        )
+
+        # Reset pose components that would "double apply" transforms
+        self.overlay.setRotation(0)
+        self.overlay.setPos(0, 0)
+        self.overlay.setTransform(qtT, combine=False)
+
+        self.overlay.update_handles()
+
     def _set_overlay_hidden(self, hide: bool):
         """统一入口，避免重复 setVisible。"""
         if hide == self._overlay_hidden_by_key:
@@ -586,20 +620,27 @@ class ManualAlignWindow(QWidget):
         super().__init__()
         self.run_dir = str(run_dir)
         self.dapi_gui_affine = np.asarray(dapi_gui_affine, dtype=np.float32)
+
+        self.external_h_mat = None
+        self.external_h_source = None
+
         self.setWindowTitle("Manual Alignment + Swap Mask/Original")
 
         self.view = ManualAlignView(he_mask_path, dapi_mask_path, he_orig_path, dapi_orig_path, case_id=case_id)
         self.resize(1400, 900)
 
-        self.btn_reset = QPushButton("Reset")
-        self.btn_swap = QPushButton("Swap Mask/Original")
-        self.btn_save = QPushButton("Save Alignment")
+        self.btn_load_h = QPushButton("Load H (.json)")
+        self.btn_reset  = QPushButton("Reset")
+        self.btn_swap   = QPushButton("Swap Mask/Original")
+        self.btn_save   = QPushButton("Save Alignment")
 
+        self.btn_load_h.clicked.connect(self.on_load_h_json)
         self.btn_reset.clicked.connect(self.on_reset)
         self.btn_swap.clicked.connect(self.on_swap)
         self.btn_save.clicked.connect(self.on_save)
 
         hl = QHBoxLayout()
+        hl.addWidget(self.btn_load_h)
         hl.addWidget(self.btn_reset)
         hl.addWidget(self.btn_swap)
         hl.addWidget(self.btn_save)
@@ -609,9 +650,81 @@ class ManualAlignWindow(QWidget):
         layout.addLayout(hl)
         self.setLayout(layout)
 
-        # 可选：分别缓存两套模式的 pose（这样你 save 时可以同时写出）
         self.pose_mask = None
         self.pose_orig = None
+
+    def on_load_h_json(self):
+        """
+        Load H matrix from an external json file and store it in memory.
+        NOTE: This does NOT update/apply to QPixmaps or overlay pose.
+        """
+        start_dir = self.run_dir if os.path.isdir(self.run_dir) else str(Path.cwd())
+
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Select alignment json (contains H_mat / H_homo)",
+            start_dir,
+            "JSON Files (*.json);;All Files (*)"
+        )
+        if not path:
+            return
+        try:
+            with open(path, "r") as f:
+                data = json.load(f)
+
+            # try multiple keys (your file might use H_mat or H_homo)
+            H = None
+            key_used = None
+            for k in ("H_mat", "H_homo", "H", "h_mat", "H_matrix"):
+                if k in data and data[k] is not None:
+                    H = np.asarray(data[k], dtype=np.float32)
+                    key_used = k
+                    break
+
+            if H is None:
+                raise KeyError("No H_mat / H_homo found in the selected json.")
+
+            # normalize to 3x3 if possible
+            if H.shape == (2, 3):
+                H = np.vstack([H, [0, 0, 1]]).astype(np.float32)
+            if H.shape != (3, 3):
+                raise ValueError(f"Expected H as (3,3) (or (2,3) convertible), got {H.shape}")
+
+            self.external_h_mat = H
+            self.external_h_source = path
+
+            # A: orig -> GUI (from images_info.json)
+            A = np.asarray(self.dapi_gui_affine, dtype=np.float64)
+            if A.shape == (2, 3):
+                A = np.vstack([A, [0, 0, 1]]).astype(np.float64)
+            if A.shape != (3, 3):
+                raise ValueError(f"dapi_gui_affine must be (2,3) or (3,3), got {A.shape}")
+
+            A_inv = np.linalg.inv(A)
+
+            # "subtract" the gui affine: H_gui2he = H_total * inv(A)
+            H_total = self.external_h_mat.astype(np.float64)
+            H_gui2he = H_total @ A_inv
+
+            # apply immediately to overlay pixmap (four-corner positioning)
+            self.view.apply_homography_to_overlay(H_gui2he)
+
+            # optional: also stash the current pose as pose_orig/mask so Save writes consistent state
+            cur_pose = self.view.get_overlay_pose()
+            if self.view.mode == self.view.MODE_MASK:
+                self.pose_mask = cur_pose
+            else:
+                self.pose_orig = cur_pose
+
+            QMessageBox.information(
+                self,
+                "Loaded H",
+                f"Loaded {key_used} from:\n{path}\n\n"
+                f"H shape: {H.shape}\n"
+                f"(Not applied to GUI; stored only.)"
+            )
+        except Exception as e:
+            QMessageBox.warning(self, "Load failed", f"Failed to load H from json:\n{path}\n\nError: {e}")
 
     def on_reset(self):
         clear_override_cursor()
