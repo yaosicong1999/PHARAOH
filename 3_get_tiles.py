@@ -3,24 +3,54 @@ import sys
 import json
 import time
 from pathlib import Path
-
 import numpy as np
 import cv2
 from scipy.spatial import cKDTree
 from shapely.geometry import MultiPoint, Polygon
 import threading
 import queue
-
+import subprocess
 import tkinter as tk
 from tkinter import messagebox, ttk
 from PIL import Image, ImageTk, ImageOps
-
 Image.MAX_IMAGE_PIXELS = None
-
 
 # =============================
 # Utils
 # =============================
+def load_step3_params(script_path: Path):
+    """
+    Read parameters.json (same dir as this script) and return step3 params with defaults.
+    """
+    script_dir = script_path.resolve().parent
+    params_path = script_dir / "parameters.json"
+
+    # defaults (fallback if json missing or keys missing)
+    step3 = {
+        "dapi_lut_threshold": 1000,
+        "number_of_tiles": 120,
+        "tile_size": 600,
+        "min_dist_factor": 1.5,
+    }
+
+    if params_path.exists():
+        try:
+            params = json.load(open(params_path, "r"))
+            if isinstance(params, dict) and isinstance(params.get("step3", {}), dict):
+                step3.update(params["step3"])
+        except Exception as e:
+            print(f"[WARN] failed to read parameters.json: {e}", flush=True)
+    else:
+        print(f"[INFO] parameters.json not found at {params_path}, using defaults", flush=True)
+
+    # normalize types
+    step3["dapi_lut_threshold"] = int(step3.get("dapi_lut_threshold", 1000))
+    step3["n_tiles"]    = int(step3.get("n_tiles", 120))
+    step3["tile_size"]          = float(step3.get("tile_size", 600))
+    step3["min_dist_factor"]    = float(step3.get("min_dist_factor", 1.5))
+
+    return step3
+
 def ensure_dir(p: Path):
     p.mkdir(parents=True, exist_ok=True)
 
@@ -139,10 +169,6 @@ def draw_points_overlay(dapi_img, points_xy, tile_size=128, save_path=None):
         cv2.imwrite(save_path, base)
     return base
 
-
-# =============================
-# CVT sampling pipeline (来自你 test.py 的思路，内嵌进来)
-# =============================
 def apply_density_filter(mask_tissue_255: np.ndarray,
                          density_8u: np.ndarray,
                          mode="percentile",
@@ -174,7 +200,6 @@ def apply_density_filter(mask_tissue_255: np.ndarray,
         out = out2
 
     return out
-
 
 def make_tissue_mask_from_dapi_gray(
     dapi_gray16: np.ndarray,
@@ -271,18 +296,44 @@ def initialize_points(coords_valid, N, min_dist, seed=0):
     return np.asarray(points, dtype=np.float32)
 
 
-def enforce_min_distances(points, coords_valid, min_dist, seed=0):
+def repel_too_close(points, coords_valid, min_sep, seed=0, max_rounds=20, max_tries=2000):
+    """
+    Soft constraint: only fix pairs closer than min_sep.
+    """
     rng = np.random.default_rng(seed)
-    if len(points) < 2:
-        return points
-    tree = cKDTree(points)
-    pairs = list(tree.query_pairs(min_dist))
-    if not pairs:
-        return points
-    for (i, j) in pairs:
-        points[j] = coords_valid[rng.integers(0, len(coords_valid))]
-    return points
+    points = points.copy()
 
+    for r in range(max_rounds):
+        tree = cKDTree(points)
+        pairs = list(tree.query_pairs(min_sep))
+        if not pairs:
+            return points, True
+
+        # 统计冲突多的点优先挪走
+        bad = np.zeros(len(points), dtype=np.int32)
+        for i, j in pairs:
+            bad[i] += 1
+            bad[j] += 1
+        order = np.argsort(-bad)
+
+        moved = False
+        for idx in order:
+            if bad[idx] == 0:
+                break
+
+            # 尝试找一个“离最近邻 >= min_sep”的新位置
+            for _ in range(max_tries):
+                cand = coords_valid[rng.integers(0, len(coords_valid))]
+                d, _ = tree.query(cand, k=1)
+                if d >= min_sep:
+                    points[idx] = cand
+                    moved = True
+                    break
+
+        if not moved:
+            return points, False
+
+    return points, False
 
 def cvt_masked(mask_available, N_POINTS=80, MIN_DIST=7, ITERATIONS=50, seed=0):
     coords_valid = get_valid_coords(mask_available, seed=seed)
@@ -295,6 +346,9 @@ def cvt_masked(mask_available, N_POINTS=80, MIN_DIST=7, ITERATIONS=50, seed=0):
 
     N = len(points)
 
+    # soft separation: set as a fraction of MIN_DIST
+    MIN_SEP = 0.55 * float(MIN_DIST)   # ~= (0.8/1.5)*MIN_DIST
+
     for it in range(ITERATIONS):
         tree = cKDTree(points)
         _, idxs = tree.query(coords_valid)
@@ -303,14 +357,20 @@ def cvt_masked(mask_available, N_POINTS=80, MIN_DIST=7, ITERATIONS=50, seed=0):
         for i in range(N):
             region_idx = np.where(idxs == i)[0]
             if len(region_idx) == 0:
-                new_points[i] = coords_valid[np.random.randint(len(coords_valid))]
+                K = 200
+                cand = coords_valid[np.random.randint(len(coords_valid), size=K)]
+                d, _ = tree.query(cand, k=1)
+                new_points[i] = cand[np.argmax(d)]
             else:
                 sub = coords_valid[region_idx]
                 centroid = sub.mean(axis=0)
                 k = np.argmin(np.sum((sub - centroid) ** 2, axis=1))
                 new_points[i] = sub[k]
 
-        points = enforce_min_distances(new_points, coords_valid, MIN_DIST, seed=seed + it + 1)
+        points, ok = repel_too_close(new_points, coords_valid, MIN_SEP, seed=seed + it + 1)
+        # 可选：如果一直ok==False，可以print一个warn
+        # if not ok and it == ITERATIONS - 1:
+        #     print("[WARN] Could not fully satisfy soft min separation; mask may be too narrow.", flush=True)
 
     return points.astype(np.int32)
 
@@ -356,7 +416,7 @@ def save_dapi_tiles_intensity(
     rescale_factor=1.0,
     prefix="tile",
     start_index=0,
-    save_u16=True,
+    save_u16=False,
     save_u8_preview=True,
 ):
     """
@@ -429,7 +489,6 @@ def save_dapi_tiles_intensity(
     else:
         old = {}
 
-    # 把 intensity 文件名写回去（不覆盖你已有的 LUT 字段）
     for k, v in out_meta.items():
         if k not in old:
             old[k] = {}
@@ -511,27 +570,28 @@ def save_he_tiles(
     margin_ratio=0.1,
     prefix="tile",
     start_index=0,
-    debug_first_n=0,   # >0 就打印前 n 个 tile 的 corners/transform
+    debug_first_n=0,
 ):
     if not os.path.exists(output_folder):
         os.makedirs(output_folder)
 
     he_tiles = []
     output_dict = {}
-    H = np.array(h_mat, dtype=float)
+    H = np.asarray(h_mat, dtype=float)
+    if H.shape == (2, 3):
+        H = np.vstack([H, [0.0, 0.0, 1.0]])
+    if H.shape != (3, 3):
+        raise ValueError(f"h_mat must be 3x3 homography (or 2x3 affine), got {H.shape}")
     h_img, w_img = he_rgb.shape[:2]
 
     for i, p in enumerate(tiles, start=start_index):
         x0f, y0f, wf, hf = _tile_to_xywh(p)
-
-        # enlarge around center in DAPI space (still in tile coordinate system)
         mw = float(wf) * (1.0 + float(margin_ratio))
         mh = float(hf) * (1.0 + float(margin_ratio))
         x0_centered = float(x0f) - (mw - float(wf)) / 2.0
         y0_centered = float(y0f) - (mh - float(hf)) / 2.0
         x1_centered = x0_centered + mw
         y1_centered = y0_centered + mh
-
         corners = np.array(
             [
                 [x0_centered, y0_centered],
@@ -540,15 +600,21 @@ def save_he_tiles(
                 [x0_centered, y1_centered],
             ],
             dtype=float,
-        )
-
-        # affine: (x',y') = A*[x,y] + t
-        transformed = np.dot(H[:, :2], corners.T).T + H[:, 2]
+        )  # (4,2) in DAPI coords
+        # ---- homography: (x',y',w') = H @ (x,y,1), then divide by w' ----
+        ones = np.ones((corners.shape[0], 1), dtype=float)
+        corners_h = np.hstack([corners, ones])  # (4,3)
+        proj = (H @ corners_h.T).T              # (4,3)
+        w = proj[:, 2:3]
+        eps = 1e-9
+        w_safe = np.where(np.abs(w) < eps, np.sign(w) * eps + (w == 0) * eps, w)
+        transformed = proj[:, :2] / w_safe      # (4,2) in HE coords (before rescale)
 
         if debug_first_n and (i - start_index) < debug_first_n:
             print(f"[DEBUG] tile {i}:")
-            print("H:\n", H)
+            print("H (3x3):\n", H)
             print("corners (DAPI coords):\n", corners)
+            print("proj (before divide):\n", proj)
             print("transformed (HE coords, before rescale):\n", transformed)
             print("HE image shape:", he_rgb.shape)
 
@@ -573,12 +639,18 @@ def save_he_tiles(
 
         key = f"{prefix}_{i:03d}"
         filename = f"{key}_he.png"
-        cv2.imwrite(os.path.join(output_folder, filename), cv2.cvtColor(tile_img, cv2.COLOR_RGB2BGR))
+        cv2.imwrite(
+            os.path.join(output_folder, filename),
+            cv2.cvtColor(tile_img, cv2.COLOR_RGB2BGR),
+        )
 
         info = {
-            "x0": min_x, "y0": min_y,
-            "w": max_x - min_x, "h": max_y - min_y,
-            "cx": (min_x + max_x) / 2, "cy": (min_y + max_y) / 2,
+            "x0": min_x,
+            "y0": min_y,
+            "w": max_x - min_x,
+            "h": max_y - min_y,
+            "cx": (min_x + max_x) / 2,
+            "cy": (min_y + max_y) / 2,
             "type": "sampled",
             "id": i,
             "filename": filename,
@@ -593,6 +665,7 @@ def save_he_tiles(
         json.dump(output_dict, f, indent=4)
 
     return he_tiles
+
 
 def centroids_to_tiles(points_xy, tile_size):
     half = tile_size / 2.0
@@ -715,7 +788,7 @@ class Step3SamplingApp(tk.Tk):
         super().__init__()
         self.run_dir = run_dir
 
-        self.title("Step 3 — CVT sampling draft")
+        self.title("Step 3 — CVT sampling")
 
         # 3 panels
         self.tile_size = (420, 420)
@@ -724,6 +797,9 @@ class Step3SamplingApp(tk.Tk):
         self.has_sampling_outputs = False
 
         self.sampling_counter = 0
+        # ---- load step3 params from parameters.json (same folder as this script)
+        self.step3 = load_step3_params(Path(__file__))
+        print(f"[PARAM] step3 = {self.step3}", flush=True)
 
         # orientation case (from images_info.json)
         self.case_id = 0
@@ -770,6 +846,13 @@ class Step3SamplingApp(tk.Tk):
             command=self.on_sampling_clicked
         )
         self.btn_sampling.pack(side="left", fill="x", expand=True, padx=(0, 8))
+
+        self.btn_pilot = tk.Button(
+            bottom, text="Tile pilot examination",
+            command=self.on_pilot_clicked,
+            state="disabled"
+        )
+        self.btn_pilot.pack(side="left", fill="x", expand=True, padx=(6, 6))
 
         self.btn_extract = tk.Button(
             bottom, text="Extract current tiles",
@@ -824,9 +907,7 @@ class Step3SamplingApp(tk.Tk):
 
     def _load_initial_left(self):
         img_dir = self.run_dir / "1_dapi_lut.png"
-
         img = load_image_any(img_dir)
-
         if img is None:
             self._set_placeholder(self.panel_left, "missing DAPI-luted")
             messagebox.showwarning("Missing", f"Can't find {img_dir.name} in RUN_DIR.")
@@ -838,9 +919,6 @@ class Step3SamplingApp(tk.Tk):
     # Button callbacks
     # --------------------------
     def on_sampling_clicked(self):
-        """
-        这里直接跑你 test.py 的 CVT sampling pipeline
-        """
         try:
             timer = StepTimer()
 
@@ -889,21 +967,22 @@ class Step3SamplingApp(tk.Tk):
             timer.mark("Make tissue+density mask")
 
             # boundary-only available mask
-            TILE_SIZE = 600
-            TILE_SIZE = TILE_SIZE / (2 ** (DAPI_LEVEL - 1))  # 你之前的写法，先沿用
+            tile_size_lvl1 = float(self.step3["tile_size"])  # in level=1 coordinates
+            N_TILES = int(self.step3["n_tiles"])
+            min_dist_fac = float(self.step3["min_dist_factor"])
+            TILE_SIZE = tile_size_lvl1 / (2 ** (DAPI_LEVEL - 1))  # convert to current DAPI_LEVEL pixel space
+            MIN_DIST = TILE_SIZE * min_dist_fac
+
             buffer = 10 / (2 ** (DAPI_LEVEL - 1))
             boundary_radius = int(np.ceil(TILE_SIZE * np.sqrt(2) / 2)) + int(buffer)
-
             avail = make_available_mask_boundary_only(mask_dense, boundary_radius=boundary_radius)
             avail_path = self.run_dir / "3_dbg_available_after_erode.png"
             cv2.imwrite(str(avail_path), avail)
             timer.mark("Make available mask (boundary)")
 
-            # CVT
-            MIN_DIST = TILE_SIZE * 1.5
             points_xy = cvt_masked(
                 avail,
-                N_POINTS=120,
+                N_POINTS=N_TILES,
                 MIN_DIST=MIN_DIST,
                 ITERATIONS=50,
                 seed=seed
@@ -914,7 +993,6 @@ class Step3SamplingApp(tk.Tk):
 
             tiles = centroids_to_tiles(points_xy, tile_size=TILE_SIZE)
 
-            # 保存到 self，供 Extract 按钮使用
             self.current_points_xy = points_xy
             self.current_tiles = tiles
             self.current_tile_size = TILE_SIZE
@@ -926,7 +1004,6 @@ class Step3SamplingApp(tk.Tk):
                       open(out_json, "w"), indent=2)
             timer.mark("Save points json")
 
-            # overlay —— 用 raw dapi16 + raw points_xy 画
             overlay_bgr = draw_points_overlay(
                 dapi16, points_xy,
                 tile_size=TILE_SIZE,
@@ -945,15 +1022,40 @@ class Step3SamplingApp(tk.Tk):
             self._set_panel_image(self.panel_mid, mid_img)
             self._set_panel_image(self.panel_right, right_img)
 
-            # enable extract button
+            # enable pilot/extract button
+            self.btn_pilot.config(state="normal")
             self.btn_extract.config(state="normal")
             self.has_sampling_outputs = True
-
             print("[DONE] sampling finished.", flush=True)
 
         except Exception as e:
             messagebox.showerror("Sampling failed", str(e))
             raise
+
+    def on_pilot_clicked(self):
+        """
+        Launch 3b.py for tile pilot examination.
+        Pass RUN_DIR as argv[1].
+        """
+        try:
+            script_dir = Path(__file__).resolve().parent
+            pilot_script = script_dir / "3b_tile_pilot.py"
+
+            if not pilot_script.exists():
+                messagebox.showerror("Missing", f"Cannot find {pilot_script}")
+                return
+
+            # Use same python executable (important for env)
+            py = sys.executable
+
+            cmd = [py, str(pilot_script), str(self.run_dir)]
+            print("[INFO] launching:", " ".join(cmd), flush=True)
+
+            # Non-blocking
+            subprocess.Popen(cmd, cwd=str(script_dir))
+
+        except Exception as e:
+            messagebox.showerror("Failed to launch 3b.py", str(e))
 
     def on_extract_clicked(self):
         if not self.has_sampling_outputs:
@@ -963,11 +1065,9 @@ class Step3SamplingApp(tk.Tk):
         def worker(q):
             timer0 = time.perf_counter()
 
-            STAGE_TOTAL = 3  # 你现在的 extract 基本就 3 个大阶段：load/import/dapi/he（可自行改）
-
+            STAGE_TOTAL = 3
             def report_stage(i, name):
                 q.put(("stage", (i, STAGE_TOTAL, name)))
-
             def tick(p, msg=None):
                 q.put(("progress", p))
                 if msg:
@@ -988,6 +1088,9 @@ class Step3SamplingApp(tk.Tk):
             lut_path = "glasbey_inverted.lut"
             lut = np.fromfile(lut_path, dtype=np.uint8).reshape(256, 3)
 
+            # ---------- load global parameters.json (script-level) ----------
+            dapi_lut_threshold = int(getattr(self, "step3", {}).get("dapi_lut_threshold", 1000))
+            q.put(("log", f"[PARAM] step3.dapi_lut_threshold = {dapi_lut_threshold}"))
 
             sampled_path = self.run_dir / "sampled_points.json"
             if not sampled_path.exists():
@@ -1012,13 +1115,11 @@ class Step3SamplingApp(tk.Tk):
 
             report_stage(2, "Saving DAPI tiles (intensity + LUT)")
 
-            # === 读 intensity：强制用灰度 uint16 ===
             dapi16_lvl1, _ = read_image(DAPI_PATH, keep_16bit=True, level=1)
             if dapi16_lvl1.ndim == 3:
                 dapi16_lvl1 = dapi16_lvl1[..., 0]
             tick(20, f"Read DAPI level=1 (u16) shape={getattr(dapi16_lvl1, 'shape', None)} dtype={dapi16_lvl1.dtype}")
 
-            # === [NEW] 先保存 intensity tiles（后面所有mask都用这个）===
             save_dapi_tiles_intensity(
                 dapi16_lvl1,
                 tiles,
@@ -1026,12 +1127,12 @@ class Step3SamplingApp(tk.Tk):
                 rescale_factor=2 ** (DAPI_LEVEL - 1),
                 prefix="tile",
                 start_index=0,
-                save_u16=True,
+                save_u16=False,
                 save_u8_preview=True,
             )
             tick(30, "Saved DAPI intensity tiles (u16 + u8 preview)")
 
-            dapi_rgb2 = dapi_to_lut_rgb(dapi16_lvl1, lut, threshold=1200)
+            dapi_rgb2 = dapi_to_lut_rgb(dapi16_lvl1, lut, threshold=dapi_lut_threshold)
             tick(38, "Applied LUT to DAPI")
 
             dapi_tiles = save_dapi_tiles(
@@ -1044,10 +1145,8 @@ class Step3SamplingApp(tk.Tk):
             # 6. Save HE tiles using transformation
             # ------------------------------
             report_stage(3, "Saving HE tiles")
-
             path_clicked = self.run_dir / "clicked_blob_initial_alignment.json"
             path_manual = self.run_dir / "manual_initial_alignment.json"
-
             if path_clicked.exists():
                 data = json.load(open(path_clicked, "r"))
                 q.put(("log", f"[INFO] Using alignment from: {path_clicked.name}"))
@@ -1067,7 +1166,7 @@ class Step3SamplingApp(tk.Tk):
             he_tiles = save_he_tiles(
                 he_img2, tiles, h_mat, str(output_folder),
                 rescale_factor=2 ** (HE_LEVEL - 1),
-                margin_ratio=0.2
+                margin_ratio=0.1
             )
             tick(95, f"Saved HE tiles: {len(he_tiles) if hasattr(he_tiles, '__len__') else 'done'}")
 
