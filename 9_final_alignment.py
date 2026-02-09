@@ -362,7 +362,7 @@ class FinalAlignmentApp(tk.Tk):
 
         # # -------- perspective --------
         # H_level0: dapi(level0) -> he(level0)  (3x3)
-        _, self.H3 = load_affine(run_dir / "dapi_to_he_affine_level0.json")  # A2: (2,3)
+        _, self.H3 = load_homography(run_dir / "dapi_to_he_homography_level0.json")  # A2: (2,3)
         s = float(DISPLAY_SCALE)
         S = np.array([[s, 0, 0],
                       [0, s, 0],
