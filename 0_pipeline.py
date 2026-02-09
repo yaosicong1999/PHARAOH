@@ -50,7 +50,7 @@ def stage4_done(run_dir: Path) -> bool:
     return nuclei_info.exists()
 
 def alignment_done(run_dir: Path) -> bool:
-    return (run_dir / "dapi_to_he_affine_level0.json").exists()
+    return (run_dir / "dapi_to_he_homography_level0.json").exists()
 
 def status_text(done: bool) -> str:
     return "FINISHED ✅" if done else "NOT FINISHED ❌"
