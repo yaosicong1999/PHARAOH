@@ -13,10 +13,24 @@ from PyQt5.QtWidgets import (
 )
 from my_utils import mask_to_rgba, warp_mask, overlay_rgba_on_bgr
 
-def estimate_H_from_4corners(src, dst):
-    # src,dst: (4,2) float32, order must match
-    H = cv2.getPerspectiveTransform(src, dst)  # 3x3
-    return H
+def cvH_to_qtransform(H: np.ndarray) -> QTransform:
+    H = np.asarray(H, dtype=np.float64)
+    if abs(H[2, 2]) > 1e-12:
+        H = H / H[2, 2]
+
+    # OpenCV:
+    # x'=(h11 x + h12 y + h13)/(h31 x + h32 y + h33)
+    # y'=(h21 x + h22 y + h23)/(h31 x + h32 y + h33)
+    #
+    # Qt:
+    # x'=(m11 x + m21 y + m31)/(m13 x + m23 y + m33)
+    # y'=(m12 x + m22 y + m32)/(m13 x + m23 y + m33)
+    return QTransform(
+        float(H[0, 0]), float(H[1, 0]), float(H[2, 0]),  # m11 m12 m13
+        float(H[0, 1]), float(H[1, 1]), float(H[2, 1]),  # m21 m22 m23
+        float(H[0, 2]), float(H[1, 2]), float(H[2, 2])   # m31 m32 m33
+    )
+
 
 def set_override_cursor(cursor_shape):
     """Avoid stacking override cursors on every hoverMove."""
@@ -138,18 +152,18 @@ class ResizeHandle(QGraphicsRectItem):
 
 
 class DapiOverlayItem(QGraphicsPixmapItem):
-    """
-    Overlay item that supports:
-      - drag translate (stored in transform.translate)
-      - corner resize (non-uniform, Shift for uniform)
-      - Q/E rotation (rotation property)
-    """
-
+    MODE_AFFINE = "affine"
+    MODE_PERSPECTIVE = "perspective"
     def __init__(self, pixmap):
         super().__init__(pixmap)
         self.setOpacity(1.0)
         self.setFlag(QGraphicsItem.ItemIsSelectable, True)
         self.setAcceptHoverEvents(True)
+
+        self.mode = self.MODE_AFFINE
+        # perspective mode state
+        self._src_corners_local = None   # (4,2) local pixel corners (TL,TR,BR,BL)
+        self._dst_corners_scene = None   # (4,2) scene corners (same order)
 
         self.handles = []
         self._dragging_overlay = False
@@ -158,13 +172,59 @@ class DapiOverlayItem(QGraphicsPixmapItem):
         self._press_pos = None
         self._orig_transform = None
 
+    def reset_perspective_cache(self):
+        self._src_corners_local = None
+        self._dst_corners_scene = None
+
+    def _init_src_corners_local(self):
+        r = self.boundingRect()
+        # TL, TR, BR, BL  (统一这个顺序!)
+        self._src_corners_local = np.array([
+            [r.left(), r.top()],
+            [r.right(), r.top()],
+            [r.right(), r.bottom()],
+            [r.left(), r.bottom()],
+        ], dtype=np.float32)
+
+    def enter_perspective_mode(self):
+        """Freeze current pose into 4 scene corners, then drive future edits by corners."""
+        self.mode = self.MODE_PERSPECTIVE
+        if self._src_corners_local is None:
+            self._init_src_corners_local()
+
+        pts_scene = [self.mapToScene(QPointF(x, y)) for x, y in self._src_corners_local]
+        self._dst_corners_scene = np.array([[p.x(), p.y()] for p in pts_scene], dtype=np.float32)
+
+        # make sure transform is purely represented by the homography (avoid double transforms)
+        # We build H from src->dst and setTransform directly.
+        self._apply_h_from_corners()
+
+    def enter_affine_mode(self):
+        self.mode = self.MODE_AFFINE
+        self.reset_perspective_cache()
+
+    def _apply_h_from_corners(self):
+        if self._src_corners_local is None or self._dst_corners_scene is None:
+            return
+
+        H = cv2.getPerspectiveTransform(
+            self._src_corners_local.astype(np.float32),
+            self._dst_corners_scene.astype(np.float32),
+        )
+        qtT = cvH_to_qtransform(H)
+
+        self.setRotation(0)
+        self.setPos(0, 0)
+        self.setTransform(qtT, combine=False)
+
+
     def update_handles(self):
         rect = self.boundingRect()
         corners_local = [
-            QPointF(rect.left(), rect.top()),
-            QPointF(rect.right(), rect.top()),
-            QPointF(rect.right(), rect.bottom()),
-            QPointF(rect.left(), rect.bottom())
+            QPointF(rect.left(), rect.top()),  # 0 TL
+            QPointF(rect.right(), rect.top()),  # 1 TR
+            QPointF(rect.right(), rect.bottom()),  # 2 BR
+            QPointF(rect.left(), rect.bottom()),  # 3 BL
         ]
         for idx, p_local in enumerate(corners_local):
             p_scene = self.mapToScene(p_local)
@@ -201,11 +261,7 @@ class DapiOverlayItem(QGraphicsPixmapItem):
 
         for it in hits:
             if isinstance(it, ResizeHandle):
-                self._dragging_handle = True
-                self._active_handle_idx = it.idx
-                self._press_pos = scene_pt
-                self._orig_transform = self.transform()
-                event.accept()
+                event.ignore()
                 return
 
         if event.button() == Qt.LeftButton:
@@ -225,55 +281,22 @@ class DapiOverlayItem(QGraphicsPixmapItem):
         super().mouseReleaseEvent(event)
 
     def mouseMoveEvent(self, event):
-        if self._dragging_handle:
-            current_pos = event.scenePos()
-            opp_idx = (self._active_handle_idx + 2) % 4
-            fixed_pt = self.handles[opp_idx].scenePos()
-
-            v0 = self._press_pos - fixed_pt
-            v1 = current_pos - fixed_pt
-            if abs(v0.x()) < 1e-6 and abs(v0.y()) < 1e-6:
-                return
-
-            theta = math.radians(self.rotation())
-            ux = QPointF(math.cos(theta), math.sin(theta))
-            uy = QPointF(-math.sin(theta), math.cos(theta))
-
-            def dot(a: QPointF, b: QPointF) -> float:
-                return a.x() * b.x() + a.y() * b.y()
-
-            v0x, v0y = dot(v0, ux), dot(v0, uy)
-            v1x, v1y = dot(v1, ux), dot(v1, uy)
-
-            eps = 1e-6
-            sx = v1x / (v0x if abs(v0x) > eps else (eps if v0x >= 0 else -eps))
-            sy = v1y / (v0y if abs(v0y) > eps else (eps if v0y >= 0 else -eps))
-
-            sx = max(sx, 0.05)
-            sy = max(sy, 0.05)
-
-            if event.modifiers() & Qt.ShiftModifier:
-                s = sx if abs(sx - 1.0) >= abs(sy - 1.0) else sy
-                s = max(s, 0.05)
-                sx = sy = s
-
-            T = QTransform()
-            T.translate(fixed_pt.x(), fixed_pt.y())
-            T.rotate(self.rotation())
-            T.scale(sx, sy)
-            T.rotate(-self.rotation())
-            T.translate(-fixed_pt.x(), -fixed_pt.y())
-
-            newT = T * self._orig_transform
-            self.setTransform(newT)
-            self.update_handles()
-            event.accept()
-            return
-
         if self._dragging_overlay:
             current_pos = event.scenePos()
             delta = current_pos - self._press_pos
 
+            if self.mode == self.MODE_PERSPECTIVE:
+                if self._dst_corners_scene is None:
+                    self.enter_perspective_mode()
+                self._dst_corners_scene[:, 0] += float(delta.x())
+                self._dst_corners_scene[:, 1] += float(delta.y())
+                self._press_pos = current_pos
+                self._apply_h_from_corners()
+                self.update_handles()
+                event.accept()
+                return
+
+            ## affine mode:
             T = QTransform(self._orig_transform)
             T.translate(delta.x(), delta.y())
             self.setTransform(T)
@@ -299,6 +322,24 @@ class DapiOverlayItem(QGraphicsPixmapItem):
         if not self._dragging_handle:
             return
 
+        # -------------------------
+        # PERSPECTIVE MODE
+        # -------------------------
+        if self.mode == self.MODE_PERSPECTIVE:
+            if self._dst_corners_scene is None:
+                self.enter_perspective_mode()
+
+            i = int(self._active_handle_idx)
+            self._dst_corners_scene[i, 0] = float(scene_pt.x())
+            self._dst_corners_scene[i, 1] = float(scene_pt.y())
+
+            self._apply_h_from_corners()
+            self.update_handles()
+            return
+
+        # -------------------------
+        # AFFINE MODE (keep your old logic)
+        # -------------------------
         current_pos = scene_pt
         opp_idx = (self._active_handle_idx + 2) % 4
         fixed_pt = self.handles[opp_idx].scenePos()
@@ -502,15 +543,16 @@ class ManualAlignView(QGraphicsView):
             self.overlay.setOpacity(0.5)
             self.overlay.setPixmap(self.dapi_orig_pix)
             self.apply_overlay_pose_keep_scene_center(pose)
-
+            self.overlay.reset_perspective_cache()
         else:
             # switch to mask
             self.mode = self.MODE_MASK
             self.he_item.setPixmap(self.he_mask_pix)
-
             self.overlay.setOpacity(1)
             self.overlay.setPixmap(self.dapi_mask_pix)
             self.apply_overlay_pose_keep_scene_center(pose)
+            self.overlay.reset_perspective_cache()
+
 
         self.fit_bg_to_view()
         self.overlay.update_handles()
@@ -524,15 +566,7 @@ class ManualAlignView(QGraphicsView):
         """
         rect = self.overlay.boundingRect()  # DAPI local 坐标系里的矩形
 
-        # DAPI local corners (pixel coords)
-        src_qt = [
-            rect.topLeft(),
-            rect.topRight(),
-            rect.bottomLeft(),
-            rect.bottomRight(),
-        ]
-
-        # Map to HE(scene) coords
+        src_qt = [rect.topLeft(), rect.topRight(), rect.bottomRight(), rect.bottomLeft()]
         dst_qt = [self.overlay.mapToScene(p) for p in src_qt]
 
         src = np.array([[p.x(), p.y()] for p in src_qt], dtype=np.float32)
@@ -570,8 +604,8 @@ class ManualAlignView(QGraphicsView):
         self.overlay.setRotation(0)
         self.overlay.setPos(0, 0)
         self.overlay.setTransform(qtT, combine=False)
-
         self.overlay.update_handles()
+        self.overlay.reset_perspective_cache()
 
     def _set_overlay_hidden(self, hide: bool):
         """统一入口，避免重复 setVisible。"""
@@ -615,6 +649,7 @@ class ManualAlignView(QGraphicsView):
 
         return super().eventFilter(obj, event)
 
+
 class ManualAlignWindow(QWidget):
     def __init__(self, run_dir, he_mask_path, dapi_mask_path, he_orig_path, dapi_orig_path, dapi_gui_affine, case_id=0):
         super().__init__()
@@ -633,14 +668,18 @@ class ManualAlignWindow(QWidget):
         self.btn_reset  = QPushButton("Reset")
         self.btn_swap   = QPushButton("Swap Mask/Original")
         self.btn_save   = QPushButton("Save Alignment")
+        self.btn_mode = QPushButton("Mode: Affine")
 
         self.btn_load_h.clicked.connect(self.on_load_h_json)
         self.btn_reset.clicked.connect(self.on_reset)
         self.btn_swap.clicked.connect(self.on_swap)
         self.btn_save.clicked.connect(self.on_save)
+        self.btn_mode.clicked.connect(self.on_toggle_mode)
+
 
         hl = QHBoxLayout()
         hl.addWidget(self.btn_load_h)
+        hl.addWidget(self.btn_mode)
         hl.addWidget(self.btn_reset)
         hl.addWidget(self.btn_swap)
         hl.addWidget(self.btn_save)
@@ -725,6 +764,16 @@ class ManualAlignWindow(QWidget):
             )
         except Exception as e:
             QMessageBox.warning(self, "Load failed", f"Failed to load H from json:\n{path}\n\nError: {e}")
+
+    def on_toggle_mode(self):
+        ov = self.view.overlay
+        if ov.mode == ov.MODE_AFFINE:
+            ov.enter_perspective_mode()
+            self.btn_mode.setText("Mode: Perspective")
+        else:
+            ov.enter_affine_mode()
+            self.btn_mode.setText("Mode: Affine")
+        ov.update_handles()
 
     def on_reset(self):
         clear_override_cursor()
