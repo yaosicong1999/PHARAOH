@@ -4,7 +4,7 @@ from PIL import Image, ImageTk
 import numpy as np
 import cv2
 import os
-from utils import read_image, read_ome_tiff_subifd, extract_hematoxylin_channel, enhance_hematoxylin_channel, dapi_to_lut_rgb
+from utils import read_image, extract_hematoxylin_channel, enhance_hematoxylin_channel, dapi_to_lut_rgb
 from sklearn.cluster import DBSCAN
 from scipy import ndimage as ndi
 from pathlib import Path
@@ -524,6 +524,7 @@ def infer_dapi_orientation_case(dapi_gui_affine, tol=1e-4):
 def save_current_levels_json(json_path="images_info.json", RUN_ID=None):
     global he_path, he_level, dapi_path, dapi_level, dapi_gui_affine
     global he_dense_mask, dapi_mask_img
+    global he_slider, dapi_slider
 
     if he_path is None or dapi_path is None:
         return
@@ -534,6 +535,10 @@ def save_current_levels_json(json_path="images_info.json", RUN_ID=None):
 
     dapi_orientation_case = infer_dapi_orientation_case(dapi_gui_affine)
 
+    # --- slider values (recorded) ---
+    he_threshold = int(he_slider.get()) if he_slider is not None else None
+    dapi_lut_threshold = int(dapi_slider.get()) if dapi_slider is not None else None
+
     data = {
         "RUN_ID": RUN_ID,
         "HE_path": he_path,
@@ -542,6 +547,10 @@ def save_current_levels_json(json_path="images_info.json", RUN_ID=None):
         "DAPI_level": dapi_level,
         "DAPI_gui_affine": dapi_gui_affine.tolist(),
         "DAPI_orientation_case": int(dapi_orientation_case),
+
+        # record slider choices
+        "HE_threshold": he_threshold,
+        "DAPI_LUT_threshold": dapi_lut_threshold,
 
         "blob_count_min_area": int(min_area),
         "HE_blob_count": he_blob_count,
@@ -791,7 +800,7 @@ def main():
 
     confirm_btn = tk.Button(
         action_frame,
-        text="Confirm & Save (Step 1)",
+        text="Confirm & Save Orientation",
         command=confirm_and_save,
         state=tk.DISABLED
     )

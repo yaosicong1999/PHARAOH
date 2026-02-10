@@ -324,8 +324,17 @@ class FinalAlignmentApp(tk.Tk):
         # -------- load images (LEVEL 2, NO ORIENTATION) --------
         dapi16, _ = read_image(self.info["DAPI_path"], keep_16bit=True, level=DISPLAY_LEVEL)
         lut = np.fromfile("glasbey_inverted.lut", dtype=np.uint8).reshape(256, 3)
-        self.dapi_rgb = dapi_to_lut_rgb(dapi16, lut, threshold=300)
-        self.dapi_rgb = cv2.cvtColor(self.dapi_rgb, cv2.COLOR_RGB2BGR)  # ✅ 加这一行：统一内部用BGR
+        # -------- metadata --------
+        self.info = json.load(open(run_dir / "images_info.json"))
+        self.case_id = int(self.info.get("DAPI_orientation_case", 0))
+        # read LUT threshold from json (fallback to 300)
+        dapi_lut_thr = int(self.info.get("DAPI_LUT_threshold", 300))
+        print(f"[INFO] Using DAPI_LUT_threshold={dapi_lut_thr} (from images_info.json)", flush=True)
+        # -------- load images --------
+        dapi16, _ = read_image(self.info["DAPI_path"], keep_16bit=True, level=DISPLAY_LEVEL)
+        lut = np.fromfile("glasbey_inverted.lut", dtype=np.uint8).reshape(256, 3)
+        self.dapi_rgb = dapi_to_lut_rgb(dapi16, lut, threshold=dapi_lut_thr)
+        self.dapi_rgb = cv2.cvtColor(self.dapi_rgb, cv2.COLOR_RGB2BGR)  # keep your BGR convention
 
         he16, _ = read_image(self.info["HE_path"], keep_16bit=True, level=DISPLAY_LEVEL)
         # normalize to uint8
