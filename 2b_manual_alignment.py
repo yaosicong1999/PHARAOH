@@ -714,7 +714,7 @@ class ManualAlignWindow(QWidget):
             # try multiple keys (your file might use H_mat or H_homo)
             H = None
             key_used = None
-            for k in ("H_mat", "H_homo", "H", "h_mat", "H_matrix"):
+            for k in ("H_mat", "H_homo", "H", "h_mat", "H_matrix", "homography_3x3"):
                 if k in data and data[k] is not None:
                     H = np.asarray(data[k], dtype=np.float32)
                     key_used = k
