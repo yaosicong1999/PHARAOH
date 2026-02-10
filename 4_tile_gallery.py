@@ -235,6 +235,10 @@ def show_tile_gallery_in_memory(
                     status_label.config(
                         text=line.replace("[INFO]", "").strip()
                     )
+                elif line.startswith("[ETA_START]"):
+                    start_time = time.time()
+                    progress_var.set(0)
+                    status_label.config(text="Starting main loop...")
                 elif line.startswith("[PROGRESS]"):
                     _, stage, frac = line.split()
                     cur, total = map(int, frac.split("/"))
