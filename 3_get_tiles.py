@@ -18,6 +18,30 @@ Image.MAX_IMAGE_PIXELS = None
 # =============================
 # Utils
 # =============================
+def load_dapi_lut_threshold_from_images_info(run_dir: Path, default=1000) -> int:
+    info_path = run_dir / "images_info.json"
+    if not info_path.exists():
+        print(f"[WARN] missing {info_path}, fallback threshold={default}", flush=True)
+        return int(default)
+
+    try:
+        info = json.load(open(info_path, "r"))
+    except Exception as e:
+        print(f"[WARN] failed to read images_info.json: {e}, fallback threshold={default}", flush=True)
+        return int(default)
+
+    # 你想用的 key：DAPI_LUT_threshold
+    # 兼容几个可能的旧 key，避免以后你改名字爆炸
+    for k in ("DAPI_LUT_threshold", "dapi_lut_threshold", "dapi_lut_thr", "lut_threshold"):
+        if k in info:
+            try:
+                return int(info[k])
+            except Exception:
+                pass
+
+    print(f"[WARN] images_info.json has no DAPI LUT threshold key, fallback threshold={default}", flush=True)
+    return int(default)
+
 def load_step3_params(script_path: Path):
     """
     Read parameters.json (same dir as this script) and return step3 params with defaults.
@@ -27,7 +51,6 @@ def load_step3_params(script_path: Path):
 
     # defaults (fallback if json missing or keys missing)
     step3 = {
-        "dapi_lut_threshold": 1000,
         "number_of_tiles": 120,
         "tile_size": 600,
         "min_dist_factor": 1.5,
@@ -44,7 +67,6 @@ def load_step3_params(script_path: Path):
         print(f"[INFO] parameters.json not found at {params_path}, using defaults", flush=True)
 
     # normalize types
-    step3["dapi_lut_threshold"] = int(step3.get("dapi_lut_threshold", 1000))
     step3["n_tiles"]    = int(step3.get("n_tiles", 120))
     step3["tile_size"]          = float(step3.get("tile_size", 600))
     step3["min_dist_factor"]    = float(step3.get("min_dist_factor", 1.5))
@@ -559,8 +581,6 @@ def save_dapi_tiles(
         json.dump(output_dict, f, indent=4)
 
     return saved_tiles
-
-
 def save_he_tiles(
     he_rgb,
     tiles,
@@ -571,73 +591,190 @@ def save_he_tiles(
     prefix="tile",
     start_index=0,
     debug_first_n=0,
+    mode="rectified",                 # "rectified" (default) or "bbox"
+    rectify_interp=cv2.INTER_LINEAR,
+    case_id=0,                        # NEW: must match your DAPI orientation case
 ):
-    if not os.path.exists(output_folder):
-        os.makedirs(output_folder)
+    """
+    Coordinate conventions (matching your original pipeline):
+    - tiles are in DAPI tile coordinate system (whatever level those tiles are defined in).
+    - h_mat maps DAPI coords -> HE coords (in HE tile coord system).
+    - rescale_factor converts HE coords -> he_rgb pixel coords (e.g. level mapping like 2**(HE_LEVEL-1)).
 
-    he_tiles = []
-    output_dict = {}
+    Output:
+    - Saves <prefix>_<id>_he.png for each tile (bbox crop OR rectified patch depending on mode)
+    - Writes he_tile_info.json containing for each tile:
+        * core bbox-like info (x0,y0,w,h,cx,cy,type,id,filename)
+        * meta (dapi corners, he quad corners, rectification matrix for rectified mode)
+    """
+    if mode not in ("rectified", "bbox"):
+        raise ValueError(f"mode must be 'rectified' or 'bbox', got {mode}")
+    os.makedirs(output_folder, exist_ok=True)
+
     H = np.asarray(h_mat, dtype=float)
     if H.shape == (2, 3):
         H = np.vstack([H, [0.0, 0.0, 1.0]])
     if H.shape != (3, 3):
         raise ValueError(f"h_mat must be 3x3 homography (or 2x3 affine), got {H.shape}")
+
     h_img, w_img = he_rgb.shape[:2]
+    rf = float(rescale_factor)
+
+    def signed_area(q):
+        q = np.asarray(q, dtype=np.float32)
+        x = q[:, 0]
+        y = q[:, 1]
+        return float(np.dot(x, np.roll(y, -1)) - np.dot(y, np.roll(x, -1)))
+
+    def orient_quad_indices(case_id: int):
+        """
+        Return indices (len=4) to reorder [TL,TR,BR,BL] corners to match the same
+        orientation you apply to DAPI tiles (apply_orientation_case / apply_orientation_to_tile).
+        """
+        pts = np.array([[0,0],[1,0],[1,1],[0,1]], dtype=int)  # TL,TR,BR,BL in a 2x2 grid
+
+        def apply_case_xy(x, y):
+            if case_id == 0:   # identity
+                return x, y
+            if case_id == 1:   # rot90 CW
+                return y, 1 - x
+            if case_id == 2:   # rot180
+                return 1 - x, 1 - y
+            if case_id == 3:   # rot90 CCW
+                return 1 - y, x
+            if case_id == 4:   # flip UD (vertical)
+                return x, 1 - y
+            if case_id == 5:   # flip LR (horizontal)
+                return 1 - x, y
+            if case_id == 6:   # transpose
+                return y, x
+            if case_id == 7:   # anti-transpose
+                return 1 - y, 1 - x
+            raise ValueError(f"Unknown case_id={case_id}")
+
+        pts2 = np.array([apply_case_xy(x, y) for x, y in pts], dtype=int)
+
+        # identify TL/TR/BR/BL in the oriented grid
+        s = pts2[:, 0] + pts2[:, 1]
+        d = pts2[:, 0] - pts2[:, 1]
+        tl = int(np.argmin(s))
+        br = int(np.argmax(s))
+        tr = int(np.argmax(d))
+        bl = int(np.argmin(d))
+        return np.array([tl, tr, br, bl], dtype=int)
+
+    he_tiles = []
+    output_dict = {}
 
     for i, p in enumerate(tiles, start=start_index):
         x0f, y0f, wf, hf = _tile_to_xywh(p)
+
+        # ---- margin in DAPI coords ----
         mw = float(wf) * (1.0 + float(margin_ratio))
         mh = float(hf) * (1.0 + float(margin_ratio))
-        x0_centered = float(x0f) - (mw - float(wf)) / 2.0
-        y0_centered = float(y0f) - (mh - float(hf)) / 2.0
-        x1_centered = x0_centered + mw
-        y1_centered = y0_centered + mh
-        corners = np.array(
-            [
-                [x0_centered, y0_centered],
-                [x1_centered, y0_centered],
-                [x1_centered, y1_centered],
-                [x0_centered, y1_centered],
-            ],
-            dtype=float,
-        )  # (4,2) in DAPI coords
-        # ---- homography: (x',y',w') = H @ (x,y,1), then divide by w' ----
-        ones = np.ones((corners.shape[0], 1), dtype=float)
-        corners_h = np.hstack([corners, ones])  # (4,3)
-        proj = (H @ corners_h.T).T              # (4,3)
+        x0c = float(x0f) - (mw - float(wf)) / 2.0
+        y0c = float(y0f) - (mh - float(hf)) / 2.0
+        x1c = x0c + mw
+        y1c = y0c + mh
+
+        corners_dapi = np.array(
+            [[x0c, y0c],
+             [x1c, y0c],
+             [x1c, y1c],
+             [x0c, y1c]], dtype=float
+        )  # TL,TR,BR,BL in DAPI coords
+
+        # ---- project to HE coords using homography ----
+        corners_h = np.hstack([corners_dapi, np.ones((4, 1), dtype=float)])  # (4,3)
+        proj = (H @ corners_h.T).T  # (4,3)
         w = proj[:, 2:3]
         eps = 1e-9
         w_safe = np.where(np.abs(w) < eps, np.sign(w) * eps + (w == 0) * eps, w)
-        transformed = proj[:, :2] / w_safe      # (4,2) in HE coords (before rescale)
+        corners_he = proj[:, :2] / w_safe  # (4,2) HE coords (pre-level adjust)
 
-        if debug_first_n and (i - start_index) < debug_first_n:
-            print(f"[DEBUG] tile {i}:")
-            print("H (3x3):\n", H)
-            print("corners (DAPI coords):\n", corners)
-            print("proj (before divide):\n", proj)
-            print("transformed (HE coords, before rescale):\n", transformed)
-            print("HE image shape:", he_rgb.shape)
+        # ---- convert to he_rgb pixel coords (level adjust) ----
+        corners_he_px_raw = corners_he * rf  # same role as your original code
 
-        xs = transformed[:, 0] * float(rescale_factor)
-        ys = transformed[:, 1] * float(rescale_factor)
-
+        # ---- bbox in he_rgb pixels ----
+        xs = corners_he_px_raw[:, 0]
+        ys = corners_he_px_raw[:, 1]
         min_x = int(np.floor(xs.min()))
         max_x = int(np.ceil(xs.max()))
         min_y = int(np.floor(ys.min()))
         max_y = int(np.ceil(ys.max()))
 
-        # clamp
-        min_x = max(0, min_x)
-        min_y = max(0, min_y)
-        max_x = min(w_img, max_x)
-        max_y = min(h_img, max_y)
-
-        if max_x <= min_x or max_y <= min_y:
-            continue
-
-        tile_img = he_rgb[min_y:max_y, min_x:max_x]
+        # clamp bbox to image
+        min_x_cl = max(0, min_x)
+        min_y_cl = max(0, min_y)
+        max_x_cl = min(w_img, max_x)
+        max_y_cl = min(h_img, max_y)
 
         key = f"{prefix}_{i:03d}"
+
+        if debug_first_n and (i - start_index) < debug_first_n:
+            print(f"[DEBUG] {key} mode={mode}")
+            print(" corners_dapi:\n", corners_dapi)
+            print(" corners_he (pre-rescale):\n", corners_he)
+            print(" corners_he_px_raw (he_rgb px):\n", corners_he_px_raw)
+            print(" bbox unclamped:", (min_x, min_y, max_x-min_x, max_y-min_y))
+            print(" bbox clamped  :", (min_x_cl, min_y_cl, max_x_cl-min_x_cl, max_y_cl-min_y_cl))
+            print(" he_rgb shape  :", he_rgb.shape)
+
+        if max_x_cl <= min_x_cl or max_y_cl <= min_y_cl:
+            continue
+
+        # ----------------------------
+        # Generate tile_img
+        # ----------------------------
+        M = None
+        Minv = None
+
+        if mode == "bbox":
+            tile_img = he_rgb[min_y_cl:max_y_cl, min_x_cl:max_x_cl]
+            out_w = int(max_x_cl - min_x_cl)
+            out_h = int(max_y_cl - min_y_cl)
+
+        else:  # rectified
+            # src corners are already in DAPI order: TL,TR,BR,BL (after H + rf)
+            src = corners_he_px_raw.astype(np.float32)
+
+            # --- choose output size (natural: avg opposite edges) ---
+            def dist(a, b):
+                return float(np.linalg.norm(a - b))
+
+            width  = 0.5 * (dist(src[0], src[1]) + dist(src[3], src[2]))  # top & bottom
+            height = 0.5 * (dist(src[1], src[2]) + dist(src[0], src[3]))  # right & left
+            out_w = max(2, int(round(width)))
+            out_h = max(2, int(round(height)))
+
+            # --- canonical dst in TL,TR,BR,BL ---
+            dst = np.array(
+                [[0.0, 0.0],                 # TL
+                 [out_w - 1.0, 0.0],          # TR
+                 [out_w - 1.0, out_h - 1.0],  # BR
+                 [0.0, out_h - 1.0]],         # BL
+                dtype=np.float32
+            )
+
+            # --- apply SAME orientation convention as DAPI tile ---
+            idx = orient_quad_indices(int(case_id))
+            dst = dst[idx]
+
+            # --- fix mirror (winding mismatch) while keeping point correspondence ---
+            if signed_area(src) * signed_area(dst) < 0:
+                # swap TR <-> BL (indices 1 and 3) in src to match dst winding
+                src = src[[0, 3, 2, 1]]
+
+            M = cv2.getPerspectiveTransform(src, dst)
+            Minv = np.linalg.inv(M)
+
+            tile_img = cv2.warpPerspective(
+                he_rgb, M, (out_w, out_h),
+                flags=rectify_interp,
+                borderMode=cv2.BORDER_CONSTANT,
+                borderValue=(0, 0, 0),
+            )
+
         filename = f"{key}_he.png"
         cv2.imwrite(
             os.path.join(output_folder, filename),
@@ -645,27 +782,42 @@ def save_he_tiles(
         )
 
         info = {
-            "x0": min_x,
-            "y0": min_y,
-            "w": max_x - min_x,
-            "h": max_y - min_y,
-            "cx": (min_x + max_x) / 2,
-            "cy": (min_y + max_y) / 2,
+            "x0": int(min_x_cl),
+            "y0": int(min_y_cl),
+            "w": int(max_x_cl - min_x_cl),
+            "h": int(max_y_cl - min_y_cl),
+            "cx": float((min_x_cl + max_x_cl) / 2.0),
+            "cy": float((min_y_cl + max_y_cl) / 2.0),
             "type": "sampled",
-            "id": i,
+            "id": int(i),
             "filename": filename,
             "img": tile_img,
         }
-        he_tiles.append(info)
-        output_dict[key] = {k: v for k, v in info.items() if k != "img"}
 
-    print(f"Saved H&E tiles in '{output_folder}': {len(he_tiles)}")
+        meta = {
+            "mode": mode,
+            "rescale_factor": float(rescale_factor),
+            "margin_ratio": float(margin_ratio),
+            "case_id": int(case_id),
+            "dapi_corners": corners_dapi.tolist(),
+            "dapi_wh_margin": [float(mw), float(mh)],
+            "he_quad_px_raw": corners_he_px_raw.tolist(),     # TL,TR,BR,BL (DAPI order) in he_rgb coords
+            "rectified_wh": [int(out_w), int(out_h)],
+            "M_he_to_rect": None if M is None else M.tolist(),
+            "M_rect_to_he": None if Minv is None else Minv.tolist(),
+        }
+        he_tiles.append({**info, "meta": meta, "img": tile_img})
+
+        # JSON version (no image array)
+        output_dict[key] = {k: v for k, v in info.items() if k != "img"}
+        output_dict[key]["meta"] = meta
+
+    print(f"Saved H&E tiles in '{output_folder}' (mode={mode}): {len(he_tiles)}")
 
     with open(os.path.join(output_folder, "he_tile_info.json"), "w") as f:
         json.dump(output_dict, f, indent=4)
 
     return he_tiles
-
 
 def centroids_to_tiles(points_xy, tile_size):
     half = tile_size / 2.0
@@ -968,6 +1120,7 @@ class Step3SamplingApp(tk.Tk):
 
             # boundary-only available mask
             tile_size_lvl1 = float(self.step3["tile_size"])  # in level=1 coordinates
+            print(f"tile size used is {tile_size_lvl1}")
             N_TILES = int(self.step3["n_tiles"])
             min_dist_fac = float(self.step3["min_dist_factor"])
             TILE_SIZE = tile_size_lvl1 / (2 ** (DAPI_LEVEL - 1))  # convert to current DAPI_LEVEL pixel space
@@ -976,8 +1129,9 @@ class Step3SamplingApp(tk.Tk):
             buffer = 10 / (2 ** (DAPI_LEVEL - 1))
             boundary_radius = int(np.ceil(TILE_SIZE * np.sqrt(2) / 2)) + int(buffer)
             avail = make_available_mask_boundary_only(mask_dense, boundary_radius=boundary_radius)
+            avail_flipped = 255 - avail
             avail_path = self.run_dir / "3_dbg_available_after_erode.png"
-            cv2.imwrite(str(avail_path), avail)
+            cv2.imwrite(str(avail_path), avail_flipped)
             timer.mark("Make available mask (boundary)")
 
             points_xy = cvt_masked(
@@ -1015,7 +1169,7 @@ class Step3SamplingApp(tk.Tk):
             mid_img = load_image_any(avail_path)
             right_img = load_image_any(self.run_dir / "3_sampled_overlay.png")
             if mid_img is None:
-                mid_img = avail  # fallback (single channel)
+                mid_img = avail_flipped  # fallback (single channel)
             if right_img is None:
                 right_img = overlay_bgr
 
@@ -1088,9 +1242,9 @@ class Step3SamplingApp(tk.Tk):
             lut_path = "glasbey_inverted.lut"
             lut = np.fromfile(lut_path, dtype=np.uint8).reshape(256, 3)
 
-            # ---------- load global parameters.json (script-level) ----------
-            dapi_lut_threshold = int(getattr(self, "step3", {}).get("dapi_lut_threshold", 1000))
-            q.put(("log", f"[PARAM] step3.dapi_lut_threshold = {dapi_lut_threshold}"))
+            # ---------- read LUT threshold from images_info.json ----------
+            dapi_lut_threshold = load_dapi_lut_threshold_from_images_info(self.run_dir, default=1000)
+            q.put(("log", f"[PARAM] images_info.DAPI_LUT_threshold = {dapi_lut_threshold}"))
 
             sampled_path = self.run_dir / "sampled_points.json"
             if not sampled_path.exists():
@@ -1166,7 +1320,8 @@ class Step3SamplingApp(tk.Tk):
             he_tiles = save_he_tiles(
                 he_img2, tiles, h_mat, str(output_folder),
                 rescale_factor=2 ** (HE_LEVEL - 1),
-                margin_ratio=0.1
+                mode="rectified",
+                case_id=self.case_id,
             )
             tick(95, f"Saved HE tiles: {len(he_tiles) if hasattr(he_tiles, '__len__') else 'done'}")
 
