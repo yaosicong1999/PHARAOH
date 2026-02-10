@@ -9,32 +9,6 @@ import time
 import json
 import sys
 
-ORIENTATION_CASES = {
-    0: np.array([[ 1,  0],
-                 [ 0,  1]], np.float32),  # identity
-
-    1: np.array([[ 0, -1],
-                 [ 1,  0]], np.float32),  # rot90 CW
-
-    2: np.array([[-1,  0],
-                 [ 0, -1]], np.float32),  # rot180
-
-    3: np.array([[ 0,  1],
-                 [-1,  0]], np.float32),  # rot90 CCW
-
-    4: np.array([[ 1,  0],
-                 [ 0, -1]], np.float32),  # flip vertical (up-down)
-
-    5: np.array([[-1,  0],
-                 [ 0,  1]], np.float32),  # flip horizontal (left-right)
-
-    6: np.array([[ 0,  1],
-                 [ 1,  0]], np.float32),  # rot90 CW then flip H  (== transpose)
-
-    7: np.array([[ 0, -1],
-                 [-1,  0]], np.float32),  # rot90 CW then flip V  (== anti-transpose)
-}
-
 def inverse_orientation_point(x, y, H, W, case_id):
     if case_id == 0:      # identity
         return x, y
@@ -52,11 +26,6 @@ def inverse_orientation_point(x, y, H, W, case_id):
         return y, x
     if case_id == 7:      # anti-transpose
         return W - 1 - y, H - 1 - x
-
-def inverse_affine_point(xa, ya, scale, tx, ty):
-    x = (xa - tx) / scale
-    y = (ya - ty) / scale
-    return x, y
 
 def apply_orientation_to_tile(img, case_id):
     """
@@ -95,64 +64,83 @@ def read_mask(path):
     return (img < 128).astype(np.uint8)
 
 
-def pad_or_crop(mask, target_shape):
-    """
-    Return:
-      out: (H,W)
-      paste_x0, paste_y0: input (cropped) pasted into out at this offset
-      crop_x0, crop_y0: crop start in the original input mask
-    Mapping:
-      x_out = (x_in - crop_x0) + paste_x0
-      y_out = (y_in - crop_y0) + paste_y0
-    """
+def scale_and_pad(mask, target_shape, interpolation=cv2.INTER_NEAREST):
     H, W = target_shape
     h, w = mask.shape
-    crop_x0 = 0
-    crop_y0 = 0
-    # center-crop if needed
-    if h > H:
-        crop_y0 = (h - H) // 2
-        mask = mask[crop_y0:crop_y0 + H, :]
-        h = H
-    if w > W:
-        crop_x0 = (w - W) // 2
-        mask = mask[:, crop_x0:crop_x0 + W]
-        w = W
+    # --- 1) isotropic scale so mask fits inside target ---
+    scale = min(H / h, W / w)
+    new_h = int(round(h * scale))
+    new_w = int(round(w * scale))
+    mask_scaled = cv2.resize(
+        mask, (new_w, new_h), interpolation=interpolation
+    )
+    # --- 2) center pad (no crop) ---
     out = np.zeros((H, W), dtype=mask.dtype)
-    paste_y0 = (H - h) // 2
-    paste_x0 = (W - w) // 2
-    out[paste_y0:paste_y0 + h, paste_x0:paste_x0 + w] = mask
-    return out, paste_x0, paste_y0, crop_x0, crop_y0
-
-
+    paste_y0 = (H - new_h) // 2
+    paste_x0 = (W - new_w) // 2
+    # safety check (should never fail if scale=min(...))
+    if paste_y0 < 0 or paste_x0 < 0:
+        raise ValueError(
+            f"Scaled mask {mask_scaled.shape} larger than target {target_shape}"
+        )
+    out[paste_y0:paste_y0 + new_h, paste_x0:paste_x0 + new_w] = mask_scaled
+    return out, scale, paste_x0, paste_y0
 
 def warp(mask, scale, tx, ty, out_shape):
     H, W = out_shape
     center = (W // 2, H // 2)
-    M = cv2.getRotationMatrix2D(center, 0.0, scale)
-    M[0, 2] += tx
-    M[1, 2] += ty
+    M = cv2.getRotationMatrix2D(center, 0.0, float(scale))
+    M[0, 2] += float(tx)
+    M[1, 2] += float(ty)
     return cv2.warpAffine(mask, M, (W, H), flags=cv2.INTER_NEAREST)
 
 
-def aligned_to_he_mask_img(
-        xB_aligned, yB_aligned,
-        final, H, W,
-        paste_x0, paste_y0,
-        crop_x0, crop_y0
-):
-    cx = W / 2
-    cy = H / 2
-    x_maskB = (xB_aligned - final["tx"] - cx) / final["scale"] + cx
-    y_maskB = (yB_aligned - final["ty"] - cy) / final["scale"] + cy
-    x_raw = (x_maskB - paste_x0) + crop_x0
-    y_raw = (y_maskB - paste_y0) + crop_y0
-    return x_raw, y_raw
+def aligned_to_he_mask_img(x_aligned, y_aligned,
+                           final, H, W,
+                           paste_x0, paste_y0,
+                           base_scale):
+    """
+    x_aligned, y_aligned: in aligned canvas (same as maskA space)
+    final: dict with {"scale","tx","ty"} applied to maskB (scaled+pad canvas) -> aligned
+    paste_x0,y0: where scaled HE mask was pasted into canvas
+    base_scale: scale used to create scaled HE mask from original HE mask
 
-def iou(A, B):
-    inter = np.sum((A > 0) & (B > 0))
-    uni = np.sum((A > 0) | (B > 0))
-    return inter / (uni + 1e-6)
+    Returns:
+      x_he_mask, y_he_mask in ORIGINAL HE mask pixel coordinates (maskB_raw coords)
+    """
+    # 1) invert final warp: aligned -> (scaled+pad canvas) coords
+    s = float(final["scale"])
+    tx = float(final["tx"])
+    ty = float(final["ty"])
+
+    # warp() does: x' = s*x + tx, y' = s*y + ty  (around center) in your implementation
+    # BUT your warp uses cv2.getRotationMatrix2D(center, 0, scale) which scales around center.
+    # So inverse must also be center-aware.
+
+    cx = W // 2
+    cy = H // 2
+
+    # forward: [x';y'] = s*([x;y]-[cx;cy]) + [cx;cy] + [tx;ty]
+    # inverse: [x;y] = ([x';y']-[tx;ty]-[cx;cy])/s + [cx;cy]
+    x_canvas = (x_aligned - tx - cx) / s + cx
+    y_canvas = (y_aligned - ty - cy) / s + cy
+
+    # 2) remove padding offset: canvas -> scaled HE mask coords
+    x_scaled = x_canvas - paste_x0
+    y_scaled = y_canvas - paste_y0
+
+    # 3) undo base scale: scaled HE mask -> original HE mask coords
+    x_raw = x_scaled / base_scale
+    y_raw = y_scaled / base_scale
+
+    return float(x_raw), float(y_raw)
+
+def clipped_iou(A, B):
+    Afg = (A > 0)
+    Bfg = (B > 0)
+    inter = np.sum(Afg & Bfg)
+    union = np.sum(Afg | Bfg)
+    return float(inter) / float(union + 1e-6)
 
 
 def downsample(mask, ds):
@@ -164,42 +152,46 @@ def downsample(mask, ds):
 # ==================================================
 # Parallel Stage 1 helpers
 # ==================================================
-def eval_one(s, tx, ty, A, B, H, W):
-    B_s = cv2.resize(B, None, fx=s, fy=s, interpolation=cv2.INTER_NEAREST)
-    B_s, _, _, _, _ = pad_or_crop(B_s, (H, W))
-    B_st = warp(B_s, 1.0, tx, ty, (H, W))
-    score = iou(A, B_st)
-    return score, s, tx, ty
-
-def coarse_search_ds_parallel_cached(maskA, maskB,
-                                     ds=4,
-                                     scale_range=(1.3, 2.0),
-                                     scale_step=0.02,
-                                     shift_range=50,
-                                     shift_step=5,
-                                     n_jobs=None):
+def coarse_search_ds_parallel_cached(
+    maskA, maskB,
+    ds=4,
+    scale_range=(0.9, 1.8),
+    scale_step=0.04,
+    shift_frac=0.5,        # NEW: fraction of image size
+    shift_step_frac=0.05,  # NEW
+    n_jobs=None,
+):
     if n_jobs is None:
         n_jobs = max(cpu_count() - 1, 1)
 
+    # ---- ds-space masks ----
     A = downsample(maskA, ds)
     B = downsample(maskB, ds)
-    H, W = A.shape
+    Hds, Wds = A.shape
 
-    # ---- cache B_s_padded for each scale (huge speedup) ----
+    # ---- compute shift range from fraction (FULL-RES semantics) ----
+    H0, W0 = maskA.shape
+    L = min(H0, W0)
+
+    shift_range_px = int(round(shift_frac * L))
+    shift_step_px  = max(1, int(round(shift_step_frac * L)))
+
+    shift_range_ds = max(1, shift_range_px // ds)
+    shift_step_ds  = max(1, shift_step_px  // ds)
+
+    shifts = list(range(-shift_range_ds, shift_range_ds + 1, shift_step_ds))
+
+    # ---- scales ----
     scales = np.arange(scale_range[0], scale_range[1] + 1e-9, scale_step)
-    B_cache = {}
-    for s in scales:
-        B_s = cv2.resize(B, None, fx=s, fy=s, interpolation=cv2.INTER_NEAREST)
-        B_s, _, _, _, _ = pad_or_crop(B_s, (H, W))
-        B_cache[float(s)] = B_s
 
-    shifts = list(range(-shift_range, shift_range + 1, shift_step))
+    # ---- cache scaled B (clipped) ----
+    B_cache = {float(s): warp(B, float(s), 0, 0, (Hds, Wds)) for s in scales}
 
-    def eval_one_cached(s, tx, ty):
+    def eval_one_cached(s, tx_ds, ty_ds):
         B_s = B_cache[float(s)]
-        B_st = warp(B_s, 1.0, tx, ty, (H, W))
-        score = iou(A, B_st)
-        return score, s, tx, ty
+        B_st = warp(B_s, 1.0, tx_ds, ty_ds, (Hds, Wds))
+        score = clipped_iou(A, B_st)
+        return score, float(s), int(tx_ds), int(ty_ds)
 
     tasks = (
         delayed(eval_one_cached)(s, tx, ty)
@@ -208,57 +200,101 @@ def coarse_search_ds_parallel_cached(maskA, maskB,
         for ty in shifts
     )
 
-    results = Parallel(n_jobs=n_jobs, backend="loky", verbose=0)(tasks)
-    best_score, best_s, best_tx, best_ty = max(results, key=lambda x: x[0])
-
-    return {
-        "scale": float(best_s),
-        "tx": float(best_tx * ds),
-        "ty": float(best_ty * ds),
-        "score_ds": float(best_score)
-    }
-
-def coarse_search_ds_parallel(maskA, maskB,
-                              ds=4,
-                              scale_range=(1.3, 2.0),
-                              scale_step=0.05,
-                              shift_range=60,
-                              shift_step=10,
-                              n_jobs=None):
-
-    if n_jobs is None:
-        n_jobs = max(cpu_count() - 1, 1)
-
-    A = downsample(maskA, ds)
-    B = downsample(maskB, ds)
-    H, W = A.shape
-
-    scales = np.arange(scale_range[0], scale_range[1] + 1e-9, scale_step)
-    shifts = range(-shift_range, shift_range + 1, shift_step)
-
-    tasks = (
-        delayed(eval_one)(s, tx, ty, A, B, H, W)
-        for s in scales
-        for tx in shifts
-        for ty in shifts
-    )
-
-    results = Parallel(
-        n_jobs=n_jobs,
-        backend="loky",
-        verbose=0
-    )(tasks)
-
-    best_score, best_s, best_tx, best_ty = max(results, key=lambda x: x[0])
+    results = Parallel(n_jobs=n_jobs, backend="loky")(tasks)
+    best_score, best_s, best_tx_ds, best_ty_ds = max(results, key=lambda x: x[0])
 
     return {
         "scale": best_s,
-        "tx": best_tx * ds,
-        "ty": best_ty * ds,
-        "score_ds": best_score
+        "tx": int(best_tx_ds * ds),   # FULL-RES pixels
+        "ty": int(best_ty_ds * ds),
+        "score_ds": float(best_score),
+        "shift_frac": shift_frac,
+        "shift_step_frac": shift_step_frac,
     }
 
+def refine_full(
+    maskA, maskB, init,
+    scale_range_frac=0.02,   # ±2% around s0
+    scale_step_frac=0.005,   # 0.5% step
+    shift_range_frac=0.05,   # ±5% of min(H,W) around (tx0,ty0)
+    shift_step_frac=0.01,    # 1% of min(H,W) step
+    n_jobs=None
+):
+    """
+    Local refine around coarse result, with % semantics for BOTH scale and shift.
 
+    scale:
+      s in s0 * [1 - scale_range_frac, 1 + scale_range_frac]
+      step = scale_step_frac (relative)
+
+    shift:
+      tx in [tx0 - shift_range_px, tx0 + shift_range_px]
+      where shift_range_px = shift_range_frac * min(H,W)
+      step = shift_step_px = shift_step_frac * min(H,W)
+
+    All shifts are in FULL-RES pixels.
+    """
+    if n_jobs is None:
+        n_jobs = max(cpu_count() - 1, 1)
+
+    H, W = maskA.shape
+    L = min(H, W)
+
+    s0  = float(init["scale"])
+    tx0 = int(round(init["tx"]))
+    ty0 = int(round(init["ty"]))
+
+    # -----------------------------
+    # Scale grid (relative %)
+    # -----------------------------
+    n_scale = int(np.floor(scale_range_frac / scale_step_frac))
+    rel_factors = np.linspace(
+        1.0 - n_scale * scale_step_frac,
+        1.0 + n_scale * scale_step_frac,
+        2 * n_scale + 1
+    )
+    scales = [float(s0 * r) for r in rel_factors]
+
+    # -----------------------------
+    # Shift grid (relative % of image size)
+    # -----------------------------
+    shift_range_px = int(round(shift_range_frac * L))
+    shift_step_px  = max(1, int(round(shift_step_frac * L)))
+
+    shifts_x = range(tx0 - shift_range_px, tx0 + shift_range_px + 1, shift_step_px)
+    shifts_y = range(ty0 - shift_range_px, ty0 + shift_range_px + 1, shift_step_px)
+
+    # -----------------------------
+    # Cache scaled B for speed
+    # -----------------------------
+    B_scale_cache = {s: warp(maskB, s, 0, 0, (H, W)) for s in scales}
+
+    def refine_eval_one(s, tx, ty):
+        B_s = B_scale_cache[s]
+        B_st = warp(B_s, 1.0, tx, ty, (H, W))  # shift only
+        score = clipped_iou(maskA, B_st)
+        return score, s, int(tx), int(ty)
+
+    tasks = (
+        delayed(refine_eval_one)(s, tx, ty)
+        for s in scales
+        for tx in shifts_x
+        for ty in shifts_y
+    )
+
+    results = Parallel(n_jobs=n_jobs, backend="loky", verbose=0)(tasks)
+    score, s, tx, ty = max(results, key=lambda x: x[0])
+
+    return {
+        "scale": float(s),
+        "tx": int(tx),
+        "ty": int(ty),
+        "score": float(score),
+        "scale_range_frac": float(scale_range_frac),
+        "scale_step_frac": float(scale_step_frac),
+        "shift_range_frac": float(shift_range_frac),
+        "shift_step_frac": float(shift_step_frac),
+    }
 # ==================================================
 # Stage 2: local refine on full resolution (unchanged)
 # ==================================================
@@ -269,43 +305,9 @@ def refine_eval_one(args):
                      interpolation=cv2.INTER_NEAREST)
     B_s, _, _, _, _ = pad_or_crop(B_s, (H, W))
     B_st = warp(B_s, 1.0, tx, ty, (H, W))
-    score = iou(maskA, B_st)
+    score = clipped_iou(maskA, B_st)
     return score, s, tx, ty
 
-def refine_full(maskA, maskB, init,
-                          shift_delta=20,
-                          shift_step=5,
-                          n_jobs=None):
-
-    if n_jobs is None:
-        n_jobs = max(cpu_count() - 1, 1)
-
-    H, W = maskA.shape
-    s0 = float(init["scale"])
-    tx0 = int(round(init["tx"]))
-    ty0 = int(round(init["ty"]))
-
-    scales = [s0 * 0.985, s0, s0 * 1.015]
-    shifts_x = range(tx0 - shift_delta, tx0 + shift_delta + 1, shift_step)
-    shifts_y = range(ty0 - shift_delta, ty0 + shift_delta + 1, shift_step)
-
-    tasks = [
-        (s, tx, ty, maskA, maskB, H, W)
-        for s in scales
-        for tx in shifts_x
-        for ty in shifts_y
-    ]
-
-    results = Parallel(
-        n_jobs=n_jobs,
-        backend="loky",
-        verbose=0
-    )(
-        delayed(refine_eval_one)(t) for t in tasks
-    )
-
-    score, s, tx, ty = max(results, key=lambda x: x[0])
-    return {"scale": s, "tx": tx, "ty": ty, "score": score}
 def find_isolated_components(mask, min_area=10, radii=(3,5,7), area_iqr_k=1.5):
     H, W = mask.shape
     x_lo, x_hi = W/6, 5*W/6
@@ -526,31 +528,27 @@ if __name__ == "__main__":
         maskA = read_mask(dapi_path)
         maskA = apply_orientation_to_tile(maskA, case_id)
         maskB_raw = read_mask(he_path)
-        maskB, paste_x0, paste_y0, crop_x0, crop_y0 = pad_or_crop(maskB_raw, maskA.shape)
+        maskB, base_scale, paste_x0, paste_y0 = scale_and_pad(maskB_raw, maskA.shape)
+        crop_x0, crop_y0 = 0, 0  # keep for compatibility if other code expects it
         # -------- Stage 1 (parallel coarse) --------
-        # coarse = coarse_search_ds_parallel(
-        #     maskA, maskB,
-        #     ds=4,
-        #     scale_range=(1.3, 2.0),
-        #     scale_step=0.02,
-        #     shift_range=50,  # <- 注意这里传的是“ds坐标”范围
-        #     shift_step=5  # <- ds坐标步长
-        # )
+        tile_size = maskA.shape[0]
         coarse = coarse_search_ds_parallel_cached(
             maskA, maskB,
             ds=4,
-            scale_range=(1.3, 2.0),
-            scale_step=0.02,
-            shift_range=50,
-            shift_step=5
+            scale_range=(0.8, 1.8),
+            scale_step=0.04,
+            shift_frac=0.5,
+            shift_step_frac=0.05
         )
         print("  Coarse:", coarse)
         # -------- Stage 2 (parallel refine) --------
         final = refine_full(
             maskA, maskB,
             coarse,
-            shift_delta=25,
-            shift_step=3
+            scale_range_frac=0.02,
+            scale_step_frac=0.005,
+            shift_range_frac=0.05,
+            shift_step_frac=0.01
         )
         print("  Final:", final)
         # -------- Final warp --------
@@ -582,11 +580,17 @@ if __name__ == "__main__":
             B_iso_mask,
             min_area=60,
             min_sym_cov=0.4,
-            top_k=3,
+            top_k=5,
             debug=True
         )
         if len(pairs) == 0:
             print("  [DEBUG] No valid A/B pairs found after filtering")
+        elif len(pairs) < 2:
+            print(f"  [SKIP] Only {len(pairs)} matching nuclei (need >=2). Discard tile {prefix}.")
+            t_patch_end = time.perf_counter()
+            print(f"[TIME] {prefix}: {t_patch_end - t_patch_start:.2f} sec")
+            print(f"[PROGRESS] TILES {idx}/{total}", flush=True)
+            continue
         for p in pairs:
             H, W = maskA.shape
             xA_aligned, yA_aligned = p["A_centroid"]
@@ -602,7 +606,7 @@ if __name__ == "__main__":
                 xB_aligned, yB_aligned,
                 final, H, W,
                 paste_x0, paste_y0,
-                crop_x0, crop_y0
+                base_scale
             )
             xB_img = xB_mask / HE_MASK_SCALE
             yB_img = yB_mask / HE_MASK_SCALE
