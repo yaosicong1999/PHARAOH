@@ -79,11 +79,6 @@ def show_nucleus_patch_in_memory(
 
     # ---------- Utils ----------
     def resolve_path(tile_name, nucleus_name, kind, show_overlay):
-        """
-        kind: "dapi_img", "dapi_mask", "he_img", "he_mask"
-        show_overlay=True/False 决定优先 overlay or plain
-        同时 dapi_img 会根据 dapi_mode 切换 LUT / RAW
-        """
 
         # ---- DAPI image filename depends on mode ----
         if kind == "dapi_img":
@@ -178,7 +173,6 @@ def show_nucleus_patch_in_memory(
         top.title(title)
         top.configure(bg="black")
 
-        # ---- 计算缩放到屏幕合适大小 ----
         screen_w = top.winfo_screenwidth()
         screen_h = top.winfo_screenheight()
 
@@ -186,15 +180,12 @@ def show_nucleus_patch_in_memory(
         max_w = int(screen_w * 0.85)
         max_h = int(screen_h * 0.85)
 
-        # ---- 优先用整数倍像素放大（1像素->pixel_zoom×pixel_zoom）----
-        fit_scale = min(max_w / W, max_h / H)  # 屏幕允许的最大缩放
+        fit_scale = min(max_w / W, max_h / H)
         scale = min(float(pixel_zoom), float(fit_scale))
-        # 保证至少 1.0（如果你想在屏幕太小情况下也允许缩小，就把 max 去掉）
         scale = max(scale, 1.0)
 
-        # 为了让“一个像素变成整块”，尽量用整数倍（<= fit_scale）
         scale_int = int(np.floor(scale))
-        scale = max(scale_int, 1)  # 最终用整数倍缩放
+        scale = max(scale_int, 1)
 
         disp_w = int(W * scale)
         disp_h = int(H * scale)
@@ -353,11 +344,83 @@ def show_nucleus_patch_in_memory(
 
         return pad_to_fixed_size(Image.fromarray(img))
 
-    def calculate_affine_ransac():
+    # def calculate_affine_ransac():
+    #     """
+    #     Fit affine from dapi_centroid_global -> he_centroid_global using RANSAC.
+    #     Uses nuclei_centroids_global.json under run_dir.
+    #     Saves to: RUN_DIR/dapi_to_he_affine_level0.json
+    #     """
+    #     try:
+    #         run_dir = Path(output_folder).resolve().parent  # nuclei_dir/.. = RUN_DIR
+    #         info_path = Path(output_folder) / "nuclei_centroids_global.json"
+    #         if not info_path.exists():
+    #             messagebox.showerror("Missing file", f"Cannot find:\n{info_path}")
+    #             return
+    #
+    #         with open(info_path, "r") as f:
+    #             nuclei_info = json.load(f)
+    #
+    #         if len(nuclei_info) < 3:
+    #             messagebox.showerror("Not enough points", "Need at least 3 nucleus pairs to estimate affine.")
+    #             return
+    #
+    #         # src: DAPI, dst: HE
+    #         src = np.array([x["dapi_centroid_global"] for x in nuclei_info], dtype=np.float32)
+    #         dst = np.array([x["he_centroid_global"] for x in nuclei_info], dtype=np.float32)
+    #
+    #         # ---- RANSAC affine ----
+    #         # NOTE: threshold can be tuned. 3~10 px usually OK depending on noise.
+    #         M, inliers = cv2.estimateAffine2D(
+    #             src, dst,
+    #             method=cv2.RANSAC,
+    #             ransacReprojThreshold=5.0,
+    #             maxIters=5000,
+    #             confidence=0.99,
+    #             refineIters=10
+    #         )
+    #
+    #         if M is None:
+    #             messagebox.showerror("RANSAC failed", "cv2.estimateAffine2D returned None. Try adjusting threshold or check point order.")
+    #             return
+    #
+    #         inlier_count = int(inliers.sum()) if inliers is not None else 0
+    #         total = len(nuclei_info)
+    #
+    #         # 2x3 -> 3x3
+    #         H = np.eye(3, dtype=float)
+    #         H[:2, :3] = M
+    #
+    #         out = {
+    #             "from": "dapi_level0",
+    #             "to": "he_level0",
+    #             "method": "cv2.estimateAffine2D(RANSAC)",
+    #             "ransacReprojThreshold": 5.0,
+    #             "maxIters": 5000,
+    #             "confidence": 0.99,
+    #             "refineIters": 10,
+    #             "num_points": total,
+    #             "num_inliers": inlier_count,
+    #             "affine_2x3": M.tolist(),
+    #             "affine_3x3": H.tolist(),
+    #         }
+    #
+    #         out_path = run_dir / "dapi_to_he_affine_level0.json"
+    #         with open(out_path, "w") as f:
+    #             json.dump(out, f, indent=2)
+    #
+    #         messagebox.showinfo(
+    #             "Affine estimated",
+    #             f"Saved:\n{out_path}\n\nInliers: {inlier_count}/{total}\n\nM (2x3):\n{M}"
+    #         )
+    #
+    #     except Exception as e:
+    #         messagebox.showerror("Error", str(e))
+
+    def calculate_perspective_ransac():
         """
-        Fit affine from dapi_centroid_global -> he_centroid_global using RANSAC.
+        Fit homography (perspective) from dapi_centroid_global -> he_centroid_global using RANSAC.
         Uses nuclei_centroids_global.json under run_dir.
-        Saves to: RUN_DIR/dapi_to_he_affine_level0.json
+        Saves to: RUN_DIR/dapi_to_he_homography_level0.json
         """
         try:
             run_dir = Path(output_folder).resolve().parent  # nuclei_dir/.. = RUN_DIR
@@ -369,62 +432,79 @@ def show_nucleus_patch_in_memory(
             with open(info_path, "r") as f:
                 nuclei_info = json.load(f)
 
-            if len(nuclei_info) < 3:
-                messagebox.showerror("Not enough points", "Need at least 3 nucleus pairs to estimate affine.")
+            if len(nuclei_info) < 4:
+                messagebox.showerror("Not enough points",
+                                     "Need at least 4 nucleus pairs to estimate homography (perspective).")
                 return
 
             # src: DAPI, dst: HE
             src = np.array([x["dapi_centroid_global"] for x in nuclei_info], dtype=np.float32)
             dst = np.array([x["he_centroid_global"] for x in nuclei_info], dtype=np.float32)
 
-            # ---- RANSAC affine ----
-            # NOTE: threshold can be tuned. 3~10 px usually OK depending on noise.
-            M, inliers = cv2.estimateAffine2D(
+            # ---- RANSAC homography ----
+            # ransacReprojThreshold: tune like 3~15 px depending on centroid noise / resolution mismatch
+            ransac_thr = 8.0
+            maxIters = 10000
+            confidence = 0.995
+
+            H, inliers = cv2.findHomography(
                 src, dst,
                 method=cv2.RANSAC,
-                ransacReprojThreshold=5.0,
-                maxIters=5000,
-                confidence=0.99,
-                refineIters=10
+                ransacReprojThreshold=ransac_thr,
+                maxIters=maxIters,
+                confidence=confidence
             )
 
-            if M is None:
-                messagebox.showerror("RANSAC failed", "cv2.estimateAffine2D returned None. Try adjusting threshold or check point order.")
+            if H is None:
+                messagebox.showerror(
+                    "RANSAC failed",
+                    "cv2.findHomography returned None. Try adjusting threshold or check point order / outliers."
+                )
                 return
 
             inlier_count = int(inliers.sum()) if inliers is not None else 0
             total = len(nuclei_info)
 
-            # 2x3 -> 3x3
-            H = np.eye(3, dtype=float)
-            H[:2, :3] = M
+            # Optional: compute median reprojection error on inliers (for quick sanity check)
+            # (keep lightweight; can remove if you want)
+            src_h = np.concatenate([src, np.ones((len(src), 1), dtype=np.float32)], axis=1)  # Nx3
+            proj = (H @ src_h.T).T  # Nx3
+            proj_xy = proj[:, :2] / np.clip(proj[:, 2:3], 1e-8, None)
+            err = np.linalg.norm(proj_xy - dst, axis=1)
+            if inliers is not None:
+                err_in = err[inliers.ravel().astype(bool)]
+                med_err = float(np.median(err_in)) if len(err_in) else float("nan")
+                mean_err = float(np.mean(err_in)) if len(err_in) else float("nan")
+            else:
+                med_err = float(np.median(err))
+                mean_err = float(np.mean(err))
 
             out = {
                 "from": "dapi_level0",
                 "to": "he_level0",
-                "method": "cv2.estimateAffine2D(RANSAC)",
-                "ransacReprojThreshold": 5.0,
-                "maxIters": 5000,
-                "confidence": 0.99,
-                "refineIters": 10,
-                "num_points": total,
-                "num_inliers": inlier_count,
-                "affine_2x3": M.tolist(),
-                "affine_3x3": H.tolist(),
+                "method": "cv2.findHomography(RANSAC)",
+                "ransacReprojThreshold": float(ransac_thr),
+                "maxIters": int(maxIters),
+                "confidence": float(confidence),
+                "num_points": int(total),
+                "num_inliers": int(inlier_count),
+                "homography_3x3": H.tolist(),
+                "inlier_median_reproj_error_px": med_err,
+                "inlier_mean_reproj_error_px": mean_err,
             }
 
-            out_path = run_dir / "dapi_to_he_affine_level0.json"
+            out_path = run_dir / "dapi_to_he_homography_level0.json"
             with open(out_path, "w") as f:
                 json.dump(out, f, indent=2)
 
             messagebox.showinfo(
-                "Affine estimated",
-                f"Saved:\n{out_path}\n\nInliers: {inlier_count}/{total}\n\nM (2x3):\n{M}"
+                "Homography estimated",
+                f"Saved:\n{out_path}\n\nInliers: {inlier_count}/{total}\n"
+                f"Median inlier reproj err: {med_err:.2f}px\n\nH (3x3):\n{H}"
             )
 
         except Exception as e:
             messagebox.showerror("Error", str(e))
-
     # ---------- Core ----------
     def update_images():
         i = idx[0]
@@ -514,7 +594,7 @@ def show_nucleus_patch_in_memory(
         mid_btn_frame,
         text="🧮 Calculate alignment matrix",
         style="Gallery.TButton",
-        command=calculate_affine_ransac
+        command=calculate_perspective_ransac
     )
 
     btn_toggle = ttk.Button(
