@@ -4,6 +4,7 @@ import tifffile
 import cv2
 import zarr
 from PIL import Image
+import math
 from skimage import color, exposure
 from skimage.morphology import disk, opening, closing, remove_small_objects, remove_small_holes
 from skimage.morphology import local_maxima
@@ -13,9 +14,9 @@ from skimage.transform import rescale
 from PIL import Image
 from pathlib import Path
 import matplotlib.pyplot as plt
+Image.MAX_IMAGE_PIXELS = None  # disable the check
 
-
-def read_image(path, keep_16bit=True, series=0, page=0, level=None,
+def read_image2(path, keep_16bit=True, series=0, page=0, level=None,
                min_size=1000, max_size=2000):
     """
     Reads an image from path. Supports OME-TIFF with subIFDs, regular TIFF, and standard image formats.
@@ -33,7 +34,116 @@ def read_image(path, keep_16bit=True, series=0, page=0, level=None,
     filename = path.lower()
     selected_level = None
 
-    if filename.endswith(".ome.tif"):
+    if filename.endswith((".ome.tif", ".ome.tiff")):
+        with tifffile.TiffFile(path) as tif:
+            print("now working on .ome.tif")
+            img_series_s = tif.series[series]
+            img_pages = list(img_series_s.pages)
+            img_axes = (img_series_s.axes or "").upper()
+            if len(img_pages) == 0:
+                raise ValueError(f"No pages found in series {series} for {path}")
+            elif len(img_pages) < page + 1:
+                raise ValueError(f"Not enough pages found in series {series} for {path}")
+            else:
+               img_page_p = img_series_s.pages[page]
+               print(f"Selecting series {series} page {page}")
+            all_pages = [img_page_p] + list(img_page_p.pages)
+            print("Full resolution:", all_pages[0].shape)
+            for j, p in enumerate(all_pages):
+                print(f"  Level {j}: shape={p.shape}")
+
+            if img_axes == "YXS":
+                if all_pages[0].shape[2] == 3:
+                    print("working on YXS axes and we have 3 channels. Supposedly working on RGB H&E image.")
+                else:
+                    raise ValueError("working on YXS axes but we DO NOT have 3 channels. It does not seem to be an RGB H&E image.")
+            elif img_axes == "CYX":
+                if all_pages[0].ndim == 2:
+                    print("working on CYX axes and we have 1 channels. Supposedly working on DAPI image.")
+                elif all_pages[0].ndim == 3:
+                    print("working on CYX axes and we have multiple channels. Supposedly working on a multi-channel fluorescence image.")
+                    print("will select the first channel for DAPI by default.")
+                else:
+                    raise ValueError("This multi-channel seems to be neither DAPI image nor multi-channel fluorescence image")
+
+
+
+
+
+
+
+
+
+
+
+
+
+            if level is None:
+                selected_level = 0
+                for j, p in enumerate(pages):
+                    h, w = p.shape[:2]
+                    if min_size <= min(h, w) <= max_size:
+                        selected_level = j
+                        break
+                level = selected_level
+                print(f"Auto-selected level {level} with shape {pages[level].shape}")
+            else:
+                selected_level = level
+                print(f"Selected input level {level} with shape {pages[level].shape}")
+
+            img = pages[level].asarray()
+
+    else:
+        # Regular TIFF or standard image
+        img = tifffile.imread(path) if filename.endswith((".tif", ".tiff")) else np.array(Image.open(path))
+        h, w = img.shape[:2]
+        print(f"Original image shape: {img.shape}")
+
+        # Compute pseudo-level (number of 2x downsamples)
+        pseudo_level = 0
+        target_h, target_w = h, w
+        while min(target_h, target_w) > max_size:
+            target_h //= 2
+            target_w //= 2
+            pseudo_level += 1
+        # Only downsample if needed
+        if pseudo_level > 0:
+            img = cv2.resize(img, (target_w, target_h), interpolation=cv2.INTER_AREA)
+            print(f"Downsampled x(2^{pseudo_level}) → shape {img.shape}")
+        else:
+            print("No downsampling needed (pseudo-level 0)")
+        selected_level = pseudo_level
+
+    # Convert grayscale to RGB
+    if img.ndim == 2:
+        img = np.stack([img] * 3, axis=-1)
+
+    # Optional 8-bit conversion
+    if not keep_16bit and img.dtype != np.uint8:
+        img_min, img_max = img.min(), img.max()
+        if img_max > img_min:
+            img = ((img - img_min) / (img_max - img_min) * 255).astype(np.uint8)
+        else:
+            img = np.zeros_like(img, dtype=np.uint8)
+
+    return img, selected_level
+
+
+def read_image(path, keep_16bit=True, series=0, page=0, level=None,
+               min_size=1000, max_size=2000):
+    """
+    Reads an image from path. Supports OME-TIFF with subIFDs, regular TIFF, and standard image formats.
+    Auto-selects a pyramid level (or downsample factor) so that min(image_dim) is between min_size and max_size.
+
+    Returns:
+        img: np.ndarray
+        selected_level: int or None (OME-TIFF level or pseudo-level for non-pyramidal images)
+    """
+
+    filename = path.lower()
+    selected_level = None
+
+    if filename.endswith((".ome.tif", ".ome.tiff")):
         with tifffile.TiffFile(path) as tif:
             img_series = tif.series[series]
             img_page = img_series.pages[page]
@@ -64,23 +174,30 @@ def read_image(path, keep_16bit=True, series=0, page=0, level=None,
         img = tifffile.imread(path) if filename.endswith((".tif", ".tiff")) else np.array(Image.open(path))
         h, w = img.shape[:2]
         print(f"Original image shape: {img.shape}")
-
-        # Compute pseudo-level (number of 2x downsamples)
-        pseudo_level = 0
-        target_h, target_w = h, w
-        while min(target_h, target_w) > max_size:
-            target_h //= 2
-            target_w //= 2
-            pseudo_level += 1
-
-        # Only downsample if needed
-        if pseudo_level > 0:
-            img = cv2.resize(img, (target_w, target_h), interpolation=cv2.INTER_AREA)
-            print(f"Downsampled x(2^{pseudo_level}) → shape {img.shape}")
+        # decide level
+        if level is None:
+            # smallest k s.t. min(h,w)/2^k <= max_size  -> k = ceil(log2(min/max))
+            m = min(h, w)
+            if m <= max_size:
+                used_level = 0
+            else:
+                used_level = int(math.ceil(math.log2(m / float(max_size))))
         else:
-            print("No downsampling needed (pseudo-level 0)")
+            used_level = int(level)
+            if used_level < 0:
+                raise ValueError(f"level must be >= 0, got {used_level}")
+        # compute target size (clamp to >= 1)
+        scale = 2 ** used_level
+        target_h = max(1, h // scale)
+        target_w = max(1, w // scale)
+        # resize if needed
+        if used_level > 0 and (target_h != h or target_w != w):
+            img = cv2.resize(img, (target_w, target_h), interpolation=cv2.INTER_AREA)
+            print(f"Downsampled x(2^{used_level}) → shape {img.shape}")
+        else:
+            print("No downsampling needed (level 0)")
 
-        selected_level = pseudo_level
+        selected_level = used_level
 
     # Convert grayscale to RGB
     if img.ndim == 2:
@@ -148,14 +265,14 @@ def open_ome_level_lazy(path, series=0, level=0):
     print(f"[INFO] ome-tiff lazy array's shape={arr.shape}")
     return tif, arr
 
-def read_he_patch(he_z, x0, y0, w, h):
-    if he_z.ndim == 3 and he_z.shape[-1] in (3, 4):  # Y,X,C
-        return he_z[y0:y0+h, x0:x0+w, :]
-    elif he_z.ndim == 3:  # C,Y,X
-        p = he_z[:, y0:y0+h, x0:x0+w]
+def read_crop_patch(img_z, x0, y0, w, h):
+    if img_z.ndim == 3 and img_z.shape[-1] in (3, 4):  # Y,X,C
+        return img_z[y0:y0+h, x0:x0+w, :]
+    elif img_z.ndim == 3:  # C,Y,X
+        p = img_z[:, y0:y0+h, x0:x0+w]
         return np.moveaxis(p, 0, -1)
     else:  # grayscale
-        return he_z[y0:y0+h, x0:x0+w]
+        return img_z[y0:y0+h, x0:x0+w]
 
 def extract_hematoxylin_channel(img):
     img_float = img.astype(np.float32) + 1.0
@@ -195,16 +312,34 @@ def dapi_to_lut_rgb(dapi_img_local, lut_table, threshold=300):
     rgb = lut_table[scaled]
     return rgb
 
+def upsample_tile(tile, scale=2):
+    """
+    tile:
+      - RGB: (H, W, 3)
+      - DAPI u8/u16: (H, W)
+    """
+    if tile.ndim == 2:
+        # grayscale (DAPI)
+        up = rescale(
+            tile,
+            scale=scale,
+            anti_aliasing=True,
+            preserve_range=True
+        )
+    elif tile.ndim == 3:
+        # RGB
+        up = rescale(
+            tile,
+            scale=(scale, scale),
+            anti_aliasing=True,
+            channel_axis=2,
+            preserve_range=True
+        )
+    else:
+        raise ValueError(f"Unsupported shape: {tile.shape}")
 
-def upsample_tile(tile_rgb, scale=2):
-    up_tile = rescale(
-        tile_rgb,
-        scale=(scale, scale),
-        anti_aliasing=True,
-        channel_axis=2,
-        preserve_range=True
-    ).astype(np.uint8)
-    return up_tile
+    return up.astype(tile.dtype)
+
 
 # --- Step 1: Stain separation (Macenko normalization) ---
 def normalizeStaining(img, Io=240, alpha=1, beta=0.15):
@@ -494,3 +629,111 @@ def plot_cell_centroid(
         plt.close(fig)
     else:
         plt.show()
+
+def fill_holes_binary(mask255: np.ndarray) -> np.ndarray:
+    """
+    Fill holes inside foreground (mask is 0/255).
+    Robust even when outside background is split into multiple components.
+    """
+    mask255 = (mask255 > 0).astype(np.uint8) * 255
+    h, w = mask255.shape[:2]
+
+    # background image: bg=255, fg=0
+    bg = (mask255 == 0).astype(np.uint8) * 255
+
+    flood = bg.copy()
+    ffmask = np.zeros((h + 2, w + 2), np.uint8)
+
+    # floodFill ALL border background components to 0 (mark as outside)
+    # top/bottom rows
+    for x in range(w):
+        if flood[0, x] == 255:
+            cv2.floodFill(flood, ffmask, (x, 0), 0)
+        if flood[h - 1, x] == 255:
+            cv2.floodFill(flood, ffmask, (x, h - 1), 0)
+
+    # left/right cols
+    for y in range(h):
+        if flood[y, 0] == 255:
+            cv2.floodFill(flood, ffmask, (0, y), 0)
+        if flood[y, w - 1] == 255:
+            cv2.floodFill(flood, ffmask, (w - 1, y), 0)
+
+    # remaining bg==255 are holes
+    holes = (flood == 255)
+    out = mask255.copy()
+    out[holes] = 255
+    return out
+
+def remove_small_components(mask255: np.ndarray, min_area: int, connectivity: int = 8) -> tuple[np.ndarray, dict]:
+    """Remove connected components with area < min_area. mask is 0/255."""
+    bw = (mask255 > 0).astype(np.uint8)
+    num, labels, stats, _ = cv2.connectedComponentsWithStats(bw, connectivity=connectivity)
+
+    keep = np.zeros_like(bw, dtype=np.uint8)
+    kept_areas = []
+    for k in range(1, num):  # skip background
+        area = int(stats[k, cv2.CC_STAT_AREA])
+        if area >= int(min_area):
+            keep[labels == k] = 1
+            kept_areas.append(area)
+
+    out = (keep * 255).astype(np.uint8)
+    info = {
+        "cc_total": int(num - 1),
+        "cc_kept": int(len(kept_areas)),
+        "kept_area_min": int(min(kept_areas)) if kept_areas else None,
+        "kept_area_median": int(np.median(kept_areas)) if kept_areas else None,
+        "kept_area_max": int(max(kept_areas)) if kept_areas else None,
+    }
+    return out, info
+
+
+def mask_to_rgba(mask_bgr, color_rgb=(255, 0, 0), alpha=0.6):
+    """
+    mask_bgr: (H,W,3) uint8, foreground > 0
+    color_rgb: foreground color
+    alpha: 0~1
+
+    return: rgba float32 in [0,1]
+    """
+    if mask_bgr.ndim == 3:
+        mask = mask_bgr[..., 0] > 0
+    else:
+        mask = mask_bgr > 0
+
+    h, w = mask.shape
+    rgba = np.zeros((h, w, 4), dtype=np.float32)
+
+    r, g, b = color_rgb
+    rgba[mask, 0] = r / 255.0
+    rgba[mask, 1] = g / 255.0
+    rgba[mask, 2] = b / 255.0
+    rgba[mask, 3] = alpha
+
+    return rgba
+
+
+def warp_mask(mask_bgr, H, out_shape):
+    return cv2.warpPerspective(
+        mask_bgr,
+        H,
+        out_shape,
+        flags=cv2.INTER_NEAREST,
+        borderMode=cv2.BORDER_CONSTANT,
+        borderValue=0
+    )
+
+
+def overlay_rgba_on_bgr(bg_bgr, fg_rgba):
+    """
+    bg_bgr: uint8 (H,W,3)
+    fg_rgba: float32 (H,W,4) in [0,1]
+    """
+    bg = bg_bgr.astype(np.float32) / 255.0
+    fg_rgb = fg_rgba[..., :3]
+    alpha = fg_rgba[..., 3:4]
+
+    out = bg * (1 - alpha) + fg_rgb * alpha
+    return (out * 255).astype(np.uint8)
+
