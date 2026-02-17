@@ -587,7 +587,7 @@ def save_he_tiles(
     h_mat,
     output_folder,
     rescale_factor=1.0,
-    margin_ratio=0.1,
+    margin_ratio=0.2,
     prefix="tile",
     start_index=0,
     debug_first_n=0,
@@ -669,23 +669,45 @@ def save_he_tiles(
     for i, p in enumerate(tiles, start=start_index):
         x0f, y0f, wf, hf = _tile_to_xywh(p)
 
-        # ---- margin in DAPI coords ----
-        mw = float(wf) * (1.0 + float(margin_ratio))
-        mh = float(hf) * (1.0 + float(margin_ratio))
-        x0c = float(x0f) - (mw - float(wf)) / 2.0
-        y0c = float(y0f) - (mh - float(hf)) / 2.0
-        x1c = x0c + mw
-        y1c = y0c + mh
+        # ==========================================
+        # A) DAPI tile bbox (unchanged)
+        # ==========================================
+        x0 = float(x0f)
+        y0 = float(y0f)
+        x1 = x0 + float(wf)
+        y1 = y0 + float(hf)
 
-        corners_dapi = np.array(
-            [[x0c, y0c],
-             [x1c, y0c],
-             [x1c, y1c],
-             [x0c, y1c]], dtype=float
-        )  # TL,TR,BR,BL in DAPI coords
+        corners_dapi_tile = np.array(
+            [[x0, y0],
+             [x1, y0],
+             [x1, y1],
+             [x0, y1]], dtype=float
+        )  # TL,TR,BR,BL
+
+        # ==========================================
+        # B) DAPI projection bbox (expanded for HE rectification)
+        #    margin_ratio=0.2 means 1.2x larger
+        # ==========================================
+        expand = 1.0 + float(margin_ratio)  # e.g. 1.2
+        cx = (x0 + x1) / 2.0
+        cy = (y0 + y1) / 2.0
+        half_w = (float(wf) / 2.0) * expand
+        half_h = (float(hf) / 2.0) * expand
+
+        x0p = cx - half_w
+        x1p = cx + half_w
+        y0p = cy - half_h
+        y1p = cy + half_h
+
+        corners_dapi_proj = np.array(
+            [[x0p, y0p],
+             [x1p, y0p],
+             [x1p, y1p],
+             [x0p, y1p]], dtype=float
+        )  # TL,TR,BR,BL for projection
 
         # ---- project to HE coords using homography ----
-        corners_h = np.hstack([corners_dapi, np.ones((4, 1), dtype=float)])  # (4,3)
+        corners_h = np.hstack([corners_dapi_proj, np.ones((4, 1), dtype=float)])  # (4,3)
         proj = (H @ corners_h.T).T  # (4,3)
         w = proj[:, 2:3]
         eps = 1e-9
@@ -713,7 +735,7 @@ def save_he_tiles(
 
         if debug_first_n and (i - start_index) < debug_first_n:
             print(f"[DEBUG] {key} mode={mode}")
-            print(" corners_dapi:\n", corners_dapi)
+            print(" corners_dapi:\n", corners_dapi_proj)
             print(" corners_he (pre-rescale):\n", corners_he)
             print(" corners_he_px_raw (he_rgb px):\n", corners_he_px_raw)
             print(" bbox unclamped:", (min_x, min_y, max_x-min_x, max_y-min_y))
@@ -799,8 +821,9 @@ def save_he_tiles(
             "rescale_factor": float(rescale_factor),
             "margin_ratio": float(margin_ratio),
             "case_id": int(case_id),
-            "dapi_corners": corners_dapi.tolist(),
-            "dapi_wh_margin": [float(mw), float(mh)],
+            "dapi_corners_tile": corners_dapi_tile.tolist(),  # 原 tile（不扩）
+            "dapi_corners_proj": corners_dapi_proj.tolist(),  # 用于投影到 HE 的扩张框
+            "proj_expand": float(1.0 + margin_ratio),
             "he_quad_px_raw": corners_he_px_raw.tolist(),     # TL,TR,BR,BL (DAPI order) in he_rgb coords
             "rectified_wh": [int(out_w), int(out_h)],
             "M_he_to_rect": None if M is None else M.tolist(),
@@ -1321,6 +1344,7 @@ class Step3SamplingApp(tk.Tk):
                 he_img2, tiles, h_mat, str(output_folder),
                 rescale_factor=2 ** (HE_LEVEL - 1),
                 mode="rectified",
+                margin_ratio=0.2,
                 case_id=self.case_id,
             )
             tick(95, f"Saved HE tiles: {len(he_tiles) if hasattr(he_tiles, '__len__') else 'done'}")
