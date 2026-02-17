@@ -1,4 +1,3 @@
-
 import json
 import cv2
 import os
@@ -10,7 +9,7 @@ from my_utils import (
     dapi_to_lut_rgb,
     segment_super_dark_nuclei_full,
     open_ome_level_lazy,
-    read_he_patch
+    read_crop_patch
 )
 import math
 from pathlib import Path
@@ -20,6 +19,55 @@ def fmt_time(sec):
     m, s = divmod(sec, 60)
     h, m = divmod(m, 60)
     return f"{h:d}h {m:02d}m {s:02d}s" if h > 0 else f"{m:02d}m {s:02d}s"
+
+def apply_homography_xy(M3x3, x, y):
+    M3x3 = np.asarray(M3x3, dtype=float)
+    p = np.array([float(x), float(y), 1.0], dtype=float)
+    q = M3x3 @ p
+    w = q[2] if abs(q[2]) > 1e-12 else 1e-12
+    return float(q[0] / w), float(q[1] / w)
+
+def he_point_tile_to_global(he_info, x_tile, y_tile, S):
+    """
+    If rectified: (x_tile,y_tile) is in rectified coords -> project back using M_rect_to_he (global level=1 coords)
+    Else: (x_tile,y_tile) is tile-local bbox coords -> x0/y0 add (global level=1 coords)
+    Return: (x_global_level0, y_global_level0)
+    """
+    meta = he_info.get("meta", {}) if isinstance(he_info, dict) else {}
+
+    if meta.get("mode", None) == "rectified" and meta.get("M_rect_to_he", None) is not None:
+        print("rectified")
+        Minv = np.asarray(meta["M_rect_to_he"], dtype=float)
+        print(Minv)
+        x1, y1 = apply_homography_xy(Minv, x_tile, y_tile)  # HE level=1 global coords
+        return x1 * S, y1 * S
+
+    # bbox / non-rectified fallback: tile-local -> level=1 global -> level0
+    x1 = float(he_info["x0"]) + float(x_tile)
+    y1 = float(he_info["y0"]) + float(y_tile)
+    return x1 * S, y1 * S
+
+def get_tile_hw(tile_info, default_hw=1024):
+    meta = tile_info.get("meta", {}) if isinstance(tile_info, dict) else {}
+    if meta.get("mode") == "rectified" and meta.get("rectified_wh") is not None:
+        out_w, out_h = meta["rectified_wh"]
+        return int(out_h), int(out_w)  # return H, W
+
+    # 否则走原逻辑（bbox / 普通 tile）
+    for kw in [("w", "h"), ("W", "H"), ("width", "height"), ("tile_w", "tile_h")]:
+        if kw[0] in tile_info and kw[1] in tile_info:
+            return int(tile_info[kw[1]]), int(tile_info[kw[0]])
+
+    for k in ["tile_size", "size", "tile_len", "tile_side"]:
+        if k in tile_info:
+            s = int(tile_info[k])
+            return s, s
+    return int(default_hw), int(default_hw)
+
+
+def get_tile_center_xy(tile_info, default_hw=1024):
+    H, W = get_tile_hw(tile_info, default_hw=default_hw)
+    return (W / 2.0, H / 2.0)
 
 def ensure_gray_uint16(x):
     x = np.asarray(x)
@@ -150,232 +198,109 @@ def get_nucleus_centroid_from_mask_at_xy(
         result["overlay"] = overlay
     return result
 
-def refine_nucleus_center_from_patch(
+def extract_patch_and_mark_point(
     img,
     x_global,
     y_global,
-    x_tile,
-    y_tile,
     tile_id,
     nucleus_id,
     type=None,
     patch_length=60,
-    intensity_threshold=0.5,
-    n_smooth=1,
-    upsample_scale=1,
     out_dir="",
     save_patch=True,
     save_overlay=True,
-    save_raw_dapi=True,          # <-- 新增
-    raw_dapi_ext="png"           # <-- 新增: "png" or "tif"
+    save_raw_dapi=True,
 ):
+    """
+    NO refine. Only:
+      - crop patch around (x_global, y_global)
+      - for DAPI: also save a raw visualization (uint16 -> uint8)
+      - save overlay with a dot at the center point
+    """
     half = patch_length // 2
     H, W = img.shape[:2]
-    # ===============================
-    # (1) Crop H&E patch
-    # ===============================
+    print(f"H is {H}, W is {W}")
+
+    x_global = int(np.clip(x_global, 0, W - 1))
+    y_global = int(np.clip(y_global, 0, H - 1))
+    print(f"x_global is {x_global}, y_global is {y_global}")
+
     y0 = max(0, y_global - half)
-    y1 = min(H, y_global + half)
     x0 = max(0, x_global - half)
-    x1 = min(W, x_global + half)
-    crop = read_he_patch(img, x0, y0, patch_length, patch_length)
+    print(f"y0 is {y0}, x0 is {x0}")
 
+
+    crop = read_crop_patch(img, x0, y0, patch_length, patch_length)
     if crop.size == 0:
-        raise ValueError(
-            f"Empty H&E crop at (x_global={x_global}, y_global={y_global})"
-        )
-    # DAPI: 同时保留 raw + 生成用于显示/后续处理的 LUT 版
-    crop_raw = None
-    if type == "dapi":
-        crop_raw = crop.copy()  # 这里的 crop 还是 uint16 / 原始值
-        crop = dapi_to_lut_rgb(crop_raw, lut, threshold=1000)  # crop 变成 RGB uint8
-        print("LUT-ed dapi crop!")
+        raise ValueError(f"Empty crop at (x_global={x_global}, y_global={y_global})")
 
-    # ===============================
-    # ========= default case: do not refine =========
-    # ===============================
-    h, w = crop.shape[:2]
+    # point in patch coords
+    if crop.ndim == 2:
+        h, w = crop.shape
+    else:
+        h, w = crop.shape[:2]
     cx0 = int(np.clip(x_global - x0, 0, w - 1))
     cy0 = int(np.clip(y_global - y0, 0, h - 1))
-    status = "keep_original"
-    dapi_mask_overlay_from_func = None
-    he_mask_overlay_from_func = None
-    centroid_patch = np.array([cx0, cy0], dtype=np.float32)
-    if type == "he":
-        print("    ## HE detected, get HE masking...")
 
-        _, mask_dark = segment_super_dark_nuclei_full(
-            crop,
-            upsample_scale=upsample_scale,
-            n_smooth=n_smooth,
-            intensity_threshold=intensity_threshold
-        )
+    # ---- prepare visualization crop (RGB) ----
+    crop_raw16 = None
+    crop_vis = crop
 
-        # nucleus=1
-        mask_fg = (mask_dark == 0).astype(np.uint8)
-
-        # ✅ 关键：转成 nucleus=0 / background=255 的 mask，才能直接复用你的 func
-        he_mask_8 = (255 - mask_fg * 255).astype(np.uint8)
-
-        res = get_nucleus_centroid_from_mask_at_xy(
-            he_mask_8,
-            cx0, cy0,
-            return_overlay=True,
-            highlight_color=(0, 0, 255),  # BGR：红色高亮 blob（你想要红的话）
-            alpha=0.5
-        )
-
-        if res is not None:
-            centroid_patch = np.array(res["centroid"])
-            status = "hit_L0"
-            he_mask_overlay_from_func = res.get("overlay")
-    elif type == "dapi":
-        print("    ** DAPI detected, get DAPI masking...")
-        mask_fg = get_dapi_mask(crop, threshold=20)
-
-        res = get_nucleus_centroid_from_mask_at_xy(
-            mask_fg,
-            cx0, cy0,
-            return_overlay=True,  # ✅ 开启 overlay
-            highlight_color=(0, 0, 255),  # 蓝色高亮 blob（BGR）
-            alpha=0.5
-        )
-
-        dapi_mask_overlay_from_func = None
-        if res is not None:
-            centroid_patch = np.array(res["centroid"])
-            status = "hit_L0"
-            dapi_mask_overlay_from_func = res.get("overlay")
-        else:
-            dapi_mask_overlay_from_func = None
+    if type == "dapi":
+        # crop is uint16 grayscale usually
+        crop_raw16 = ensure_gray_uint16(crop)
+        crop_vis = dapi_to_lut_rgb(crop_raw16, lut, threshold=1000)  # RGB uint8
+    elif type == "he":
+        # crop likely RGB already (uint8/uint16 depends on your read_image)
+        # make sure it's uint8 RGB for saving/overlay
+        if crop_vis.ndim == 2:
+            crop_vis = cv2.cvtColor(crop_vis, cv2.COLOR_GRAY2RGB)
+        if crop_vis.dtype != np.uint8:
+            # simple compress if uint16 (you can replace with better mapping if needed)
+            crop_vis = np.clip(crop_vis / 256.0, 0, 255).astype(np.uint8)
     else:
-        raise ValueError(
-            f"Type must be either he or dapi!"
-        )
-    # -------------------------------
-    # L1: identity-preserving fallback to tile-level masking
-    # -------------------------------
-    if status != "hit_L0":
-        print("    ---> Fall back to try using the tile-level nuclei mask.")
-        with open("nuclei_mask_info.json", "r") as f:
-            mask_scale_data = json.load(f)
-        MASK_SCALE = mask_scale_data['mask_scale'][type]
-        mask = cv2.imread(f"{tile_id}_{type}_mask.png", cv2.IMREAD_GRAYSCALE)
-        if mask is None:
-            raise ValueError(f"Could not read mask from {f'{tile_id}_{type}_mask.png'}")
-        res = get_nucleus_centroid_from_mask_at_xy(
-            mask,
-            x_tile * MASK_SCALE, y_tile * MASK_SCALE,
-            return_overlay=True
-        )
-        if res is not None:
-            print("    ** Successfully use the tile-level nuclei mask.")
-            centroid_tile = np.array(res['centroid']) / MASK_SCALE
-            centroid_patch = centroid_tile - np.array([x_tile, y_tile]) + np.array([cx0, cy0])
-            status = "fallback_L1"
-        else:
-            print("    ** Cannot use the tile-level nuclei mask. Use the default coordinates")
-    # ===============================
-    # (4) Map back to global coords
-    # ===============================
-    centroid_patch = centroid_patch / float(upsample_scale)
-    output_x_global = centroid_patch[0] + x0
-    output_y_global = centroid_patch[1] + y0
-    info = {
-        "status": status,
-        "centroid_patch": centroid_patch.tolist(),
-        "centroid_global": [float(output_x_global), float(output_y_global)],
-        "crop_box": (x0, y0, x1, y1),
-    }
-    print(f"    Old centroids in the patch-level is {np.array([cx0, cy0])}")
-    print(f"    New centroids in the patch-level is {centroid_patch}")
-    print(f"    Old centroids in the global-level is {np.array([x_global, y_global])}")
-    print(f"    New centroids in the global-level is {np.array([float(output_x_global), float(output_y_global)])}")
-    # ===============================
-    # (5) Save outputs
-    # ===============================
+        raise ValueError("type must be 'dapi' or 'he'")
 
-    # ---------- 5.1 Save patch images (no centroid) ----------
+    os.makedirs(out_dir, exist_ok=True)
+
+    # ---- save patch (no dot) ----
     if save_patch:
-        # ---- save RGB patch (LUT-ed DAPI or HE) ----
         patch_path = f"{out_dir}/{tile_id}_nucleus_{nucleus_id}_{type}_patch.png"
-        cv2.imwrite(patch_path, cv2.cvtColor(crop, cv2.COLOR_RGB2BGR))
+        cv2.imwrite(patch_path, cv2.cvtColor(crop_vis, cv2.COLOR_RGB2BGR))
 
-        # ---- save mask (no centroid) ----
-        mask_path = f"{out_dir}/{tile_id}_nucleus_{nucleus_id}_{type}_mask.png"
-        if type == "he":
-            mask_to_save = (255 - mask_fg * 255).astype(np.uint8)
-        elif type == "dapi":
-            mask_to_save = mask_fg.astype(np.uint8)
-        else:
-            raise ValueError(f"Unknown type: {type}")
-
-        cv2.imwrite(mask_path, mask_to_save)
-
-        # ---- save raw DAPI patch (uint16) ----
-        if type == "dapi" and save_raw_dapi and (crop_raw is not None):
-            raw_patch_path = (
-                f"{out_dir}/{tile_id}_nucleus_{nucleus_id}_dapi_raw_patch.{raw_dapi_ext.lower()}"
-            )
-            raw16 = ensure_gray_uint16(crop_raw)
-            raw_vis8 = stretch_to_uint8_percentile(raw16, p_low=1, p_high=99.7)
+        # raw DAPI visualization (optional)
+        if type == "dapi" and save_raw_dapi and (crop_raw16 is not None):
+            raw_vis8 = stretch_to_uint8_percentile(crop_raw16, p_low=1, p_high=99.7)
             raw_norm_path = f"{out_dir}/{tile_id}_nucleus_{nucleus_id}_dapi_raw.png"
             cv2.imwrite(raw_norm_path, raw_vis8)
 
-    # ---------- 5.2 Save overlay images (with centroid) ----------
+    # ---- save overlay (dot) ----
     if save_overlay:
-        cx, cy = int(round(centroid_patch[0])), int(round(centroid_patch[1]))
+        overlay = crop_vis.copy()
+        cv2.circle(overlay, (cx0, cy0), 2, (255, 0, 0), -1)  # RGB blue dot
+        overlay_path = f"{out_dir}/{tile_id}_nucleus_{nucleus_id}_{type}_patch_overlay.png"
+        cv2.imwrite(overlay_path, cv2.cvtColor(overlay, cv2.COLOR_RGB2BGR))
 
-        # ---- overlay on RGB patch ----
-        patch_overlay = crop.copy()
-        cv2.circle(patch_overlay, (cx, cy), 2, (255, 0, 0), -1)
-
-        patch_overlay_path = (
-            f"{out_dir}/{tile_id}_nucleus_{nucleus_id}_{type}_patch_overlay.png"
-        )
-        cv2.imwrite(
-            patch_overlay_path,
-            cv2.cvtColor(patch_overlay, cv2.COLOR_RGB2BGR)
-        )
-
-        # ---- overlay on mask ----
-        if type == "he":
-            mask_vis = (255 - mask_fg * 255).astype(np.uint8)
-        elif type == "dapi":
-            mask_vis = mask_fg.astype(np.uint8)
-        else:
-            raise ValueError(f"Unknown type: {type}")
-
-        # ---- overlay on mask ----
-        mask_overlay_path = f"{out_dir}/{tile_id}_nucleus_{nucleus_id}_{type}_mask_overlay.png"
-
-        if type == "dapi" and dapi_mask_overlay_from_func is not None:
-            cv2.imwrite(mask_overlay_path, dapi_mask_overlay_from_func)
-
-        elif type == "he" and he_mask_overlay_from_func is not None:
-            cv2.imwrite(mask_overlay_path, he_mask_overlay_from_func)
-
-        else:
-            # fallback（保持你原来的）
-            mask_overlay = cv2.cvtColor(mask_vis, cv2.COLOR_GRAY2BGR)
-            cv2.circle(mask_overlay, (cx, cy), 2, (0, 0, 255), -1)
-            cv2.imwrite(mask_overlay_path, mask_overlay)
-
-        # ---- overlay on raw DAPI (uint16) ----
-        if type == "dapi" and save_raw_dapi and (crop_raw is not None):
-            cx, cy = int(round(centroid_patch[0])), int(round(centroid_patch[1]))
+        if type == "dapi" and save_raw_dapi and (crop_raw16 is not None):
+            raw_vis8 = stretch_to_uint8_percentile(crop_raw16, p_low=1, p_high=99.7)
             raw_overlay = cv2.cvtColor(raw_vis8, cv2.COLOR_GRAY2BGR)
-            cv2.circle(raw_overlay, (cx, cy), 2, (0, 0, 255), -1)  # 红点
+            cv2.circle(raw_overlay, (cx0, cy0), 2, (0, 0, 255), -1)  # red dot
             raw_overlay_path = f"{out_dir}/{tile_id}_nucleus_{nucleus_id}_dapi_raw_overlay.png"
             cv2.imwrite(raw_overlay_path, raw_overlay)
 
-    return output_x_global, output_y_global, crop, info
+    info = {
+        "status": "no_refine",
+        "centroid_global": [float(x_global), float(y_global)],
+        "point_patch": [int(cx0), int(cy0)],
+        "crop_box": [int(x0), int(y0), int(x0 + patch_length), int(y0 + patch_length)],
+    }
+    return float(x_global), float(y_global), crop_vis, info
 
 
 # ==========================================================
 # MAIN
 # ==========================================================
-def main(run_dir):
+def main(run_dir, do_refine=True):
     start_time = time.time()
 
     print("[INFO] Loading metadata")
@@ -390,7 +315,7 @@ def main(run_dir):
         he_tiles = json.load(f)
     with open("../images_info.json") as f:
         images_info = json.load(f)
-    DAPI_PATCH_LEN = 100
+    DAPI_PATCH_LEN = 500
     HE_PATCH_LEN = load_initial_affine_and_compute_he_patch(
         run_dir,
         images_info,
@@ -403,8 +328,8 @@ def main(run_dir):
     print("[INFO] Loading full-res images. This could take about 1 min ⚠️", flush=True)
 
 
-    # he_img, *_ = read_image(HE_PATH, keep_16bit=True, level=0)
-    tif_he, he_img = open_ome_level_lazy(HE_PATH, series=0, level=0)
+    he_img, *_ = read_image(HE_PATH, keep_16bit=True, level=0)
+    # tif_he, he_img = open_ome_level_lazy(HE_PATH, series=0, level=0)
 
     global lut
     lut_path = images_info.get(
@@ -413,9 +338,15 @@ def main(run_dir):
     )
     lut = np.fromfile(lut_path, dtype=np.uint8).reshape(256, 3)
 
-    # dapi_img, *_ = read_image(DAPI_PATH, keep_16bit=True, level=0)
+    dapi_img, *_ = read_image(DAPI_PATH, keep_16bit=True, level=0)
     # dapi_rgb = dapi_to_lut_rgb(dapi_img, lut, threshold=300)
-    tif_dapi, dapi_img = open_ome_level_lazy(DAPI_PATH, series=0, level=0)
+    # tif_dapi, dapi_img = open_ome_level_lazy(DAPI_PATH, series=0, level=0)
+
+    t_after_io = time.time()
+    io_sec = t_after_io - start_time
+    print(f"[INFO] Image loading time: {fmt_time(io_sec)}", flush=True)
+    loop_t0 = time.time()
+    print("[ETA_START] loop", flush=True)
 
     out_dir = "../nuclei_patches"
     os.makedirs(out_dir, exist_ok=True)
@@ -425,21 +356,21 @@ def main(run_dir):
 
     for i, n in enumerate(nuclei, 1):
         tile_id = n["tile"]
-        nucleus_id = n["nucleus_id"]
+        nucleus_id = n.get("nucleus_id", 0)
         dapi_info = dapi_tiles[tile_id]
 
         LEVEL_DIFF = 1
         S = 2 ** LEVEL_DIFF
 
+        # ---- choose tile coords ----
         xA_tile, yA_tile = n["original"]["dapi"]
         xA_global = int(round(dapi_info["x0"] * S + xA_tile * S))
         yA_global = int(round(dapi_info["y0"] * S + yA_tile * S))
+        print(f"xA_global is {xA_global}, yA_global is {yA_global}")
 
-        output_xA_global, output_yA_global, _, _ = refine_nucleus_center_from_patch(
-            # dapi_rgb,
+        output_xA_global, output_yA_global, _, _ = extract_patch_and_mark_point(
             dapi_img,
             xA_global, yA_global,
-            xA_tile, yA_tile,
             tile_id, nucleus_id,
             type="dapi",
             patch_length=DAPI_PATCH_LEN,
@@ -447,31 +378,40 @@ def main(run_dir):
             save_patch=True,
             save_overlay=True,
         )
+
         output_coord_record.append({
             "tile_id": tile_id,
             "nucleus_id": nucleus_id,
+            "mode": n.get("mode", "nuclei_pair"),
             "dapi_centroid_global": [float(output_xA_global), float(output_yA_global)],
-            "he_centroid_global": None,  # 先占位
+            "he_centroid_global": None,
         })
         print(f"[PROGRESS] DAPI {i}/{total}", flush=True)
 
-
     for i, n in enumerate(nuclei, 1):
         tile_id = n["tile"]
-        nucleus_id = n["nucleus_id"]
+        nucleus_id = n.get("nucleus_id", 0)
         he_info = he_tiles[tile_id]
 
         LEVEL_DIFF = 1
         S = 2 ** LEVEL_DIFF
 
-        xB_tile, yB_tile = n["original"]["he"]
-        xB_global = int(round(he_info["x0"] * S + xB_tile * S))
-        yB_global = int(round(he_info["y0"] * S + yB_tile * S))
+        if "original" in n and "he" in n["original"] and n["original"]["he"] is not None:
+            xB_tile, yB_tile = n["original"]["he"]
+        else:
+            meta = he_info.get("meta", {}) if isinstance(he_info, dict) else {}
+            if meta.get("mode") == "rectified" and meta.get("rectified_wh") is not None:
+                out_w, out_h = meta["rectified_wh"]  # NOTE: [W, H]
+                xB_tile, yB_tile = (out_w / 2.0, out_h / 2.0)   # center in rectified coords
+            else:
+                # bbox tile fallback: center in bbox-local coords
+                xB_tile, yB_tile = (float(he_info["w"]) / 2.0, float(he_info["h"]) / 2.0)
 
-        output_xB_global, output_yB_global, _, _ = refine_nucleus_center_from_patch(
+        xB_global, yB_global = he_point_tile_to_global(he_info, xB_tile, yB_tile, S)
+
+        output_xB_global, output_yB_global, _, _ = extract_patch_and_mark_point(
             he_img,
             xB_global, yB_global,
-            xB_tile, yB_tile,
             tile_id, nucleus_id,
             type="he",
             patch_length=HE_PATCH_LEN,
@@ -479,6 +419,7 @@ def main(run_dir):
             save_patch=True,
             save_overlay=True,
         )
+
         output_coord_record[i - 1]["he_centroid_global"] = [float(output_xB_global), float(output_yB_global)]
         print(f"[PROGRESS] HE {i}/{total}", flush=True)
 
@@ -495,4 +436,5 @@ def main(run_dir):
 if __name__ == "__main__":
     if len(sys.argv) < 2:
         raise RuntimeError("Usage: python 7_refine_nuclei_centroids.py <RUN_DIR>")
-    main(sys.argv[1])
+    run_dir = sys.argv[1]
+    main(run_dir)
