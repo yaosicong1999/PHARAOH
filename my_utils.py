@@ -16,120 +16,346 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 Image.MAX_IMAGE_PIXELS = None  # disable the check
 
-def read_image2(path, keep_16bit=True, series=0, page=0, level=None,
-               min_size=1000, max_size=2000):
+def read_image(
+    path,
+    keep_16bit=True,
+    series=0,
+    page=0,
+    level=None,
+    min_size=1000,
+    max_size=2000,
+    force_rgb=True,
+    channel="auto",   # "auto" | "he" | "dapi" | int | None
+):
     """
-    Reads an image from path. Supports OME-TIFF with subIFDs, regular TIFF, and standard image formats.
-    Auto-selects a pyramid level (or downsample factor) so that min(image_dim) is between min_size and max_size.
+    Unified reader for:
+      - OME-TIFF (with subIFDs or series.levels or no pyramid)
+      - regular TIFF
+      - jpg/png/other images
+
+    Strategy for OME:
+      1) Try page.pages (subIFD pyramid) first (tif.series[series].pages[page])
+      2) Else try series.levels (OME pyramid API)
+      3) Else treat as single image and do pseudo downsample (2x steps) like non-OME
+
+    Channel policy (only matters for multichannel arrays):
+      - channel="auto":
+          * CYX: if C>=4 -> pick C0 as DAPI (print)
+                 if C==3 -> treat as HE RGB (print)
+          * YXC: keep as RGB if last dim in (3,4); else if force_rgb -> pick channel0 to gray->rgb
+      - channel="he":
+          * require RGB-like (CYX with C==3, or YXC with last dim==3/4), else raise
+      - channel="dapi":
+          * CYX: pick C0 (print)
+          * YXC: pick channel0 (print)
+      - channel=int:
+          * pick that channel (CYX or YXC), print
+      - channel=None:
+          * keep all channels (convert CYX->YXC), no picking
 
     Returns:
-        img: np.ndarray
-        selected_level: int or None (OME-TIFF level or pseudo-level for non-pyramidal images)
+      img: np.ndarray (H,W,C) if force_rgb or RGB image; else possibly (H,W)
+      selected_level: for OME: chosen pyramid index (or pseudo_level if no pyramid)
+                      for non-OME: pseudo_level
     """
     import numpy as np
     import cv2
     import tifffile
     from PIL import Image
 
-    filename = path.lower()
+    filename = str(path).lower()
     selected_level = None
 
+    def _rep_to_rgb(arr2d):
+        return np.repeat(arr2d[..., None], 3, axis=-1)
+
+    def _normalize_to_uint8_if_needed(img):
+        if keep_16bit or img.dtype == np.uint8:
+            return img
+        imgf = img.astype(np.float32)
+        mn, mx = float(imgf.min()), float(imgf.max())
+        if mx > mn:
+            return ((imgf - mn) / (mx - mn) * 255.0).astype(np.uint8)
+        return np.zeros_like(img, dtype=np.uint8)
+
+    def _pick_level_by_size(get_hw_fn, n_levels):
+        # choose first level where min(h,w) in [min_size, max_size], else fallback to last level
+        if level is not None:
+            lv = int(level)
+            if lv < 0 or lv >= n_levels:
+                raise ValueError(f"level out of range: {lv} for n_levels={n_levels}")
+            return lv
+
+        chosen = 0
+        for j in range(n_levels):
+            h, w = get_hw_fn(j)
+            if min_size <= min(h, w) <= max_size:
+                chosen = j
+                break
+        return chosen
+
+    def _pseudo_downsample(img0):
+        # downsample by powers of 2 until min(h,w) <= max_size
+        h0, w0 = img0.shape[:2]
+        if min(h0, w0) <= max_size:
+            return img0, 0
+        pseudo = 0
+        th, tw = h0, w0
+        while min(th, tw) > max_size:
+            th //= 2
+            tw //= 2
+            pseudo += 1
+        th = max(1, th)
+        tw = max(1, tw)
+        img_ds = cv2.resize(img0, (tw, th), interpolation=cv2.INTER_AREA)
+        print(f"[INFO] pseudo downsample x(2^{pseudo}) -> shape={img_ds.shape}")
+        return img_ds, pseudo
+
+    def _apply_channel_policy(arr, axes):
+        """
+        arr: np.ndarray from tifffile (may be 2D or 3D)
+        axes: e.g. "CYX" or "YXC" or "YX"
+        returns image in either (H,W,C) or (H,W) depending on force_rgb + channel rules
+        """
+        axes = (axes or "").upper()
+
+        # 2D
+        if arr.ndim == 2:
+            return _rep_to_rgb(arr) if force_rgb else arr
+
+        # 3D
+        if arr.ndim != 3:
+            # weird dims: return as-is
+            return arr
+
+        # ---------- CYX ----------
+        if axes == "CYX":
+            C = arr.shape[0]
+
+            # explicit channel index
+            if isinstance(channel, int):
+                ch = int(channel)
+                if ch < 0 or ch >= C:
+                    raise ValueError(f"[read_image] CYX has C={C}, cannot pick channel={ch}")
+                out = arr[ch, ...]
+                print(f"[INFO] CYX: picked channel={ch} (explicit)")
+                return _rep_to_rgb(out) if force_rgb else out
+
+            # keep all
+            if channel is None:
+                out = np.moveaxis(arr, 0, -1)
+                return out
+
+            # channel="dapi"
+            if str(channel).lower() == "dapi":
+                if C < 1:
+                    raise ValueError("[read_image] CYX but C<1, cannot pick DAPI")
+                out = arr[0, ...]
+                print("[INFO] CYX mode=dapi: picked C0 as DAPI")
+                return _rep_to_rgb(out) if force_rgb else out
+
+            # channel="he"
+            if str(channel).lower() == "he":
+                if C != 3:
+                    raise ValueError(f"[read_image] mode=he requires CYX C==3, got C={C}")
+                out = np.moveaxis(arr, 0, -1)  # (H,W,3)
+                print("[INFO] CYX mode=he: treated as HE RGB (C==3)")
+                return out
+
+            # channel="auto"
+            if str(channel).lower() == "auto":
+                if C >= 4:
+                    out = arr[0, ...]
+                    print(f"[INFO] CYX mode=auto: C={C} >=4, picked C0 as DAPI")
+                    return _rep_to_rgb(out) if force_rgb else out
+                if C == 3:
+                    out = np.moveaxis(arr, 0, -1)
+                    print("[INFO] CYX mode=auto: C==3, treated as HE RGB")
+                    return out
+                # other C: default moveaxis keep all
+                out = np.moveaxis(arr, 0, -1)
+                print(f"[INFO] CYX mode=auto: C={C}, kept all channels as YXC")
+                return out
+
+            # fallback
+            out = np.moveaxis(arr, 0, -1)
+            return out
+
+        # ---------- YXC ----------
+        if axes == "YXC":
+            C = arr.shape[-1]
+
+            if isinstance(channel, int):
+                ch = int(channel)
+                if ch < 0 or ch >= C:
+                    raise ValueError(f"[read_image] YXC has C={C}, cannot pick channel={ch}")
+                out = arr[..., ch]
+                print(f"[INFO] YXC: picked channel={ch} (explicit)")
+                return _rep_to_rgb(out) if force_rgb else out
+
+            if channel is None:
+                return arr
+
+            if str(channel).lower() == "dapi":
+                out = arr[..., 0]
+                print("[INFO] YXC mode=dapi: picked channel 0")
+                return _rep_to_rgb(out) if force_rgb else out
+
+            if str(channel).lower() == "he":
+                if C not in (3, 4):
+                    raise ValueError(f"[read_image] mode=he requires YXC last dim 3/4, got {C}")
+                print("[INFO] YXC mode=he: kept RGB(A)")
+                return arr
+
+            if str(channel).lower() == "auto":
+                if C in (3, 4):
+                    print("[INFO] YXC mode=auto: kept RGB(A)")
+                    return arr
+                out = arr[..., 0]
+                print(f"[INFO] YXC mode=auto: C={C}, picked channel0 as grayscale")
+                return _rep_to_rgb(out) if force_rgb else out
+
+            return arr
+
+        # ---------- unknown axes: guess ----------
+        # try to guess channel axis
+        if arr.shape[0] in (3, 4) and arr.shape[-1] not in (3, 4):
+            # treat as CYX
+            return _apply_channel_policy(arr, "CYX")
+        if arr.shape[-1] in (3, 4):
+            return _apply_channel_policy(arr, "YXC")
+
+        # fallback: pick first channel if force_rgb
+        out = arr[..., 0]
+        return _rep_to_rgb(out) if force_rgb else out
+
+    # ============================================================
+    # OME-TIFF
+    # ============================================================
     if filename.endswith((".ome.tif", ".ome.tiff")):
         with tifffile.TiffFile(path) as tif:
-            print("now working on .ome.tif")
-            img_series_s = tif.series[series]
-            img_pages = list(img_series_s.pages)
-            img_axes = (img_series_s.axes or "").upper()
-            if len(img_pages) == 0:
-                raise ValueError(f"No pages found in series {series} for {path}")
-            elif len(img_pages) < page + 1:
-                raise ValueError(f"Not enough pages found in series {series} for {path}")
-            else:
-               img_page_p = img_series_s.pages[page]
-               print(f"Selecting series {series} page {page}")
-            all_pages = [img_page_p] + list(img_page_p.pages)
-            print("Full resolution:", all_pages[0].shape)
-            for j, p in enumerate(all_pages):
-                print(f"  Level {j}: shape={p.shape}")
+            s = tif.series[series]
 
-            if img_axes == "YXS":
-                if all_pages[0].shape[2] == 3:
-                    print("working on YXS axes and we have 3 channels. Supposedly working on RGB H&E image.")
+            # ---------- 1) Try page.pages (subIFDs pyramid) ----------
+            pages = None
+            try:
+                # NOTE: s.pages can be multi-page; you asked to start from "page"
+                base_page = s.pages[page]
+                # base_page.pages is the subIFD pyramid list (often)
+                sub_pages = list(getattr(base_page, "pages", []))
+                if sub_pages:
+                    pages = [base_page] + sub_pages
+            except Exception as e:
+                pages = None
+
+            if pages is not None and len(pages) > 1:
+                print("=== LEVELS (from page.pages) ===")
+                for j, p in enumerate(pages[:20]):
+                    print(f"  level[{j}] shape={getattr(p, 'shape', None)} dtype={getattr(p, 'dtype', None)}")
+                if len(pages) > 20:
+                    print(f"  ... total levels: {len(pages)}")
+
+                def get_hw(j):
+                    sh = pages[j].shape
+                    # page.asarray() usually returns YX or YXC already, but shape here is YX
+                    h, w = int(sh[0]), int(sh[1])
+                    return h, w
+
+                chosen = _pick_level_by_size(get_hw, len(pages))
+                selected_level = int(chosen)
+                print(f"[INFO] Picked level={selected_level} from page.pages")
+
+                arr = pages[selected_level].asarray()
+                # axes is not always available on TiffPage -> infer
+                # if arr is 3D and first dim small -> likely CYX
+                if arr.ndim == 3 and arr.shape[0] in (3, 4) and arr.shape[-1] not in (3, 4):
+                    axes = "CYX"
+                elif arr.ndim == 3 and arr.shape[-1] in (3, 4):
+                    axes = "YXC"
                 else:
-                    raise ValueError("working on YXS axes but we DO NOT have 3 channels. It does not seem to be an RGB H&E image.")
-            elif img_axes == "CYX":
-                if all_pages[0].ndim == 2:
-                    print("working on CYX axes and we have 1 channels. Supposedly working on DAPI image.")
-                elif all_pages[0].ndim == 3:
-                    print("working on CYX axes and we have multiple channels. Supposedly working on a multi-channel fluorescence image.")
-                    print("will select the first channel for DAPI by default.")
-                else:
-                    raise ValueError("This multi-channel seems to be neither DAPI image nor multi-channel fluorescence image")
+                    axes = "YX"
 
+                img = _apply_channel_policy(arr, axes)
+                img = _normalize_to_uint8_if_needed(img)
+                return img, selected_level
 
+            # ---------- 2) Fallback: series.levels ----------
+            levels = list(getattr(s, "levels", [])) or []
+            if levels:
+                print("=== LEVELS (from series.levels) ===")
+                for j, lv in enumerate(levels[:20]):
+                    print(f"  level[{j}] axes={getattr(lv, 'axes', None)} shape={getattr(lv, 'shape', None)} dtype={getattr(lv, 'dtype', None)}")
+                if len(levels) > 20:
+                    print(f"  ... total levels: {len(levels)}")
 
+                def get_hw(j):
+                    lv = levels[j]
+                    axes = (getattr(lv, "axes", "") or "").upper()
+                    sh = lv.shape
+                    if axes == "CYX":
+                        return int(sh[1]), int(sh[2])
+                    if axes == "YXC":
+                        return int(sh[0]), int(sh[1])
+                    if axes == "YX":
+                        return int(sh[0]), int(sh[1])
+                    return int(sh[-2]), int(sh[-1])
 
+                chosen = _pick_level_by_size(get_hw, len(levels))
+                selected_level = int(chosen)
+                print(f"[INFO] Picked level={selected_level} from series.levels")
 
+                arr = levels[selected_level].asarray()
+                img = _apply_channel_policy(arr, getattr(levels[selected_level], "axes", None))
+                img = _normalize_to_uint8_if_needed(img)
+                return img, selected_level
 
+            # ---------- 3) No pyramid: read full-res then pseudo downsample ----------
+            print("[INFO] OME: no page.pages pyramid and no series.levels pyramid -> read full res then downsample")
+            arr = s.asarray()
+            img0 = _apply_channel_policy(arr, getattr(s, "axes", None))
+            img0 = _normalize_to_uint8_if_needed(img0)
 
+            img_ds, pseudo = _pseudo_downsample(img0)
+            selected_level = int(pseudo)
+            return img_ds, selected_level
 
-
-
-
-
-
-            if level is None:
-                selected_level = 0
-                for j, p in enumerate(pages):
-                    h, w = p.shape[:2]
-                    if min_size <= min(h, w) <= max_size:
-                        selected_level = j
-                        break
-                level = selected_level
-                print(f"Auto-selected level {level} with shape {pages[level].shape}")
-            else:
-                selected_level = level
-                print(f"Selected input level {level} with shape {pages[level].shape}")
-
-            img = pages[level].asarray()
-
+    # ============================================================
+    # Non-OME: regular TIFF / JPG / PNG
+    # ============================================================
+    # read
+    if filename.endswith((".tif", ".tiff")):
+        img0 = tifffile.imread(path)
     else:
-        # Regular TIFF or standard image
-        img = tifffile.imread(path) if filename.endswith((".tif", ".tiff")) else np.array(Image.open(path))
-        h, w = img.shape[:2]
-        print(f"Original image shape: {img.shape}")
+        img0 = np.array(Image.open(path))
 
-        # Compute pseudo-level (number of 2x downsamples)
-        pseudo_level = 0
-        target_h, target_w = h, w
-        while min(target_h, target_w) > max_size:
-            target_h //= 2
-            target_w //= 2
-            pseudo_level += 1
-        # Only downsample if needed
-        if pseudo_level > 0:
-            img = cv2.resize(img, (target_w, target_h), interpolation=cv2.INTER_AREA)
-            print(f"Downsampled x(2^{pseudo_level}) → shape {img.shape}")
-        else:
-            print("No downsampling needed (pseudo-level 0)")
-        selected_level = pseudo_level
+    # ensure channel layout similar to others
+    # if grayscale
+    if img0.ndim == 2:
+        img0 = _rep_to_rgb(img0) if force_rgb else img0
 
-    # Convert grayscale to RGB
-    if img.ndim == 2:
-        img = np.stack([img] * 3, axis=-1)
+    # auto downsample (pseudo levels)
+    if level is not None:
+        used = int(level)
+        if used < 0:
+            raise ValueError(f"level must be >=0, got {used}")
+        pseudo = used
+        scale = 2 ** pseudo
+        h0, w0 = img0.shape[:2]
+        th = max(1, h0 // scale)
+        tw = max(1, w0 // scale)
+        if pseudo > 0:
+            img0 = cv2.resize(img0, (tw, th), interpolation=cv2.INTER_AREA)
+            print(f"[INFO] Non-OME: specified pseudo_level={pseudo} -> shape={img0.shape}")
+        selected_level = pseudo
+    else:
+        img0, pseudo = _pseudo_downsample(img0)
+        selected_level = int(pseudo)
 
-    # Optional 8-bit conversion
-    if not keep_16bit and img.dtype != np.uint8:
-        img_min, img_max = img.min(), img.max()
-        if img_max > img_min:
-            img = ((img - img_min) / (img_max - img_min) * 255).astype(np.uint8)
-        else:
-            img = np.zeros_like(img, dtype=np.uint8)
+    # optional uint8
+    img0 = _normalize_to_uint8_if_needed(img0)
+    return img0, selected_level
 
-    return img, selected_level
-
-
-def read_image(path, keep_16bit=True, series=0, page=0, level=None,
+def read_image0(path, keep_16bit=True, series=0, page=0, level=None,
                min_size=1000, max_size=2000):
     """
     Reads an image from path. Supports OME-TIFF with subIFDs, regular TIFF, and standard image formats.
@@ -630,39 +856,99 @@ def plot_cell_centroid(
     else:
         plt.show()
 
-def fill_holes_binary(mask255: np.ndarray) -> np.ndarray:
+# def fill_holes_binary(mask255: np.ndarray) -> np.ndarray:
+#     """
+#     Fill holes inside foreground (mask is 0/255).
+#     Robust even when outside background is split into multiple components.
+#     """
+#     mask255 = (mask255 > 0).astype(np.uint8) * 255
+#     h, w = mask255.shape[:2]
+#
+#     # background image: bg=255, fg=0
+#     bg = (mask255 == 0).astype(np.uint8) * 255
+#
+#     flood = bg.copy()
+#     ffmask = np.zeros((h + 2, w + 2), np.uint8)
+#
+#     # floodFill ALL border background components to 0 (mark as outside)
+#     # top/bottom rows
+#     for x in range(w):
+#         if flood[0, x] == 255:
+#             cv2.floodFill(flood, ffmask, (x, 0), 0)
+#         if flood[h - 1, x] == 255:
+#             cv2.floodFill(flood, ffmask, (x, h - 1), 0)
+#
+#     # left/right cols
+#     for y in range(h):
+#         if flood[y, 0] == 255:
+#             cv2.floodFill(flood, ffmask, (0, y), 0)
+#         if flood[y, w - 1] == 255:
+#             cv2.floodFill(flood, ffmask, (w - 1, y), 0)
+#
+#     # remaining bg==255 are holes
+#     holes = (flood == 255)
+#     out = mask255.copy()
+#     out[holes] = 255
+#     return out
+
+def fill_holes_binary(
+    mask255: np.ndarray,
+    max_hole_area_frac=0.005,     # 相对整图
+    max_hole_area_frac_fg=0.05,   # 相对前景面积
+    max_hole_radius=6,            # NEW: 只填“半径 <= 6px”的小洞（强烈推荐）
+    connectivity=8,
+) -> np.ndarray:
     """
-    Fill holes inside foreground (mask is 0/255).
-    Robust even when outside background is split into multiple components.
+    mask255: 前景=255, 背景=0 的二值图（uint8）
+    只填 “面积小 + 半径小” 的洞，避免把 ring 的大空腔填掉
     """
     mask255 = (mask255 > 0).astype(np.uint8) * 255
     h, w = mask255.shape[:2]
 
-    # background image: bg=255, fg=0
+    # 背景图（255=背景）
     bg = (mask255 == 0).astype(np.uint8) * 255
 
+    # flood fill：把与边界连通的背景清掉，剩下的背景就是“洞”
     flood = bg.copy()
     ffmask = np.zeros((h + 2, w + 2), np.uint8)
 
-    # floodFill ALL border background components to 0 (mark as outside)
-    # top/bottom rows
+    # 四条边界做 floodFill（更快也更稳：只挑边界上的255点做种子）
     for x in range(w):
-        if flood[0, x] == 255:
-            cv2.floodFill(flood, ffmask, (x, 0), 0)
-        if flood[h - 1, x] == 255:
-            cv2.floodFill(flood, ffmask, (x, h - 1), 0)
-
-    # left/right cols
+        if flood[0, x] == 255:       cv2.floodFill(flood, ffmask, (x, 0), 0)
+        if flood[h-1, x] == 255:     cv2.floodFill(flood, ffmask, (x, h-1), 0)
     for y in range(h):
-        if flood[y, 0] == 255:
-            cv2.floodFill(flood, ffmask, (0, y), 0)
-        if flood[y, w - 1] == 255:
-            cv2.floodFill(flood, ffmask, (w - 1, y), 0)
+        if flood[y, 0] == 255:       cv2.floodFill(flood, ffmask, (0, y), 0)
+        if flood[y, w-1] == 255:     cv2.floodFill(flood, ffmask, (w-1, y), 0)
 
-    # remaining bg==255 are holes
-    holes = (flood == 255)
+    holes = (flood == 255).astype(np.uint8)  # 1=hole
+    if holes.max() == 0:
+        return mask255
+
+    num, lab, stats, _ = cv2.connectedComponentsWithStats(holes, connectivity=connectivity)
+    if num <= 1:
+        return mask255
+
+    fg_area = int((mask255 > 0).sum())
+    max_area = int(max(max_hole_area_frac * (h * w),
+                       max_hole_area_frac_fg * fg_area))
+
+    # NEW: 用 distance transform 估计“洞的最大半径”
+    # 注意：distanceTransform 输入要是 0/非0，这里 holes 是 0/1，OK
+    dt = cv2.distanceTransform(holes, cv2.DIST_L2, 3)
+
     out = mask255.copy()
-    out[holes] = 255
+    for i in range(1, num):
+        area = int(stats[i, cv2.CC_STAT_AREA])
+        if area > max_area:
+            continue
+
+        # 这个洞的“最大内切圆半径”
+        max_r = float(dt[lab == i].max()) if area > 0 else 0.0
+
+        # 只填“面积小 + 半径小”的洞
+        if max_r <= float(max_hole_radius):
+            out[lab == i] = 255
+
     return out
 
 def remove_small_components(mask255: np.ndarray, min_area: int, connectivity: int = 8) -> tuple[np.ndarray, dict]:
