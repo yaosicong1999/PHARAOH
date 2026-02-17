@@ -1,0 +1,24 @@
+{
+  "step3": {
+    "n_tiles": 120,
+    "tile_size": 600,
+    "min_dist_factor": 1.2
+  },
+  "step5": {
+    "dapi_mask_min_area_factor": 8e-5,
+    "dapi_mask_upscale_factor": 2,
+    "he_mask_n_smooth": 2,
+    "he_mask_intensity_threshold": 0.6
+  },
+  "step6": {
+    "coarse_ds": 4,
+    "coarse_scale_min": 1.1,
+    "coarse_scale_max": 2.0,
+    "coarse_scale_step": 0.04,
+    "coarse_shift_range": 50,
+    "coarse_shift_range_div_tile_size": 0.1,
+    "coarse_shift_step_div_range": 0.1,
+    "refined_shift_delta": 25,
+    "refined_shift_step": 5
+  }
+}
