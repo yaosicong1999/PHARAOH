@@ -4,7 +4,7 @@ from PIL import Image, ImageTk
 import numpy as np
 import cv2
 import os
-from utils import read_image, extract_hematoxylin_channel, enhance_hematoxylin_channel, dapi_to_lut_rgb
+from my_utils import read_image, extract_hematoxylin_channel, enhance_hematoxylin_channel, dapi_to_lut_rgb
 from sklearn.cluster import DBSCAN
 from scipy import ndimage as ndi
 from pathlib import Path
@@ -345,7 +345,7 @@ def create_dapi_slider():
     dapi_slider = tk.Scale(
         frame,
         from_=0,
-        to=600,
+        to=2000,
         orient=tk.HORIZONTAL,
         resolution=50,
         showvalue=False,
