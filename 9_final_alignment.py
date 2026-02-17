@@ -465,7 +465,7 @@ class FinalAlignmentApp(tk.Tk):
                 draw_points(
                     self.he_rgb,
                     self.he_pts0 / DISPLAY_SCALE,
-                    color=(255, 0, 0),
+                    color=(0, 255, 0),
                     r=6
                 )
             )
@@ -507,7 +507,7 @@ class FinalAlignmentApp(tk.Tk):
 
         # -------- panel 2 (HE + nuclei) --------
         he_pts_lvl2 = self.he_pts0 / DISPLAY_SCALE
-        img2 = draw_points(self.he_rgb, he_pts_lvl2, color=(255, 0, 0), r=6, name="HE nuclei")
+        img2 = draw_points(self.he_rgb, he_pts_lvl2, color=(0, 255, 0), r=6, name="HE nuclei")
         self._set_panel(1, img2)
 
         # -------- panel 3 (toggle overlay) --------
