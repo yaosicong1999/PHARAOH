@@ -9,6 +9,13 @@ import time
 import json
 import sys
 
+MIN_GOOD_TILES = 119          # “pairs>=2” 的 tile 数阈值
+FALLBACK_SCORE_THR = 0.50    # final_full_iou 阈值
+MIN_FALLBACK_TILES = 20      # fallback tile 数阈值
+
+good_tile_count = 0
+fallback_candidates = []  # 存每个 tile 的 {tile, final_full_iou, pairs, final, paste_x0...}
+
 def inverse_orientation_point(x, y, H, W, case_id):
     if case_id == 0:      # identity
         return x, y
@@ -94,7 +101,6 @@ def warp(mask, scale, tx, ty, out_shape):
     M[1, 2] += float(ty)
     return cv2.warpAffine(mask, M, (W, H), flags=cv2.INTER_NEAREST)
 
-
 def aligned_to_he_mask_img(x_aligned, y_aligned,
                            final, H, W,
                            paste_x0, paste_y0,
@@ -135,6 +141,7 @@ def aligned_to_he_mask_img(x_aligned, y_aligned,
 
     return float(x_raw), float(y_raw)
 
+
 def clipped_iou(A, B):
     Afg = (A > 0)
     Bfg = (B > 0)
@@ -142,16 +149,108 @@ def clipped_iou(A, B):
     union = np.sum(Afg | Bfg)
     return float(inter) / float(union + 1e-6)
 
+def dice_score(A, B):
+    Afg = (A > 0)
+    Bfg = (B > 0)
+    inter = np.sum(Afg & Bfg)
+    sizeA = np.sum(Afg)
+    sizeB = np.sum(Bfg)
+    return 2.0 * float(inter) / float(sizeA + sizeB + 1e-6)
+
+def score_full(maskA, maskB, params):
+    H, W = maskA.shape
+    B_w = warp(maskB, float(params["scale"]), int(params["tx"]), int(params["ty"]), (H, W))
+    return dice_score(maskA, B_w)
 
 def downsample(mask, ds):
     H, W = mask.shape
     return cv2.resize(mask, (W // ds, H // ds),
                       interpolation=cv2.INTER_NEAREST)
 
+def dapi_aligned_to_original(xA_aligned, yA_aligned, H, W, case_id, dapi_mask_scale):
+    # aligned(DAPI after apply_orientation) -> original DAPI mask coords
+    xA_dapi, yA_dapi = inverse_orientation_point(xA_aligned, yA_aligned, H, W, case_id)
+    # original DAPI image coords (or “mask level0” coords) by dividing mask_scale
+    return float(xA_dapi / dapi_mask_scale), float(yA_dapi / dapi_mask_scale)
+
+def he_aligned_to_original(xB_aligned, yB_aligned, final, H, W, paste_x0, paste_y0, base_scale, he_mask_scale):
+    # aligned -> original HE mask coords
+    xB_mask, yB_mask = aligned_to_he_mask_img(
+        xB_aligned, yB_aligned,
+        final, H, W,
+        paste_x0, paste_y0,
+        base_scale
+    )
+    # original HE image coords by dividing he_mask_scale
+    return float(xB_mask / he_mask_scale), float(yB_mask / he_mask_scale)
 
 # ==================================================
 # Parallel Stage 1 helpers
 # ==================================================
+def robust_median_scale_from_firstN(
+    dapi_files,
+    base_dir,
+    case_id,
+    N=20,
+    ds=4,
+    scale_range=(0.8, 1.8),
+    scale_step=0.05,
+    shift_frac=0.8,
+    shift_step_frac=0.05,
+):
+    """Run coarse on first N tiles, return median(scale)."""
+    scales = []
+    use = min(N, len(dapi_files))
+    print(f"[INFO] Phase-1: coarse on first {use}/{len(dapi_files)} tiles to estimate median scale")
+
+    for i in range(use):
+        dapi_path = dapi_files[i]
+        fname = os.path.basename(dapi_path)
+        prefix = fname.replace("_dapi_mask.png", "")
+        he_path = os.path.join(base_dir, f"{prefix}_he_mask.png")
+        if not os.path.exists(he_path):
+            print(f"[SKIP] (phase-1) HE mask not found for {prefix}")
+            continue
+
+        maskA = read_mask(dapi_path)
+        maskA = apply_orientation_to_tile(maskA, case_id)
+        maskB_raw = read_mask(he_path)
+        maskB, _, _, _ = scale_and_pad(maskB_raw, maskA.shape)
+
+        coarse = coarse_search_ds_parallel_cached(
+            maskA, maskB,
+            ds=ds,
+            scale_range=scale_range,
+            scale_step=scale_step,
+            shift_frac=shift_frac,
+            shift_step_frac=shift_step_frac,
+        )
+        s = float(coarse["scale"])
+        scales.append(s)
+        print(f"  [phase-1] {prefix}: coarse_scale={s:.4f}")
+
+    if len(scales) == 0:
+        # fallback: just use mid of default range
+        med = 0.5 * (scale_range[0] + scale_range[1])
+        print(f"[WARN] Phase-1 got 0 valid scales, fallback median={med:.4f}")
+        return float(med)
+
+    med = float(np.median(np.asarray(scales, dtype=np.float32)))
+    print(f"[INFO] Phase-1 median scale from {len(scales)} tiles = {med:.4f}")
+    return med
+
+
+def make_scale_range_around_median(med, frac=0.15, hard_min=0.5, hard_max=3.0):
+    """
+    Return (lo, hi) where lo=med*(1-frac), hi=med*(1+frac), clamped.
+    frac=0.15 means ±15%.
+    """
+    lo = max(hard_min, med * (1.0 - frac))
+    hi = min(hard_max, med * (1.0 + frac))
+    return float(lo), float(hi)
+
+
+
 def coarse_search_ds_parallel_cached(
     maskA, maskB,
     ds=4,
@@ -190,7 +289,7 @@ def coarse_search_ds_parallel_cached(
     def eval_one_cached(s, tx_ds, ty_ds):
         B_s = B_cache[float(s)]
         B_st = warp(B_s, 1.0, tx_ds, ty_ds, (Hds, Wds))
-        score = clipped_iou(A, B_st)
+        score = dice_score(A, B_st)
         return score, float(s), int(tx_ds), int(ty_ds)
 
     tasks = (
@@ -272,7 +371,7 @@ def refine_full(
     def refine_eval_one(s, tx, ty):
         B_s = B_scale_cache[s]
         B_st = warp(B_s, 1.0, tx, ty, (H, W))  # shift only
-        score = clipped_iou(maskA, B_st)
+        score = dice_score(maskA, B_st)
         return score, s, int(tx), int(ty)
 
     tasks = (
@@ -298,16 +397,6 @@ def refine_full(
 # ==================================================
 # Stage 2: local refine on full resolution (unchanged)
 # ==================================================
-
-def refine_eval_one(args):
-    s, tx, ty, maskA, maskB, H, W = args
-    B_s = cv2.resize(maskB, None, fx=s, fy=s,
-                     interpolation=cv2.INTER_NEAREST)
-    B_s, _, _, _, _ = pad_or_crop(B_s, (H, W))
-    B_st = warp(B_s, 1.0, tx, ty, (H, W))
-    score = clipped_iou(maskA, B_st)
-    return score, s, tx, ty
-
 def find_isolated_components(mask, min_area=10, radii=(3,5,7), area_iqr_k=1.5):
     H, W = mask.shape
     x_lo, x_hi = W/6, 5*W/6
@@ -510,7 +599,32 @@ if __name__ == "__main__":
     total = len(dapi_files)
     print(f"[INFO] Found {total} tiles for standout nuclei detection")
 
-    all_nuclei_records = []
+    # ==================================================
+    # Phase-1: estimate global median scale using first 20 tiles
+    # ==================================================
+    N_MED = 50
+    med_scale = robust_median_scale_from_firstN(
+        dapi_files=dapi_files,
+        base_dir=base_dir,
+        case_id=case_id,
+        N=N_MED,
+        ds=4,
+        scale_range=(1.0, 1.5),
+        scale_step=0.05,
+        shift_frac=0.2,
+        shift_step_frac=0.05,
+    )
+
+    # choose how narrow you want it
+    # e.g. ±15% around median
+    median_frac = 0.10
+    new_scale_range = make_scale_range_around_median(med_scale, frac=median_frac, hard_min=0.5, hard_max=3.0)
+    print(f"[INFO] Phase-2: use scale_range around median: {new_scale_range} (median={med_scale:.4f}, frac=±{median_frac*100:.1f}%)")
+
+
+
+
+
     for idx, dapi_path in enumerate(dapi_files, 1):
         t_patch_start = time.perf_counter()
         # -------- derive prefix --------
@@ -521,7 +635,6 @@ if __name__ == "__main__":
         if not os.path.exists(he_path):
             print(f"[SKIP] HE mask not found for {prefix}")
             continue
-
         print(f"\n=== Processing {prefix} ({idx}/{len(dapi_files)}) ===")
         nucleus_id = 0
         # -------- read masks --------
@@ -535,22 +648,31 @@ if __name__ == "__main__":
         coarse = coarse_search_ds_parallel_cached(
             maskA, maskB,
             ds=4,
-            scale_range=(0.8, 1.8),
-            scale_step=0.04,
-            shift_frac=0.5,
+            scale_range=new_scale_range,
+            scale_step=0.02,
+            shift_frac=0.4,
             shift_step_frac=0.05
         )
-        print("  Coarse:", coarse)
         # -------- Stage 2 (parallel refine) --------
         final = refine_full(
             maskA, maskB,
             coarse,
             scale_range_frac=0.02,
             scale_step_frac=0.005,
-            shift_range_frac=0.05,
+            shift_range_frac=0.03,
             shift_step_frac=0.01
         )
+        coarse_full_score = score_full(maskA, maskB, coarse)
+        final_full_score = score_full(maskA, maskB, final)
+
+        print("  Coarse:", coarse)
         print("  Final:", final)
+        print(
+            f"  [SCORE] coarse_ds_iou={coarse['score_ds']:.4f} | coarse_full_score={coarse_full_score:.4f} | final_full_score={final_full_score:.4f}")
+
+        H, W = maskA.shape
+        cx = W / 2.0
+        cy = H / 2.0
         # -------- Final warp --------
         H, W = maskA.shape
         B_final = warp(maskB, final["scale"], final["tx"], final["ty"], (H, W))
@@ -580,49 +702,36 @@ if __name__ == "__main__":
             B_iso_mask,
             min_area=60,
             min_sym_cov=0.4,
-            top_k=5,
+            top_k=3,
             debug=True
         )
-        if len(pairs) == 0:
+        n_pairs = len(pairs)
+        if n_pairs == 0:
             print("  [DEBUG] No valid A/B pairs found after filtering")
-        elif len(pairs) < 2:
-            print(f"  [SKIP] Only {len(pairs)} matching nuclei (need >=2). Discard tile {prefix}.")
-            t_patch_end = time.perf_counter()
-            print(f"[TIME] {prefix}: {t_patch_end - t_patch_start:.2f} sec")
-            print(f"[PROGRESS] TILES {idx}/{total}", flush=True)
-            continue
-        for p in pairs:
-            H, W = maskA.shape
+        if (n_pairs >= 2) and (final_full_score > FALLBACK_SCORE_THR):
+            good_tile_count += 1
+        # -----------------------------
+        # Map top-K pairs to ORIGINAL coords NOW (store into fallback_candidates)
+        # -----------------------------
+        pairs_mapped = []
+        for nucleus_id, p in enumerate(pairs):  # 这里你要保留几个pair，后面再切也行
             xA_aligned, yA_aligned = p["A_centroid"]
-            xA_dapi, yA_dapi = inverse_orientation_point(
-                xA_aligned, yA_aligned, H, W, case_id
-            )
-            DAPI_MASK_SCALE = 2
-            xA_img = xA_dapi / DAPI_MASK_SCALE
-            yA_img = yA_dapi / DAPI_MASK_SCALE
-
             xB_aligned, yB_aligned = p["B_centroid"]
-            xB_mask, yB_mask = aligned_to_he_mask_img(
+
+            xA_img, yA_img = dapi_aligned_to_original(
+                xA_aligned, yA_aligned,
+                H, W, case_id,
+                DAPI_MASK_SCALE
+            )
+            xB_img, yB_img = he_aligned_to_original(
                 xB_aligned, yB_aligned,
                 final, H, W,
                 paste_x0, paste_y0,
-                base_scale
+                base_scale,
+                HE_MASK_SCALE
             )
-            xB_img = xB_mask / HE_MASK_SCALE
-            yB_img = yB_mask / HE_MASK_SCALE
-
-            print(
-                "DAPI:", np.round(p["A_centroid"], 2),
-                "DAPI original:", np.round(np.array([xA_img, yA_img]), 2),
-                "HE:", np.round(p["B_centroid"], 2),
-                "HE original:", np.round(np.array([xB_img, yB_img]), 2),
-                "Overlapping ratio A: ", np.round(p["covA"], 2),
-                "Overlapping ratio B: ", np.round(p["covB"], 2),
-                "F1-score: ", np.round(p["f1"], 2)
-            )
-            record = {
-                "tile": prefix,
-                "nucleus_id": nucleus_id,
+            pairs_mapped.append({
+                "nucleus_id": int(nucleus_id),
                 "aligned": {
                     "dapi": [float(xA_aligned), float(yA_aligned)],
                     "he": [float(xB_aligned), float(yB_aligned)],
@@ -635,20 +744,29 @@ if __name__ == "__main__":
                     "dapi": int(p["areaA"]),
                     "he": int(p["areaB"]),
                 },
+                "metrics": {
+                    "f1": float(p["f1"]),
+                    "covA": float(p["covA"]),
+                    "covB": float(p["covB"]),
+                },
                 "bbox_aligned": {
                     "y0": int(p["A_comp"]["bbox"][0].start),
                     "y1": int(p["A_comp"]["bbox"][0].stop),
                     "x0": int(p["A_comp"]["bbox"][1].start),
                     "x1": int(p["A_comp"]["bbox"][1].stop),
                 },
-                "metrics": {
-                    "covA": float(p["covA"]),
-                    "covB": float(p["covB"]),
-                    "f1": float(p["f1"]),
-                }
-            }
-            all_nuclei_records.append(record)
-            nucleus_id = nucleus_id + 1
+            })
+
+        fallback_candidates.append({
+            "tile": prefix,
+            "final_full_score": float(final_full_score),
+            "n_pairs": int(n_pairs),
+            "pairs_mapped": pairs_mapped,  # ✅ 存已经换算好的结果
+            "final": final,
+            "H": int(H), "W": int(W),
+            "paste_x0": int(paste_x0), "paste_y0": int(paste_y0),
+            "base_scale": float(base_scale),
+        })
 
         # -------- Visualization --------
         vis = np.zeros((H, W, 3), dtype=np.uint8)
@@ -672,9 +790,154 @@ if __name__ == "__main__":
         print(f"[TIME] {prefix}: {t_patch_end - t_patch_start:.2f} sec")
         print(f"[PROGRESS] TILES {idx}/{total}", flush=True)
 
+    print(f"[INFO] good tiles (n_pairs>=2): {good_tile_count}")
+    selected_tiles = None
+    mode = None
+    if good_tile_count >= MIN_GOOD_TILES:
+        # 用 n_pairs>=2 的 tiles
+        selected_tiles = [
+            t for t in fallback_candidates
+            if (t["n_pairs"] >= 2) and (t["final_full_score"] > FALLBACK_SCORE_THR)
+        ]
+        mode = "pairs>=2"
+    else:
+        # fallback: 用 score>0.30 的 tiles
+        score_tiles = [t for t in fallback_candidates if t["final_full_score"] > FALLBACK_SCORE_THR]
+        print(
+            f"[WARN] good tiles < {MIN_GOOD_TILES}. Fallback to tiles with final_full_score > {FALLBACK_SCORE_THR}: {len(score_tiles)}")
+        if len(score_tiles) >= MIN_FALLBACK_TILES:
+            selected_tiles = score_tiles
+            mode = "score_fallback"
+        else:
+            raise RuntimeError(
+                f"Not enough good tiles. "
+                f"good_tiles(n_pairs>=2)={good_tile_count} (<{MIN_GOOD_TILES}), "
+                f"score_tiles(final_full_score>{FALLBACK_SCORE_THR})={len(score_tiles)} (<{MIN_FALLBACK_TILES}). "
+                f"Need better tiles/masks."
+            )
+    print(f"[INFO] Selection mode: {mode}. Using tiles: {len(selected_tiles)}")
+
+    # --------------------------------
+    # Build final matching points
+    # --------------------------------
+    final_records = []
+
+    if mode == "pairs>=2":
+        for t in selected_tiles:
+            prefix = t["tile"]
+            take = t["pairs_mapped"][:2]  # 你要几个pair就改这里
+            for pm in take:
+                final_records.append({
+                    "tile": prefix,
+                    "mode": "nuclei_pair",
+                    "nucleus_id": int(pm["nucleus_id"]),
+                    "aligned": pm["aligned"],
+                    "original": pm["original"],
+                    "area": pm["area"],
+                    "bbox_aligned": pm["bbox_aligned"],
+                    "metrics": {
+                        "final_full_score": float(t["final_full_score"]),
+                        "n_pairs": int(t["n_pairs"]),
+                        **pm["metrics"],
+                    },
+                    "meta": {  # ✅ 把 case_id & mask_scale 一并写进去，方便 downstream
+                        "case_id": int(case_id),
+                        "mask_scale": {"dapi": float(DAPI_MASK_SCALE), "he": float(HE_MASK_SCALE)},
+                    }
+                })
+
+    elif mode == "score_fallback":
+        for t in selected_tiles:
+            prefix = t["tile"]
+            H, W = t["H"], t["W"]
+            cx, cy = W / 2.0, H / 2.0  # aligned center
+            final = t["final"]
+            paste_x0 = t["paste_x0"]
+            paste_y0 = t["paste_y0"]
+            base_scale = t["base_scale"]
+            xA_img, yA_img = dapi_aligned_to_original(cx, cy, H, W, case_id, DAPI_MASK_SCALE)
+            xB_img, yB_img = he_aligned_to_original(
+                cx, cy,
+                final, H, W,
+                paste_x0, paste_y0,
+                base_scale,
+                HE_MASK_SCALE
+            )
+            final_records.append({
+                "tile": prefix,
+                "mode": "tile_center",
+                "aligned": {
+                    "dapi": [float(cx), float(cy)],
+                    "he": [float(cx), float(cy)],
+                },
+                "original": {
+                    "dapi": [float(xA_img), float(yA_img)],
+                    "he": [float(xB_img), float(yB_img)],
+                },
+                "metrics": {
+                    "final_full_score": float(t["final_full_score"]),
+                    "n_pairs": int(t["n_pairs"]),
+                },
+                "meta": {
+                    "case_id": int(case_id),
+                    "mask_scale": {"dapi": float(DAPI_MASK_SCALE), "he": float(HE_MASK_SCALE)},
+                }
+            })
+
+    else:
+        raise RuntimeError(f"Unknown mode: {mode}")
+
+    print("\n[INFO] Drawing QA point overlays on raw tiles...")
+
+    for rec in final_records:
+        tile = rec["tile"]
+
+        # raw image paths
+        dapi_path = os.path.join(base_dir, f"{tile}_dapi_u8.png")
+        he_path = os.path.join(base_dir, f"{tile}_he.png")
+
+        if not os.path.exists(dapi_path):
+            print(f"[WARN] Missing DAPI raw tile: {dapi_path}")
+            continue
+        if not os.path.exists(he_path):
+            print(f"[WARN] Missing HE raw tile: {he_path}")
+            continue
+
+        # read raw images
+        dapi_img = cv2.imread(dapi_path)
+        he_img = cv2.imread(he_path)
+
+        if dapi_img is None or he_img is None:
+            print(f"[WARN] Failed to read raw tile for {tile}")
+            continue
+
+        # original coordinates (already projected back)
+        xA, yA = rec["original"]["dapi"]
+        xB, yB = rec["original"]["he"]
+
+        # round to int
+        xA, yA = int(round(xA)), int(round(yA))
+        xB, yB = int(round(xB)), int(round(yB))
+
+        # draw circle (radius=12, thickness=3)
+        cv2.circle(dapi_img, (xA, yA), 5, (0, 0, 255), 3)  # red on DAPI
+        cv2.circle(he_img, (xB, yB), 5, (0, 0, 255), 3)  # red on HE
+
+        # save QA images
+        os.makedirs(os.path.join(base_dir, "anchors/"), exist_ok=True)
+        out_dapi = os.path.join(base_dir, f"anchors/{tile}_dapi_point.png")
+        out_he = os.path.join(base_dir, f"anchors/{tile}_he_point.png")
+
+        cv2.imwrite(out_dapi, dapi_img)
+        cv2.imwrite(out_he, he_img)
+
+        print(f"[OK] {tile} -> saved QA overlays")
+
+    print("[DONE] QA overlays saved.\n")
+
     json_path = os.path.join(base_dir, "standout_nuclei.json")
     with open(json_path, "w") as f:
-        json.dump(all_nuclei_records, f, indent=2)
+        json.dump(final_records, f, indent=2)
     print(f"[INFO] Saved standout nuclei info -> {json_path}")
     # ================================
     # OVERALL TIMER (END)
