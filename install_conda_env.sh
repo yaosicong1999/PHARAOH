@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -e
 
-ENV_NAME="dapi_he"
+ENV_NAME="histopyralign"
 PYTHON_VERSION="3.10"
 
 echo "Creating conda environment: ${ENV_NAME}"
@@ -107,8 +107,7 @@ numcodecs==0.13.1 \
 numpy==2.2.6 \
 numpydoc==1.9.0 \
 ome-types==0.6.3 \
-opencv-python==4.10.0 \
-opencv-python-headless==4.10.0 \
+opencv-python==4.12.0.88 \
 packaging==25.0 \
 pandas==2.3.3 \
 parso==0.8.5 \
