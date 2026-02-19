@@ -219,16 +219,12 @@ def extract_patch_and_mark_point(
     """
     half = patch_length // 2
     H, W = img.shape[:2]
-    print(f"H is {H}, W is {W}")
 
     x_global = int(np.clip(x_global, 0, W - 1))
     y_global = int(np.clip(y_global, 0, H - 1))
-    print(f"x_global is {x_global}, y_global is {y_global}")
 
     y0 = max(0, y_global - half)
     x0 = max(0, x_global - half)
-    print(f"y0 is {y0}, x0 is {x0}")
-
 
     crop = read_crop_patch(img, x0, y0, patch_length, patch_length)
     if crop.size == 0:
@@ -328,7 +324,7 @@ def main(run_dir, do_refine=True):
     print("[INFO] Loading full-res images. This could take about 1 min ⚠️", flush=True)
 
 
-    he_img, *_ = read_image(HE_PATH, keep_16bit=True, level=0)
+    he_img, *_ = read_image(HE_PATH, keep_16bit=True, level=0, channel="he")
     # tif_he, he_img = open_ome_level_lazy(HE_PATH, series=0, level=0)
 
     global lut
@@ -338,7 +334,7 @@ def main(run_dir, do_refine=True):
     )
     lut = np.fromfile(lut_path, dtype=np.uint8).reshape(256, 3)
 
-    dapi_img, *_ = read_image(DAPI_PATH, keep_16bit=True, level=0)
+    dapi_img, *_ = read_image(DAPI_PATH, keep_16bit=True, level=0, channel="dapi")
     # dapi_rgb = dapi_to_lut_rgb(dapi_img, lut, threshold=300)
     # tif_dapi, dapi_img = open_ome_level_lazy(DAPI_PATH, series=0, level=0)
 
@@ -366,7 +362,6 @@ def main(run_dir, do_refine=True):
         xA_tile, yA_tile = n["original"]["dapi"]
         xA_global = int(round(dapi_info["x0"] * S + xA_tile * S))
         yA_global = int(round(dapi_info["y0"] * S + yA_tile * S))
-        print(f"xA_global is {xA_global}, yA_global is {yA_global}")
 
         output_xA_global, output_yA_global, _, _ = extract_patch_and_mark_point(
             dapi_img,
