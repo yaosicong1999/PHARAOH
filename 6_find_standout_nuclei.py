@@ -15,7 +15,7 @@ FALLBACK_SCORE_THR = 0.40    # final_full_iou 阈值
 MIN_FALLBACK_TILES = 20      # fallback tile 数阈值
 
 good_tile_count = 0
-fallback_candidates = []  # 存每个 tile 的 {tile, final_full_iou, pairs, final, paste_x0...}
+fallback_candidates = []
 
 def inverse_orientation_point(x, y, H, W, case_id):
     if case_id == 0:      # identity
@@ -621,10 +621,6 @@ if __name__ == "__main__":
     median_frac = 0.10
     new_scale_range = make_scale_range_around_median(med_scale, frac=median_frac, hard_min=0.5, hard_max=3.0)
     print(f"[INFO] Phase-2: use scale_range around median: {new_scale_range} (median={med_scale:.4f}, frac=±{median_frac*100:.1f}%)")
-
-
-
-
 
     for idx, dapi_path in enumerate(dapi_files, 1):
         t_patch_start = time.perf_counter()
