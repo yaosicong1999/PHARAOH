@@ -301,8 +301,10 @@ def main(run_dir, do_refine=True):
 
     print("[INFO] Loading metadata")
 
+    scripts_dir = os.getcwd()
+    with open(f"{scripts_dir}/parameters.json") as f:
+        parameters = json.load(f)
     os.chdir(run_dir)
-
     with open("standout_nuclei.json") as f:
         nuclei = json.load(f)
     with open("dapi_tile_info.json") as f:
@@ -311,6 +313,7 @@ def main(run_dir, do_refine=True):
         he_tiles = json.load(f)
     with open("../images_info.json") as f:
         images_info = json.load(f)
+
     DAPI_PATCH_LEN = 500
     HE_PATCH_LEN = load_initial_affine_and_compute_he_patch(
         run_dir,
@@ -320,7 +323,6 @@ def main(run_dir, do_refine=True):
     )
     HE_PATH = images_info["HE_path"]
     DAPI_PATH = images_info["DAPI_path"]
-
     print("[INFO] Loading full-res images. This could take about 1 min ⚠️", flush=True)
 
 
@@ -330,7 +332,7 @@ def main(run_dir, do_refine=True):
     global lut
     lut_path = images_info.get(
         "DAPI_LUT",
-        "../../glasbey_inverted.lut",
+        f"{scripts_dir}/glasbey_inverted.lut",
     )
     lut = np.fromfile(lut_path, dtype=np.uint8).reshape(256, 3)
 
@@ -355,9 +357,15 @@ def main(run_dir, do_refine=True):
         nucleus_id = n.get("nucleus_id", 0)
         dapi_info = dapi_tiles[tile_id]
 
-        LEVEL_DIFF = 1
-        S = 2 ** LEVEL_DIFF
+        DAPI_TILE_LEVEL_OVERRIDE = parameters["step3"]["dapi_level_override"]
+        if DAPI_TILE_LEVEL_OVERRIDE == "None":
+            LEVEL_DIFF = 1
+        elif isinstance(DAPI_TILE_LEVEL_OVERRIDE, int):
+            LEVEL_DIFF = DAPI_TILE_LEVEL_OVERRIDE
+        else:
+            raise ValueError("DAPI_TILE_LEVEL_OVERRIDE in parameter.json['step3'] must be 'None' or int")
 
+        S = 2 ** LEVEL_DIFF
         # ---- choose tile coords ----
         xA_tile, yA_tile = n["original"]["dapi"]
         xA_global = int(round(dapi_info["x0"] * S + xA_tile * S))
@@ -388,7 +396,18 @@ def main(run_dir, do_refine=True):
         nucleus_id = n.get("nucleus_id", 0)
         he_info = he_tiles[tile_id]
 
-        LEVEL_DIFF = 1
+        DAPI_LEVEL = images_info["DAPI_level"]
+        HE_LEVEL = images_info["HE_level"]
+        HE_TILE_LEVEL_OVERRIDE = parameters["step3"]["he_level_override"]
+        if HE_TILE_LEVEL_OVERRIDE == "None":
+            if HE_LEVEL <= DAPI_LEVEL:
+                LEVEL_DIFF = 1
+            else:
+                LEVEL_DIFF = 1 + HE_LEVEL - DAPI_LEVEL
+        elif isinstance(HE_TILE_LEVEL_OVERRIDE, int):
+            LEVEL_DIFF = HE_TILE_LEVEL_OVERRIDE
+        else:
+            raise ValueError("DAPI_TILE_LEVEL_OVERRIDE must be 'None' or int")
         S = 2 ** LEVEL_DIFF
 
         if "original" in n and "he" in n["original"] and n["original"]["he"] is not None:

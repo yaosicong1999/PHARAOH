@@ -30,8 +30,6 @@ def load_dapi_lut_threshold_from_images_info(run_dir: Path, default=1000) -> int
         print(f"[WARN] failed to read images_info.json: {e}, fallback threshold={default}", flush=True)
         return int(default)
 
-    # 你想用的 key：DAPI_LUT_threshold
-    # 兼容几个可能的旧 key，避免以后你改名字爆炸
     for k in ("DAPI_LUT_threshold", "dapi_lut_threshold", "dapi_lut_thr", "lut_threshold"):
         if k in info:
             try:
@@ -272,11 +270,6 @@ def make_tissue_mask_from_dapi_gray(
 
 
 def make_available_mask_boundary_only(mask_tissue255: np.ndarray, boundary_radius: int = 0):
-    """
-    只做“图像边界 buffer”，不做 tissue 内缩：
-      available = tissue ∩ inner_image_box
-    输出约定：0=available, 255=unavailable
-    """
     h, w = mask_tissue255.shape[:2]
     tissue = (mask_tissue255 > 0)
 
@@ -343,7 +336,6 @@ def repel_too_close(points, coords_valid, min_sep, seed=0, max_rounds=20, max_tr
             if bad[idx] == 0:
                 break
 
-            # 尝试找一个“离最近邻 >= min_sep”的新位置
             for _ in range(max_tries):
                 cand = coords_valid[rng.integers(0, len(coords_valid))]
                 d, _ = tree.query(cand, k=1)
@@ -390,10 +382,6 @@ def cvt_masked(mask_available, N_POINTS=80, MIN_DIST=7, ITERATIONS=50, seed=0):
                 new_points[i] = sub[k]
 
         points, ok = repel_too_close(new_points, coords_valid, MIN_SEP, seed=seed + it + 1)
-        # 可选：如果一直ok==False，可以print一个warn
-        # if not ok and it == ITERATIONS - 1:
-        #     print("[WARN] Could not fully satisfy soft min separation; mask may be too narrow.", flush=True)
-
     return points.astype(np.int32)
 
 
@@ -1254,11 +1242,14 @@ class Step3SamplingApp(tk.Tk):
             if not info_path.exists():
                 raise FileNotFoundError(f"missing {info_path}")
             info = json.load(open(info_path, "r"))
+            parameters = json.load(open("parameters.json", "r"))
 
             DAPI_PATH = info["DAPI_path"]
             HE_PATH = info["HE_path"]
             DAPI_LEVEL = int(info["DAPI_level"])
             HE_LEVEL = int(info["HE_level"])
+            DAPI_TILE_LEVEL_OVERRIDE = parameters["step3"]["dapi_level_override"]
+            HE_TILE_LEVEL_OVERRIDE = parameters["step3"]["he_level_override"]
 
             lut_path = "glasbey_inverted.lut"
             lut = np.fromfile(lut_path, dtype=np.uint8).reshape(256, 3)
@@ -1281,6 +1272,7 @@ class Step3SamplingApp(tk.Tk):
             ensure_dir(output_folder)
 
             tick(5, f"DAPI_LEVEL={DAPI_LEVEL}, HE_LEVEL={HE_LEVEL}")
+            tick(6, f"DAPI_TILE_LEVEL_OVERRIDE={DAPI_TILE_LEVEL_OVERRIDE}, HE_TILE_LEVEL_OVERRIDE={HE_TILE_LEVEL_OVERRIDE}")
             tick(8, f"Output: {output_folder}")
 
             # ---------- imports from your project ----------
@@ -1290,10 +1282,16 @@ class Step3SamplingApp(tk.Tk):
 
             report_stage(2, "Saving DAPI tiles (intensity + LUT)")
 
-            dapi16_lvl1, _ = read_image(DAPI_PATH, keep_16bit=True, level=1, channel="dapi")
+            if DAPI_TILE_LEVEL_OVERRIDE == "None":
+                dapi16_lvl1, _ = read_image(DAPI_PATH, keep_16bit=True, level=1, channel="dapi")
+                tick(20, f" Now reading dapi tile automatically from level 1 with shape={getattr(dapi16_lvl1, 'shape', None)} dtype={dapi16_lvl1.dtype}")
+            elif isinstance(DAPI_TILE_LEVEL_OVERRIDE, int):
+                dapi16_lvl1, _ = read_image(DAPI_PATH, keep_16bit=True, level=DAPI_TILE_LEVEL_OVERRIDE, channel="dapi")
+                tick(20, f" Now reading dapi tile from level {DAPI_TILE_LEVEL_OVERRIDE} by parameter override with shape={getattr(dapi16_lvl1, 'shape', None)} dtype={dapi16_lvl1.dtype}")
+            else:
+                raise ValueError("DAPI_TILE_LEVEL_OVERRIDE in parameter.json['step3'] must be 'None' or int")
             if dapi16_lvl1.ndim == 3:
                 dapi16_lvl1 = dapi16_lvl1[..., 0]
-            tick(20, f"Read DAPI level=1 (u16) shape={getattr(dapi16_lvl1, 'shape', None)} dtype={dapi16_lvl1.dtype}")
 
             save_dapi_tiles_intensity(
                 dapi16_lvl1,
@@ -1335,14 +1333,27 @@ class Step3SamplingApp(tk.Tk):
             h_mat = data["H_mat"]
             tick(72, "Loaded initial alignment")
 
-            he_img2, _ = read_image(HE_PATH, keep_16bit=True, level=1, channel="he")
-            tick(78, f"Read HE level=1 shape={getattr(he_img2, 'shape', None)}")
+            if HE_TILE_LEVEL_OVERRIDE == "None":
+                if HE_LEVEL <= DAPI_LEVEL:
+                    he_img2, _ = read_image(HE_PATH, keep_16bit=True, level=1, channel="he")
+                    tick(78, f"Now reading H&E tile automatically from level 1 with shape={getattr(he_img2, 'shape', None)}")
+                    rescale_f = 2 ** (HE_LEVEL - 1)
+                else:
+                    he_img2, _ = read_image(HE_PATH, keep_16bit=True, level=1 + HE_LEVEL - DAPI_LEVEL, channel="he")
+                    tick(78, f"Now reading H&E tile automatically from level{1 + HE_LEVEL - DAPI_LEVEL} with shape={getattr(he_img2, 'shape', None)}")
+                    rescale_f = 2 ** (HE_LEVEL - (1 + HE_LEVEL - DAPI_LEVEL))
+            elif isinstance(HE_TILE_LEVEL_OVERRIDE, int):
+                he_img2, _ = read_image(HE_PATH, keep_16bit=True, level=HE_TILE_LEVEL_OVERRIDE, channel="he")
+                tick(78, f"Now reading H&E tile from level {HE_TILE_LEVEL_OVERRIDE} by parameter override with shape={getattr(he_img2, 'shape', None)}")
+                rescale_f = 2 ** (HE_LEVEL - HE_TILE_LEVEL_OVERRIDE)
+            else:
+                raise ValueError("DAPI_TILE_LEVEL_OVERRIDE must be 'None' or int")
 
             he_tiles = save_he_tiles(
                 he_img2, tiles, h_mat, str(output_folder),
-                rescale_factor=2 ** (HE_LEVEL - 1),
+                rescale_factor=rescale_f,
                 mode="rectified",
-                margin_ratio=0.2,
+                margin_ratio=parameters['step3']['he_tile_margin_ratio'],
                 case_id=self.case_id,
             )
             tick(95, f"Saved HE tiles: {len(he_tiles) if hasattr(he_tiles, '__len__') else 'done'}")

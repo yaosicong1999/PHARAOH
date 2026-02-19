@@ -2,7 +2,10 @@
   "step3": {
     "n_tiles": 120,
     "tile_size": 600,
-    "min_dist_factor": 1.2
+    "min_dist_factor": 1.2,
+    "dapi_level_override": "None",
+    "he_level_override": "None",
+    "he_tile_margin_ratio": 0.2
   },
   "step5": {
     "dapi_mask_min_area_factor": 8e-5,
