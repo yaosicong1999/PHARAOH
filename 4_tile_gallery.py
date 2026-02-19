@@ -308,7 +308,8 @@ def show_tile_gallery_in_memory(
         # resolve base & filenames
         # ----------------------------
         base = dapi["filename"].replace("_dapi.png", "")
-        dapi_img_name = dapi["filename"]
+#        dapi_img_name = dapi["filename"]
+        dapi_img_name = dapi["filename"].replace("_dapi.png", "_dapi_u8.png")
         he_img_name = he["filename"]
         # ----------------------------
         # DAPI image (from disk)
