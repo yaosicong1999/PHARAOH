@@ -266,18 +266,34 @@ def read_image(
                 print(f"[INFO] Picked level={selected_level} from page.pages")
 
                 arr = pages[selected_level].asarray()
-                # axes is not always available on TiffPage -> infer
-                # if arr is 3D and first dim small -> likely CYX
-                if arr.ndim == 3 and arr.shape[0] in (3, 4) and arr.shape[-1] not in (3, 4):
-                    axes = "CYX"
-                elif arr.ndim == 3 and arr.shape[-1] in (3, 4):
-                    axes = "YXC"
-                else:
-                    axes = "YX"
+                # ---------- HE special-case: page.pages sometimes is grayscale replicated ----------
+                # If user asked for HE and this looks like replicated RGB, skip pages and try series.levels.
+                if (channel is not None) and (str(channel).lower() == "he"):
+                    if arr.ndim == 3 and arr.shape[-1] in (3, 4):
+                        if (arr.ndim == 3) and (arr.shape[-1] in (3, 4)):
+                            rgb = arr[..., :3]
+                            if np.all(rgb[..., 0] == rgb[..., 1]) and np.all(rgb[..., 1] == rgb[..., 2]):
+                                print(
+                                    "[WARN] page.pages returned replicated grayscale RGB for HE; fallback to series.levels",
+                                    flush=True)
+                                pages = None
+                    elif arr.ndim == 2:
+                        print(
+                            "[WARN] page.pages returned replicated grayscale RGB for HE; fallback to series.levels",
+                            flush=True)
+                        pages = None
 
-                img = _apply_channel_policy(arr, axes)
-                img = _normalize_to_uint8_if_needed(img)
-                return img, selected_level
+                if pages is not None:
+                    # axes is not always available on TiffPage -> infer
+                    if arr.ndim == 3 and arr.shape[0] in (3, 4) and arr.shape[-1] not in (3, 4):
+                        axes = "CYX"
+                    elif arr.ndim == 3 and arr.shape[-1] in (3, 4):
+                        axes = "YXC"
+                    else:
+                        axes = "YX"
+                    img = _apply_channel_policy(arr, axes)
+                    img = _normalize_to_uint8_if_needed(img)
+                    return img, selected_level
 
             # ---------- 2) Fallback: series.levels ----------
             levels = list(getattr(s, "levels", [])) or []
@@ -322,11 +338,35 @@ def read_image(
     # ============================================================
     # Non-OME: regular TIFF / JPG / PNG
     # ============================================================
+    def _infer_axes_non_ome(arr):
+        """
+        Infer axes for non-OME reads (tifffile.imread / PIL).
+        Returns one of: "YX", "YXC", "CYX"
+        """
+        if arr.ndim == 2:
+            return "YX"
+
+        if arr.ndim == 3:
+            # If last dim looks like color channels -> YXC
+            if arr.shape[-1] in (3, 4):
+                return "YXC"
+
+            # Otherwise treat as stack-of-planes: IYX/CYX style
+            # (e.g., IYX with I=24, or CYX with C=3/4 but stored first)
+            return "CYX"
+
+        # weird dims, return empty -> caller can handle
+        return ""
+
+
     # read
     if filename.endswith((".tif", ".tiff")):
         img0 = tifffile.imread(path)
     else:
         img0 = np.array(Image.open(path))
+
+    axes = _infer_axes_non_ome(img0)
+    img0 = _apply_channel_policy(img0, axes)
 
     # ensure channel layout similar to others
     # if grayscale
