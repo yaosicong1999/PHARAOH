@@ -6,7 +6,7 @@ import numpy as np
 import cv2
 import tkinter as tk
 from tkinter import messagebox, filedialog
-from PIL import Image, ImageTk, ImageOps
+from PIL import Image, ImageTk, ImageOps, ImageDraw, ImageFont
 from ome_types import from_tiff
 import pandas as pd
 from my_utils import read_image, dapi_to_lut_rgb, plot_cell_centroid
@@ -47,6 +47,18 @@ def apply_orientation_case(img, case_id):
         return np.fliplr(np.rot90(img, k=1))
     raise ValueError(case_id)
 
+def add_watermark(img, text):
+    img = img.convert("RGB")
+    draw = ImageDraw.Draw(img)
+    try:
+        font = ImageFont.truetype("Arial.ttf", 80)
+    except:
+        font = ImageFont.load_default()
+    # Position (top-left with padding)
+    padding = 20
+    draw.text((padding, padding), text, fill=(255, 255, 255), font=font)
+    return img
+
 def build_stage_to_morph_from_ome(dapi_ome_tif_path: Path) -> np.ndarray:
     """
     Build 3x3 homography: stage(micron) -> morphology pixel (level0)
@@ -77,7 +89,6 @@ def cv2_to_pil(img):
         return Image.fromarray(img)
     return Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
 
-
 def fit_to_tile(pil_img, size=TILE_SIZE, bg=BG_COLOR):
     canvas = Image.new("RGB", size, bg)
     if pil_img is None:
@@ -87,7 +98,6 @@ def fit_to_tile(pil_img, size=TILE_SIZE, bg=BG_COLOR):
     y = (size[1] - pil_img.height) // 2
     canvas.paste(pil_img, (x, y))
     return canvas
-
 
 def draw_points(img, pts, color=(0, 255, 0), r=4, max_points=6000, name=""):
     """
@@ -117,7 +127,6 @@ def draw_points(img, pts, color=(0, 255, 0), r=4, max_points=6000, name=""):
         cv2.circle(out, (int(x), int(y)), int(r), color, -1)
 
     return out
-
 
 def load_affine(path: Path):
     data = json.load(open(path, "r"))
@@ -244,7 +253,6 @@ def transform_coordinates(coords_xy, homography_3x3):
     out = cv2.perspectiveTransform(coords_xy, np.asarray(homography_3x3, dtype=np.float32))
     return out[:, 0, :]
 
-
 def infer_scale_from_info(info: dict):
     """
     Try to infer micron->HE pixel scale from images_info.json.
@@ -254,7 +262,6 @@ def infer_scale_from_info(info: dict):
         if k in info:
             return float(info[k])
     return None
-
 
 def cells_to_he_pixels(cell_csv_gz: Path, affine_json: Path, dapi_ome_tif: Path):
     """
@@ -315,85 +322,49 @@ class FinalAlignmentApp(tk.Tk):
         super().__init__()
         self.title("Step 9 — Final Alignment Viewer")
         self.run_dir = run_dir
-        self.show_floating = True
 
         # -------- metadata --------
         self.info = json.load(open(run_dir / "images_info.json"))
         self.case_id = int(self.info.get("DAPI_orientation_case", 0))
 
-        # -------- load images (LEVEL 2, NO ORIENTATION) --------
-        dapi16, _ = read_image(self.info["DAPI_path"], keep_16bit=True, level=DISPLAY_LEVEL)
-        lut = np.fromfile("glasbey_inverted.lut", dtype=np.uint8).reshape(256, 3)
-        # -------- metadata --------
-        self.info = json.load(open(run_dir / "images_info.json"))
-        self.case_id = int(self.info.get("DAPI_orientation_case", 0))
-        # read LUT threshold from json (fallback to 300)
+        # -------- config --------
+        self.display_level = DISPLAY_LEVEL
+        self.display_scale = float(2 ** self.display_level)
+        self.cache = {
+            # base
+            "dapi_base": self.run_dir / f"9_cache_dapi_base_L{self.display_level}.png",
+            "he_base": self.run_dir / f"9_cache_he_base_L{self.display_level}.png",
+
+            # after load (with keypoints)
+            "dapi_kp": self.run_dir / f"9_cache_dapi_kp_L{self.display_level}.png",
+            "he_kp": self.run_dir / f"9_cache_he_kp_L{self.display_level}.png",
+
+            # overlays
+            "overlay": self.run_dir / f"9_overlay_final_L{self.display_level}.png",
+            "manual": self.run_dir / f"9_overlay_manual_L{self.display_level}.png",
+            "alternating": self.run_dir / f"9_alternating_L{self.display_level}.gif",
+            "cells": self.run_dir / f"9_cells_centroids_L{self.display_level}.png",
+        }
+
+        # -------- state (alignment not loaded initially) --------
+        self.alignment_loaded = False
+        self.H3 = None
+        self.warped_dapi = None
+        self.he_dapi_overlay = None
+
+        self.dapi_pts0 = None
+        self.he_pts0 = None
+
+        # -------- load base images ONLY (no alignment) --------
+        # DAPI
         dapi_lut_thr = int(self.info.get("DAPI_LUT_threshold", 300))
         print(f"[INFO] Using DAPI_LUT_threshold={dapi_lut_thr} (from images_info.json)", flush=True)
-        # -------- load images --------
-        dapi16, _ = read_image(self.info["DAPI_path"], keep_16bit=True, level=DISPLAY_LEVEL)
-        lut = np.fromfile("glasbey_inverted.lut", dtype=np.uint8).reshape(256, 3)
-        self.dapi_rgb = dapi_to_lut_rgb(dapi16, lut, threshold=dapi_lut_thr)
-        self.dapi_rgb = cv2.cvtColor(self.dapi_rgb, cv2.COLOR_RGB2BGR)  # keep your BGR convention
 
-        he16, _ = read_image(self.info["HE_path"], keep_16bit=True, level=DISPLAY_LEVEL)
-        # normalize to uint8
-        he8 = cv2.normalize(he16, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
-        if he8.ndim == 2:
-            he_bgr = cv2.cvtColor(he8, cv2.COLOR_GRAY2BGR)
-        elif he8.ndim == 3 and he8.shape[2] == 3:
-            he_bgr = cv2.cvtColor(he8, cv2.COLOR_RGB2BGR)
-        else:
-            raise ValueError(f"Unexpected HE shape: {he8.shape}")
+        self.dapi_rgb = self._load_or_build_dapi_base()
+        self.he_rgb, self.he16 = self._load_or_build_he_base()
 
-        self.he_rgb = he_bgr
-        self.he16 = he16
-        print("[DEBUG] DAPI image level-2 shape:", self.dapi_rgb.shape, flush=True)
-        print("[DEBUG] HE   image level-2 shape:", self.he_rgb.shape, flush=True)
-
-        # -------- load nuclei points (LEVEL 0) --------
-        nuclei = json.load(open(run_dir / "nuclei_patches/nuclei_centroids_global.json"))
-        self.dapi_pts0 = np.array([x["dapi_centroid_global"] for x in nuclei], np.float32)
-        self.he_pts0   = np.array([x["he_centroid_global"]   for x in nuclei], np.float32)
-
-        # # -------- affine --------
-        # self.A2, self.A3 = load_affine(run_dir / "dapi_to_he_affine_level0.json")  # A2: (2,3)
-        # # ---------- precompute floating overlay (NO orientation) ----------
-        # H_disp = self.A2.copy()
-        # H_disp[:, 2] /= DISPLAY_SCALE
-        # self.warped_dapi = cv2.warpAffine(
-        #     self.dapi_rgb,
-        #     H_disp,
-        #     (self.he_rgb.shape[1], self.he_rgb.shape[0]),
-        #     flags=cv2.INTER_LINEAR,
-        #     borderMode=cv2.BORDER_CONSTANT,
-        # )
-
-        # # -------- perspective --------
-        # H_level0: dapi(level0) -> he(level0)  (3x3)
-        _, self.H3 = load_homography(run_dir / "dapi_to_he_homography_level0.json")  # A2: (2,3)
-        s = float(DISPLAY_SCALE)
-        S = np.array([[s, 0, 0],
-                      [0, s, 0],
-                      [0, 0, 1]], dtype=np.float32)
-        S_inv = np.array([[1 / s, 0, 0],
-                          [0, 1 / s, 0],
-                          [0, 0, 1]], dtype=np.float32)
-        H_disp = (S_inv @ self.H3 @ S).astype(np.float32)
-        self.warped_dapi = cv2.warpPerspective(
-            self.dapi_rgb,
-            H_disp,
-            (self.he_rgb.shape[1], self.he_rgb.shape[0]),
-            flags=cv2.INTER_LINEAR,
-            borderMode=cv2.BORDER_CONSTANT,
-        )
-
-        print("[DEBUG] he_rgb first pixel (BGR):", self.he_rgb[0, 0], flush=True)
-        print("[DEBUG] dapi_rgb first pixel (BGR):", self.dapi_rgb[0, 0], flush=True)
-        self.he_dapi_overlay = cv2.addWeighted(self.he_rgb, 0.7, self.warped_dapi, 0.8, 0)
-        out_path = self.run_dir / "9_overlay.png"
-        cv2.imwrite(str(out_path), self.he_dapi_overlay)
-        print(f"[DEBUG] wrote overlay to {out_path}", flush=True)
+        print("[DEBUG] DAPI image shape:", self.dapi_rgb.shape, flush=True)
+        print("[DEBUG] HE   image shape:", self.he_rgb.shape, flush=True)
 
         # -------- cell state --------
         self.cells_df = None
@@ -405,10 +376,10 @@ class FinalAlignmentApp(tk.Tk):
 
         self.panels = []
         titles = [
-            "Nuclei on DAPI (LUT)",
-            "Nuclei on H&E",
+            "DAPI (LUT)",
+            "H&E",
             "DAPI Overlay on H&E",
-            "Cells on H&E (from cells.csv.gz)"
+            "Cell centroids on H&E"
         ]
 
         for i, t in enumerate(titles):
@@ -420,8 +391,22 @@ class FinalAlignmentApp(tk.Tk):
             f.lbl = lbl
             self.panels.append(f)
 
+        # click panels to enlarge (always bind; handler decides what to show)
+        for i in range(4):
+            self.panels[i].lbl.bind("<Button-1>", lambda e, ii=i: self.on_panel_click(ii))
+
+        self.panels[0].lbl.configure(cursor="hand2")
+        self.panels[1].lbl.configure(cursor="hand2")
+        self.panels[2].lbl.configure(cursor="hand2")
+        self.panels[3].lbl.configure(cursor="hand2")
+
         btns = tk.Frame(self)
         btns.pack(fill="x", padx=10, pady=6)
+
+        tk.Button(
+            btns, text="Load keypoints + alignment matrix",
+            command=self.load_alignment_and_keypoints
+        ).pack(side="left", expand=True, fill="x")
 
         tk.Button(
             btns, text="Toggle H&E / Overlay",
@@ -433,95 +418,209 @@ class FinalAlignmentApp(tk.Tk):
             command=self.load_cell_data
         ).pack(side="left", expand=True, fill="x")
 
-        self._panel3_tkimg_he = self._make_tkimg(self.he_rgb)
-        self._panel3_tkimg_overlay = self._make_tkimg(self.he_dapi_overlay)
-        self.cells_overlay_path = self.run_dir / "9_cells_centroids.png"
-
-        # init current display
+        # init display: panel1/2 show base images; panel3/4 placeholders
         self._panel3_show_overlay = True
-        self.refresh_images()
+        self.refresh_images_initial()
         self.minsize(self.winfo_width(), self.winfo_height())
 
-        # click panels to enlarge
-        self.panels[0].lbl.bind(
-            "<Button-1>",
-            lambda e: self.show_large_view(
-                "DAPI + nuclei",
-                apply_orientation_case(
-                    draw_points(
-                        self.dapi_rgb,
-                        self.dapi_pts0 / DISPLAY_SCALE,
-                        color=(0, 255, 0),
-                        r=6
-                    ),
-                    self.case_id
-                )
-            )
-        )
-        self.panels[1].lbl.bind(
-            "<Button-1>",
-            lambda e: self.show_large_view(
-                "HE + nuclei",
-                draw_points(
-                    self.he_rgb,
-                    self.he_pts0 / DISPLAY_SCALE,
-                    color=(0, 255, 0),
-                    r=6
-                )
-            )
-        )
-        self.panels[2].lbl.bind(
-            "<Button-1>",
-            lambda e: self.show_large_view(
-                "Overlay",
-                self.he_dapi_overlay
-            )
-        )
-        self.panels[3].lbl.bind(
-            "<Button-1>",
-            lambda e: self.show_large_view(
-                "Overlay",
-                self.he_dapi_overlay
-            )
-        )
-        # panel 3: Cells on H&E (from saved png if exists)
-        def open_cells_panel():
-            if self.cells_overlay_path.exists():
-                img = cv2.imread(str(self.cells_overlay_path), cv2.IMREAD_COLOR)
-                if img is None:
-                    messagebox.showwarning("Failed", f"Cannot read: {self.cells_overlay_path}", parent=self)
-                    return
-                self.show_large_view("Cells on H&E", img)
-            else:
-                messagebox.showinfo("Not loaded", "Cells overlay not available yet.\nClick 'Load cell data' first.",
-                                    parent=self)
+    # --------------------------
+    # initial refresh (no alignment)
+    # --------------------------
+    def refresh_images_initial(self):
+        # panel1/2 base
+        self._set_panel(0, apply_orientation_case(self.dapi_rgb, self.case_id))
+        self._set_panel(1, self.he_rgb)
 
-        self.panels[3].lbl.bind("<Button-1>", lambda e: open_cells_panel())
+        # panel3: try cached overlay first
+        p = self.cache["overlay"]
+        img3 = self._imread(p)
+        if img3 is not None:
+            self.he_dapi_overlay = img3
+            self._panel3_tkimg_he = self._make_tkimg(self.he_rgb)
+            self._panel3_tkimg_overlay = self._make_tkimg(img3)
+            self._panel3_show_overlay = True
+            self._update_panel3_fast()
+        else:
+            self._set_placeholder(2, "Click 'Load alignment'")
 
-    def refresh_images(self):
-        # -------- panel 1 (DAPI + nuclei) --------
-        dapi_pts_lvl2 = self.dapi_pts0 / DISPLAY_SCALE
-        img1 = draw_points(self.dapi_rgb, dapi_pts_lvl2, color=(0, 255, 0), r=6, name="DAPI nuclei")
-        img1 = apply_orientation_case(img1, self.case_id)
-        self._set_panel(0, img1)
+        # panel4: try cached cells overlay first
+        p = self.cache["cells"]
+        img4 = self._imread(p)
+        if img4 is not None:
+            self._set_panel(3, img4)
+        else:
+            self._set_placeholder(3, "Click 'Load cell data'")
+    # --------------------------
+    # after alignment loaded
+    # --------------------------
+    def refresh_images_after_alignment(self):
+        # panel0: DAPI kp (prefer cache)
+        p = self.cache["dapi_kp"]
+        dapi_kp = self._imread(p)
+        if dapi_kp is None:
+            pts = self.dapi_pts0 / self.display_scale
+            dapi_kp = draw_points(self.dapi_rgb, pts, color=(0, 255, 0), r=6, name="DAPI nuclei")
+            self._imsave(p, dapi_kp)
+        self._set_panel(0, apply_orientation_case(dapi_kp, self.case_id))
 
-        # -------- panel 2 (HE + nuclei) --------
-        he_pts_lvl2 = self.he_pts0 / DISPLAY_SCALE
-        img2 = draw_points(self.he_rgb, he_pts_lvl2, color=(0, 255, 0), r=6, name="HE nuclei")
-        self._set_panel(1, img2)
+        # panel1: HE kp (prefer cache)
+        p = self.cache["he_kp"]
+        he_kp = self._imread(p)
+        if he_kp is None:
+            pts = self.he_pts0 / self.display_scale
+            he_kp = draw_points(self.he_rgb, pts, color=(0, 255, 0), r=6, name="HE nuclei")
+            self._imsave(p, he_kp)
+        self._set_panel(1, he_kp)
 
-        # -------- panel 3 (toggle overlay) --------
+        # panel2/panel3 keep as is...
         self._update_panel3_fast()
 
-        # -------- panel 4 (cells) --------
-        if self.cells_overlay_path.exists():
-            img4 = cv2.imread(str(self.cells_overlay_path), cv2.IMREAD_COLOR)
+        # panel4: cells (unchanged)
+        p = self.cache["cells"]
+        if p.exists():
+            img4 = cv2.imread(str(p), cv2.IMREAD_COLOR)
             if img4 is None:
                 self._set_placeholder(3, "Failed to load cells overlay")
             else:
                 self._set_panel(3, img4)
         else:
-            self._set_placeholder(3, "Cell Info Not Loaded")
+            self._set_placeholder(3, "Click 'Load cell data'")
+
+    def load_alignment_and_keypoints(self):
+        """
+        Click to load nuclei keypoints + homography and build overlay.
+        """
+        try:
+            # -------- load nuclei points (LEVEL 0 global px) --------
+            nuclei_path = self.run_dir / "nuclei_patches/nuclei_centroids_global.json"
+            nuclei = json.load(open(nuclei_path))
+            self.dapi_pts0 = np.array([x["dapi_centroid_global"] for x in nuclei], np.float32)
+            self.he_pts0   = np.array([x["he_centroid_global"]   for x in nuclei], np.float32)
+            print(f"[INFO] Loaded nuclei: {len(self.dapi_pts0)}", flush=True)
+
+            # -------- load homography level0 --------
+            _, self.H3 = load_homography(self.run_dir / "dapi_to_he_homography_level0.json")
+            # -------- build display homography --------
+            s = float(self.display_scale)
+            S = np.array([[s, 0, 0],
+                          [0, s, 0],
+                          [0, 0, 1]], dtype=np.float32)
+            S_inv = np.array([[1 / s, 0, 0],
+                              [0, 1 / s, 0],
+                              [0, 0, 1]], dtype=np.float32)
+            H_disp = (S_inv @ self.H3 @ S).astype(np.float32)
+            # -------- warp + overlay --------
+            self.warped_dapi = cv2.warpPerspective(
+                self.dapi_rgb,
+                H_disp,
+                (self.he_rgb.shape[1], self.he_rgb.shape[0]),
+                flags=cv2.INTER_LINEAR,
+                borderMode=cv2.BORDER_CONSTANT,
+            )
+            self.he_dapi_overlay = cv2.addWeighted(self.he_rgb, 0.7, self.warped_dapi, 0.8, 0)
+            cv2.imwrite(str(self.cache["overlay"]), self.he_dapi_overlay)
+
+            # -------- load homography level0 --------
+            data_manual = json.load(open(self.run_dir / "manual_initial_alignment.json", "r"))
+            H3m = np.array(data_manual['H_mat_level_0'], dtype=np.float32)
+            # -------- build display homography --------
+            Sm = np.array([[s, 0, 0],
+                          [0, s, 0],
+                          [0, 0, 1]], dtype=np.float32)
+            Sm_inv = np.array([[1 / s, 0, 0],
+                              [0, 1 / s, 0],
+                              [0, 0, 1]], dtype=np.float32)
+            Hm_disp = (Sm_inv @ H3m @ Sm).astype(np.float32)
+            # -------- warp + overlay --------
+            warped_dapi_manual = cv2.warpPerspective(
+                self.dapi_rgb,
+                Hm_disp,
+                (self.he_rgb.shape[1], self.he_rgb.shape[0]),
+                flags=cv2.INTER_LINEAR,
+                borderMode=cv2.BORDER_CONSTANT,
+            )
+            he_dapi_overlay_manual = cv2.addWeighted(self.he_rgb, 0.7, warped_dapi_manual, 0.8, 0)
+            cv2.imwrite(str(self.cache["manual"]), he_dapi_overlay_manual)
+
+            img1_w = add_watermark(Image.fromarray(self.he_dapi_overlay[..., ::-1]), "Final alignment")
+            img2_w = add_watermark(Image.fromarray(he_dapi_overlay_manual[..., ::-1]), "Manual initial alignment")
+            img1_w.save(
+                str(self.cache["alternating"]),
+                save_all=True,
+                append_images=[img2_w],
+                duration=1000,
+                loop=0
+            )
+            # -------- build & save keypoint panels (cache) --------
+            # 1) DAPI kp
+            p_dapi_kp = self.cache["dapi_kp"]
+            dapi_kp = self._imread(p_dapi_kp)
+            if dapi_kp is None:
+                pts = self.dapi_pts0 / self.display_scale
+                dapi_kp = draw_points(self.dapi_rgb, pts, color=(0, 255, 0), r=6, name="DAPI nuclei")
+                self._imsave(p_dapi_kp, dapi_kp)
+
+            # 2) HE kp
+            p_he_kp = self.cache["he_kp"]
+            he_kp = self._imread(p_he_kp)
+            if he_kp is None:
+                pts = self.he_pts0 / self.display_scale
+                he_kp = draw_points(self.he_rgb, pts, color=(0, 255, 0), r=6, name="HE nuclei")
+                self._imsave(p_he_kp, he_kp)
+
+            # -------- cache Tk images for fast toggle --------
+            self._panel3_tkimg_he = self._make_tkimg(self.he_rgb)
+            self._panel3_tkimg_overlay = self._make_tkimg(self.he_dapi_overlay)
+            self._panel3_show_overlay = True
+
+            self.alignment_loaded = True
+            self.refresh_images_after_alignment()
+
+        except Exception as e:
+            messagebox.showerror("Load alignment failed", str(e), parent=self)
+            raise
+
+    # --------------------------
+    # panel helpers (same as before)
+    # --------------------------
+    def _imread(self, p: Path):
+        if p.exists():
+            img = cv2.imread(str(p), cv2.IMREAD_COLOR)
+            return img
+        return None
+
+    def _imsave(self, p: Path, img_bgr: np.ndarray):
+        p.parent.mkdir(parents=True, exist_ok=True)
+        cv2.imwrite(str(p), img_bgr)
+
+    def _load_or_build_dapi_base(self):
+        img = self._imread(self.cache["dapi_base"])
+        if img is not None:
+            return img
+
+        dapi_lut_thr = int(self.info.get("DAPI_LUT_threshold", 300))
+        dapi16, _ = read_image(self.info["DAPI_path"], keep_16bit=True, level=self.display_level, channel="dapi")
+        lut = np.fromfile("glasbey_inverted.lut", dtype=np.uint8).reshape(256, 3)
+        rgb = dapi_to_lut_rgb(dapi16, lut, threshold=dapi_lut_thr)
+        bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
+        self._imsave(self.cache["dapi_base"], bgr)
+        return bgr
+
+    def _load_or_build_he_base(self):
+        img = self._imread(self.cache["he_base"])
+        if img is not None:            return img, None
+
+        he16, _ = read_image(self.info["HE_path"], keep_16bit=False, level=self.display_level,  channel="he")
+        print(f"he16 shape is {he16.shape}")
+        print("channels equal?", np.all(he16[..., 0] == he16[..., 1]) and np.all(he16[..., 1] == he16[..., 2]))
+        print("min/max per channel:", [(he16[..., c].min(), he16[..., c].max()) for c in range(3)])
+        he8 = cv2.normalize(he16, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
+        if he8.ndim == 2:
+            bgr = cv2.cvtColor(he8, cv2.COLOR_GRAY2BGR)
+        else:
+            bgr = cv2.cvtColor(he8, cv2.COLOR_RGB2BGR)
+        self._imsave(self.cache["he_base"], bgr)
+        return bgr, he16
 
     def _make_tkimg(self, cv_img):
         pil = cv2_to_pil(cv_img)
@@ -529,6 +628,13 @@ class FinalAlignmentApp(tk.Tk):
         return ImageTk.PhotoImage(tile)
 
     def _update_panel3_fast(self):
+        if self.he_dapi_overlay is None:
+            self._set_placeholder(2, "Overlay Not Available")
+            return
+        if not hasattr(self, "_panel3_tkimg_he") or self._panel3_tkimg_he is None:
+            self._panel3_tkimg_he = self._make_tkimg(self.he_rgb)
+        if not hasattr(self, "_panel3_tkimg_overlay") or self._panel3_tkimg_overlay is None:
+            self._panel3_tkimg_overlay = self._make_tkimg(self.he_dapi_overlay)
         tkimg = self._panel3_tkimg_overlay if self._panel3_show_overlay else self._panel3_tkimg_he
         self.panels[2].lbl.configure(image=tkimg)
         self.panels[2].lbl.image = tkimg
@@ -540,79 +646,27 @@ class FinalAlignmentApp(tk.Tk):
         self.panels[idx].lbl.configure(image=tkimg)
         self.panels[idx].lbl.image = tkimg
 
-    def show_large_view(self, title: str, bgr_img: np.ndarray):
-        """
-        Show the SAME image (DISPLAY_LEVEL) in a larger window,
-        without fit_to_tile().
-        """
-        if bgr_img is None:
-            return
-
-        h, w = bgr_img.shape[:2]
-
-        # ---- limit window size to screen ----
-        sw = self.winfo_screenwidth()
-        sh = self.winfo_screenheight()
-        max_w = int(sw * 0.85)
-        max_h = int(sh * 0.85)
-
-        scale = min(1.0, max_w / w, max_h / h)
-        disp_w = int(w * scale)
-        disp_h = int(h * scale)
-
-        # ---- convert to PIL ----
-        rgb = cv2.cvtColor(bgr_img, cv2.COLOR_BGR2RGB)
-        pil = Image.fromarray(rgb)
-        if scale < 1.0:
-            pil = pil.resize((disp_w, disp_h), Image.BILINEAR)
-
-        tk_img = ImageTk.PhotoImage(pil)
-
-        win = tk.Toplevel(self)
-        win.title(title)
-        win.resizable(True, True)
-
-        lbl = tk.Label(win, image=tk_img, bg="black")
-        lbl.image = tk_img
-        lbl.pack(expand=True, fill="both")
-
-        # ---- size + center ----
-        win.update_idletasks()
-        x = (sw - disp_w) // 2
-        y = (sh - disp_h) // 2
-        win.geometry(f"{disp_w}x{disp_h}+{x}+{y}")
-
-        win.bind("<Escape>", lambda e: win.destroy())
-
     def _set_placeholder(self, idx, text):
         img = np.full((TILE_SIZE[1], TILE_SIZE[0], 3), BG_COLOR, np.uint8)
-
         font = cv2.FONT_HERSHEY_SIMPLEX
         font_scale = 0.9
         thickness = 2
         color = (80, 80, 80)
-
-        # ---- compute text size ----
-        (tw, th), baseline = cv2.getTextSize(text, font, font_scale, thickness)
-
+        (tw, th), _ = cv2.getTextSize(text, font, font_scale, thickness)
         x = (TILE_SIZE[0] - tw) // 2
         y = (TILE_SIZE[1] + th) // 2
-
-        cv2.putText(
-            img,
-            text,
-            (x, y),
-            font,
-            font_scale,
-            color,
-            thickness,
-            lineType=cv2.LINE_AA,
-        )
-
+        cv2.putText(img, text, (x, y), font, font_scale, color, thickness, lineType=cv2.LINE_AA)
         self._set_panel(idx, img)
 
-
     def toggle_floating(self):
+        if self.he_dapi_overlay is None:
+            messagebox.showinfo(
+                "Not available",
+                "No overlay available.\nIf you want to generate one, click 'Load alignment'.",
+                parent=self
+            )
+            return
+
         self._panel3_show_overlay = not self._panel3_show_overlay
         self._update_panel3_fast()
 
@@ -659,36 +713,143 @@ class FinalAlignmentApp(tk.Tk):
 
             # downsample to DISPLAY_LEVEL for GUI overlay
             df_gui = df.copy()
-            df_gui.loc[:, "x_centroid"] = df_gui["x_centroid"].astype(np.float32) / DISPLAY_SCALE
-            df_gui.loc[:, "y_centroid"] = df_gui["y_centroid"].astype(np.float32) / DISPLAY_SCALE
+            df_gui["x_centroid"] /= self.display_scale
+            df_gui["y_centroid"] /= self.display_scale
 
             self.cells_df = df  # keep level0 px
             self.cells_pts_lvl2 = df_gui[["x_centroid", "y_centroid"]].to_numpy(np.float32)
 
             # --- plot + save (uses he16 at DISPLAY_LEVEL) ---
-            out_png = self.run_dir / "9_cells_centroids.png"
+            out_png = self.cache["cells"]
             print(f"[INFO] plotting cell centroids -> {out_png}", flush=True)
-
-            # plot_cell_centroid expects df with columns x_centroid/y_centroid
-            out_png = self.run_dir / "9_cells_centroids.png"
+            if self.he16 is None:
+                self.he16, _ = read_image(self.info["HE_path"], keep_16bit=True, level=self.display_level)
             plot_cell_centroid(
                 df_gui,
                 he=self.he16,
                 color="red",
                 save_name=str(out_png),
                 save_fig=True,
-                dot_size=5/2**(2**(DISPLAY_LEVEL-2))
+                dot_size=5 / 2 ** (2 ** (DISPLAY_LEVEL - 2))
             )
             messagebox.showinfo(
                 "Loaded",
                 f"Loaded and transformed:\n{path}\n\nSaved:\n{out_png}",
                 parent=self
             )
-            self.refresh_images()
+            img4 = cv2.imread(str(out_png), cv2.IMREAD_COLOR)
+            if img4 is not None:
+                self._set_panel(3, img4)
 
         except Exception as e:
             messagebox.showerror("Load failed", str(e), parent=self)
             raise
+
+    def _open_cells_panel(self):
+        if self.cells_overlay_path.exists():
+            img = cv2.imread(str(self.cells_overlay_path), cv2.IMREAD_COLOR)
+            if img is None:
+                messagebox.showwarning("Failed", f"Cannot read: {self.cells_overlay_path}", parent=self)
+                return
+            self.show_large_view("Cells on H&E", img)
+        else:
+            messagebox.showinfo("Not loaded", "Cells overlay not available yet.\nClick 'Load cell data' first.", parent=self)
+
+    def show_large_view(self, title: str, bgr_img: np.ndarray):
+        """
+        Show a larger window for the given BGR image.
+        """
+        if bgr_img is None:
+            return
+
+        h, w = bgr_img.shape[:2]
+
+        # limit window size to screen
+        sw = self.winfo_screenwidth()
+        sh = self.winfo_screenheight()
+        max_w = int(sw * 0.85)
+        max_h = int(sh * 0.85)
+
+        scale = min(1.0, max_w / w, max_h / h)
+        disp_w = max(1, int(w * scale))
+        disp_h = max(1, int(h * scale))
+
+        rgb = cv2.cvtColor(bgr_img, cv2.COLOR_BGR2RGB)
+        pil = Image.fromarray(rgb)
+        if scale < 1.0:
+            pil = pil.resize((disp_w, disp_h), Image.BILINEAR)
+
+        tk_img = ImageTk.PhotoImage(pil)
+
+        win = tk.Toplevel(self)
+        win.title(title)
+        win.resizable(True, True)
+
+        lbl = tk.Label(win, image=tk_img, bg="black")
+        lbl.image = tk_img
+        lbl.pack(expand=True, fill="both")
+
+        # center
+        win.update_idletasks()
+        x = (sw - disp_w) // 2
+        y = (sh - disp_h) // 2
+        win.geometry(f"{disp_w}x{disp_h}+{x}+{y}")
+
+        win.bind("<Escape>", lambda e: win.destroy())
+
+    def on_panel_click(self, idx: int):
+        """
+        idx: 0..3 for the 4 panels
+        Behavior depends on whether alignment is loaded.
+        """
+        # panel 0: DAPI
+        if idx == 0:
+            if self.alignment_loaded and self.dapi_pts0 is not None:
+                pts = self.dapi_pts0 / self.display_scale
+                img = draw_points(self.dapi_rgb, pts, color=(0, 255, 0), r=6, name="DAPI nuclei (large)")
+            else:
+                img = self.dapi_rgb.copy()
+            img = apply_orientation_case(img, self.case_id)
+            self.show_large_view("DAPI", img)
+            return
+
+        # panel 1: HE
+        if idx == 1:
+            if self.alignment_loaded and self.he_pts0 is not None:
+                pts = self.he_pts0 / self.display_scale
+                img = draw_points(self.he_rgb, pts, color=(0, 255, 0), r=6, name="HE nuclei (large)")
+            else:
+                img = self.he_rgb.copy()
+            self.show_large_view("H&E", img)
+            return
+
+        # panel 2: Overlay / HE toggle
+        if idx == 2:
+            if self.he_dapi_overlay is None:
+                messagebox.showinfo(
+                    "Not available",
+                    "No cached overlay found (9_overlay.png).\nClick 'Load alignment' to generate one.",
+                    parent=self
+                )
+                return
+            img = self.he_dapi_overlay if self._panel3_show_overlay else self.he_rgb
+            title = "Overlay" if self._panel3_show_overlay else "H&E"
+            self.show_large_view(title, img)
+            return
+
+        # panel 3: Cells
+        if idx == 3:
+            p = self.cache["cells"]
+            if p.exists():
+                img = cv2.imread(str(p), cv2.IMREAD_COLOR)
+                if img is None:
+                    messagebox.showwarning("Failed", f"Cannot read: {self.cells_overlay_path}", parent=self)
+                    return
+                self.show_large_view("Cells on H&E", img)
+            else:
+                messagebox.showinfo("Not loaded", "Cells overlay not available yet.\nClick 'Load cell data' first.",
+                                    parent=self)
+            return
 
 # =============================
 # main
