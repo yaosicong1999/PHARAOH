@@ -546,11 +546,19 @@ def main():
     # build tiles in DAPI_LEVEL coords
     tiles = centroids_to_tiles(sel_pts, tile_size=TILE_SIZE)
 
-    # read DAPI (level=1) for extraction (same as your 3.py extract)
     from my_utils import read_image, dapi_to_lut_rgb
 
-    # intensity
-    dapi16_lvl1, _ = read_image(DAPI_PATH, keep_16bit=True, level=1)
+    parameter_path = os.path.join(os.getcwd(), "parameters.json")
+    parameters = json.load(open(parameter_path, "r"))
+    DAPI_TILE_LEVEL_OVERRIDE = parameters["step3"]["dapi_level_override"]
+    HE_TILE_LEVEL_OVERRIDE = parameters["step3"]["he_level_override"]
+
+    if DAPI_TILE_LEVEL_OVERRIDE == "None":
+        dapi16_lvl1, _ = read_image(DAPI_PATH, keep_16bit=True, level=1, channel="dapi")
+    elif isinstance(DAPI_TILE_LEVEL_OVERRIDE, int):
+        dapi16_lvl1, _ = read_image(DAPI_PATH, keep_16bit=True, level=DAPI_TILE_LEVEL_OVERRIDE, channel="dapi")
+    else:
+        raise ValueError("DAPI_TILE_LEVEL_OVERRIDE in parameter.json['step3'] must be 'None' or int")
     if dapi16_lvl1.ndim == 3:
         dapi16_lvl1 = dapi16_lvl1[..., 0]
 
@@ -591,16 +599,21 @@ def main():
     # -----------------------------
     HE_PATH = info["HE_path"]
     HE_LEVEL = int(info["HE_level"])
-
     h_mat = load_initial_alignment(run_dir)
 
-    # read HE at level=1 (same style as step3)
-    he_lvl1, _ = read_image(HE_PATH, keep_16bit=True, level=1)
+    if HE_TILE_LEVEL_OVERRIDE == "None":
+        if HE_LEVEL <= DAPI_LEVEL:
+            he_lvl1, _ = read_image(HE_PATH, keep_16bit=True, level=1, channel="he")
+            he_rescale = 2 ** (HE_LEVEL - 1)
+        else:
+            he_lvl1, _ = read_image(HE_PATH, keep_16bit=True, level=1 + HE_LEVEL - DAPI_LEVEL, channel="he")
+            he_rescale = 2 ** (HE_LEVEL - (1 + HE_LEVEL - DAPI_LEVEL))
+    elif isinstance(HE_TILE_LEVEL_OVERRIDE, int):
+        he_lvl1, _ = read_image(HE_PATH, keep_16bit=True, level=HE_TILE_LEVEL_OVERRIDE, channel="he")
+        he_rescale = 2 ** (HE_LEVEL - HE_TILE_LEVEL_OVERRIDE)
+    else:
+        raise ValueError("DAPI_TILE_LEVEL_OVERRIDE must be 'None' or int")
 
-    # rescale_factor maps HE_LEVEL coords -> level=1 pixels
-    he_rescale = 2 ** (HE_LEVEL - 1)
-
-    # IMPORTANT: tiles are in DAPI_LEVEL coords, h_mat is DAPI->HE, so pass same tiles
     save_he_tiles(
         he_lvl1,
         tiles,
