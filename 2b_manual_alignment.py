@@ -651,9 +651,11 @@ class ManualAlignView(QGraphicsView):
 
 
 class ManualAlignWindow(QWidget):
-    def __init__(self, run_dir, he_mask_path, dapi_mask_path, he_orig_path, dapi_orig_path, dapi_gui_affine, case_id=0):
+    def __init__(self, run_dir, he_mask_path, dapi_mask_path, he_orig_path, dapi_orig_path,
+                 dapi_gui_affine, case_id=0, info=None):
         super().__init__()
         self.run_dir = str(run_dir)
+        self.info = info or {}
         self.dapi_gui_affine = np.asarray(dapi_gui_affine, dtype=np.float32)
 
         self.external_h_mat = None
@@ -822,12 +824,25 @@ class ManualAlignWindow(QWidget):
         if src_orig.shape[0] != 4 or dst_he.shape[0] != 4:
             raise ValueError("Homography needs exactly 4 corner correspondences")
         H_homo = cv2.getPerspectiveTransform(src_orig.astype(np.float32),
-                                             dst_he.astype(np.float32))  # (3,3)
+                                             dst_he.astype(np.float32))
+
+        Ld = int(self.info.get("DAPI_level", 0))  # 你需要在 images_info.json 里明确写出来
+        Lh = int(self.info.get("HE_level", 0))  # 同上
+        sd = float(2 ** Ld)
+        sh = float(2 ** Lh)
+        S_d = np.array([[sd, 0, 0],
+                        [0, sd, 0],
+                        [0, 0, 1]], dtype=np.float64)
+        S_h = np.array([[sh, 0, 0],
+                        [0, sh, 0],
+                        [0, 0, 1]], dtype=np.float64)
+        H_mat_level_0 = (S_h @ H_homo.astype(np.float64) @ np.linalg.inv(S_d)).astype(np.float64)
         data = {
             "active_mode": self.view.mode,
             "mask_pose": self._pose_to_jsonable(self.pose_mask) if self.pose_mask else None,
             "original_pose": self._pose_to_jsonable(self.pose_orig) if self.pose_orig else None,
             "H_mat": H_homo.tolist(),
+            "H_mat_level_0": H_mat_level_0.tolist()
         }
         with open(os.path.join(self.run_dir, "manual_initial_alignment.json"), "w") as f:
             json.dump(data, f, indent=2)
@@ -985,6 +1000,7 @@ if __name__ == "__main__":
         dapi_orig_path=str(dapi_orig_path),
         dapi_gui_affine=dapi_gui_affine,
         case_id=case_id,
+        info=info,
     )
     window.show()
     sys.exit(app.exec_())
