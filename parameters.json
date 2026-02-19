@@ -14,6 +14,10 @@
     "he_mask_intensity_threshold": 0.6
   },
   "step6": {
+    "good_nuclei_min": 2,
+    "min_good_tiles": 20,
+    "fallback_score_thr": 0.40,
+    "min_fallback_tiles": 20,
     "coarse_ds": 4,
     "coarse_scale_min": 1.1,
     "coarse_scale_max": 2.0,
