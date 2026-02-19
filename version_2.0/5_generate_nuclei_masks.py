@@ -55,7 +55,6 @@ def load_pilot_mask_params(out_folder: str, default_dapi_offset=0, default_he_th
 
     return dapi_off, he_thr
 
-
 def process_dapi(
     dapi_file,
     THR_OFFSET=0,

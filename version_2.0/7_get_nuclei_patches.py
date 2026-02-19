@@ -4,12 +4,17 @@ import os
 import sys
 import time
 import numpy as np
+from glob import glob
+from PIL import Image
 from my_utils import (
     read_image,
     dapi_to_lut_rgb,
     segment_super_dark_nuclei_full,
-    open_ome_level_lazy,
-    read_crop_patch
+    read_crop_patch,
+    upsample_tile,
+    fill_holes_binary,
+    remove_small_components
+
 )
 import math
 from pathlib import Path
@@ -36,9 +41,7 @@ def he_point_tile_to_global(he_info, x_tile, y_tile, S):
     meta = he_info.get("meta", {}) if isinstance(he_info, dict) else {}
 
     if meta.get("mode", None) == "rectified" and meta.get("M_rect_to_he", None) is not None:
-        print("rectified")
         Minv = np.asarray(meta["M_rect_to_he"], dtype=float)
-        print(Minv)
         x1, y1 = apply_homography_xy(Minv, x_tile, y_tile)  # HE level=1 global coords
         return x1 * S, y1 * S
 
@@ -46,28 +49,6 @@ def he_point_tile_to_global(he_info, x_tile, y_tile, S):
     x1 = float(he_info["x0"]) + float(x_tile)
     y1 = float(he_info["y0"]) + float(y_tile)
     return x1 * S, y1 * S
-
-def get_tile_hw(tile_info, default_hw=1024):
-    meta = tile_info.get("meta", {}) if isinstance(tile_info, dict) else {}
-    if meta.get("mode") == "rectified" and meta.get("rectified_wh") is not None:
-        out_w, out_h = meta["rectified_wh"]
-        return int(out_h), int(out_w)  # return H, W
-
-    # 否则走原逻辑（bbox / 普通 tile）
-    for kw in [("w", "h"), ("W", "H"), ("width", "height"), ("tile_w", "tile_h")]:
-        if kw[0] in tile_info and kw[1] in tile_info:
-            return int(tile_info[kw[1]]), int(tile_info[kw[0]])
-
-    for k in ["tile_size", "size", "tile_len", "tile_side"]:
-        if k in tile_info:
-            s = int(tile_info[k])
-            return s, s
-    return int(default_hw), int(default_hw)
-
-
-def get_tile_center_xy(tile_info, default_hw=1024):
-    H, W = get_tile_hw(tile_info, default_hw=default_hw)
-    return (W / 2.0, H / 2.0)
 
 def ensure_gray_uint16(x):
     x = np.asarray(x)
@@ -152,51 +133,6 @@ def get_dapi_mask(dapi_rgb, threshold=20):
     dapi_mask = (np.any(dapi_rgb > threshold, axis=-1)).astype(np.uint8) * 255
     dapi_mask_flipped = 255 - dapi_mask
     return dapi_mask_flipped
-
-def get_nucleus_centroid_from_mask_at_xy(
-    mask,
-    x,
-    y,
-    return_overlay=False,
-    highlight_color=(0, 0, 255),
-    alpha=0.5
-):
-    H, W = mask.shape
-    x = int(np.clip(x, 0, W - 1))
-    y = int(np.clip(y, 0, H - 1))
-    binary = (mask == 0).astype(np.uint8)
-    num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(
-        binary, connectivity=8
-    )
-    label = labels[y, x]   # IMPORTANT: (row=y, col=x)
-    if label == 0:
-        return None
-    cx, cy = centroids[label]
-    x0 = stats[label, cv2.CC_STAT_LEFT]
-    y0 = stats[label, cv2.CC_STAT_TOP]
-    w  = stats[label, cv2.CC_STAT_WIDTH]
-    h  = stats[label, cv2.CC_STAT_HEIGHT]
-    area = stats[label, cv2.CC_STAT_AREA]
-    result = {
-        "centroid": (float(cx), float(cy)),
-        "area": int(area),
-        "bbox": (x0, y0, x0 + w, y0 + h),
-        "label": int(label),
-    }
-    if return_overlay:
-        overlay = cv2.cvtColor(mask, cv2.COLOR_GRAY2BGR)
-        blob_mask = (labels == label)
-        overlay[blob_mask] = cv2.addWeighted(
-            overlay[blob_mask], 1 - alpha,
-            np.full_like(overlay[blob_mask], highlight_color),
-            alpha, 0
-        )
-        # mark input point
-        cv2.circle(overlay, (x, y), 2, (0, 255, 0), -1)
-        # mark centroid
-        cv2.circle(overlay, (int(cx), int(cy)), 2, (0, 0, 255), -1)
-        result["overlay"] = overlay
-    return result
 
 def extract_patch_and_mark_point(
     img,
@@ -285,18 +221,167 @@ def extract_patch_and_mark_point(
             cv2.imwrite(raw_overlay_path, raw_overlay)
 
     info = {
-        "status": "no_refine",
         "centroid_global": [float(x_global), float(y_global)],
         "point_patch": [int(cx0), int(cy0)],
         "crop_box": [int(x0), int(y0), int(x0 + patch_length), int(y0 + patch_length)],
     }
     return float(x_global), float(y_global), crop_vis, info
 
+def load_pilot_mask_params(out_folder: str, default_dapi_offset=0, default_he_thr=0.6):
+    """
+    Try read:
+      <out_folder>/pilot_tiles/pilot_output_parameters.json
+
+    Supports JSON layout:
+      1) {"mask_preview": {"dapi_thr_offset": 25, "he_intensity_threshold": 0.5}}
+      2) {"dapi_thr_offset": 25, "he_intensity_threshold": 0.5}
+
+    Returns:
+      (dapi_thr_offset:int, he_intensity_threshold:float)
+    """
+    path = os.path.join(out_folder, "../pilot_tiles", "pilot_output_parameters.json")
+    if not os.path.exists(path):
+        return int(default_dapi_offset), float(default_he_thr)
+    try:
+        data = json.load(open(path, "r"))
+    except Exception as e:
+        print(f"[WARN] Failed to read {path}: {e}. Use defaults.", flush=True)
+        return int(default_dapi_offset), float(default_he_thr)
+
+    # prefer nested structure
+    src = data.get("mask_preview", data) if isinstance(data, dict) else {}
+
+    dapi_off = src.get("dapi_thr_offset", default_dapi_offset)
+    he_thr = src.get("he_intensity_threshold", default_he_thr)
+
+    # sanitize
+    try:
+        dapi_off = int(float(dapi_off))
+    except Exception:
+        dapi_off = int(default_dapi_offset)
+    dapi_off = max(-100, min(100, dapi_off))  # keep consistent with your UI
+
+    try:
+        he_thr = float(he_thr)
+    except Exception:
+        he_thr = float(default_he_thr)
+    he_thr = max(0.0, min(1.0, he_thr))
+
+    return dapi_off, he_thr
+
+def process_dapi(
+    dapi_file,
+    THR_OFFSET=0,
+    min_area_factor=10e-5,
+    CONNECTIVITY=8,
+    invert=True,
+    upscale=2,
+    dot_r=4
+):
+    """
+    Input:  *_dapi_u8.png  (uint8 grayscale)
+    Output: *_dapi_mask.png (binary mask, uint8 0/255)
+    """
+    try:
+        if not os.path.exists(dapi_file):
+            return f"Skipped (DAPI not found): {dapi_file}"
+
+        base_name = os.path.basename(dapi_file)
+        if base_name.endswith("_dapi_u8.png"):
+            base_name = base_name.replace("_dapi_u8.png", "")
+        elif base_name.endswith("_dapi_raw.png"):
+            base_name = base_name.replace("_dapi_raw.png", "")
+        else:
+            return f"Skipped (not a valid dapi file): {dapi_file}"
+        folder_name = os.path.dirname(dapi_file)
+
+        # -----------------------------
+        # LOAD u8 GRAYSCALE
+        # -----------------------------
+        img = cv2.imread(dapi_file, cv2.IMREAD_GRAYSCALE)
+        if img is None:
+            return f"Failed: {dapi_file}, Error: cv2.imread returned None"
+        if img.dtype != np.uint8:
+            img = img.astype(np.uint8)
+        img = upsample_tile(img, upscale)
+
+        # -----------------------------
+        # 1) Otsu + optional offset
+        # -----------------------------
+        otsu_thr, _ = cv2.threshold(img, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        thr = int(np.clip(int(otsu_thr) + int(THR_OFFSET), 0, 255))
+        _, mask = cv2.threshold(img, thr, 255, cv2.THRESH_BINARY)
+        fg_ratio0 = float((mask > 0).mean())
+
+        # -----------------------------
+        # 2) fill holes
+        # -----------------------------
+        mask = fill_holes_binary(mask)
+        fg_ratio1 = float((mask > 0).mean())
+
+        # -----------------------------
+        # 3) remove tiny blobs
+        # -----------------------------
+        MIN_AREA = min_area_factor * img.shape[0] ** 2
+        MIN_AREA = MIN_AREA * upscale ** 2
+        mask, cc_info = remove_small_components(
+            mask, min_area=int(MIN_AREA), connectivity=int(CONNECTIVITY)
+        )
+        fg_ratio2 = float((mask > 0).mean())
+        # optional invert (match your previous 255 - mask)
+        if invert:
+            mask = 255 - mask
+
+        mask_save_path = os.path.join(folder_name, f"{base_name}_dapi_mask.png")
+        cv2.imwrite(mask_save_path, mask)
+
+        kept = None
+        total = None
+        if isinstance(cc_info, dict):
+            kept = cc_info.get("kept", None)
+            total = cc_info.get("total", None)
+        extra = f" fg {fg_ratio0:.3f}->{fg_ratio1:.3f}->{fg_ratio2:.3f}"
+        if kept is not None and total is not None:
+            extra += f" cc kept {kept}/{total}"
+
+        # ---- save overlay with center red dot ----
+        mask_u8 = mask  # uint8 0/255
+        h, w = mask_u8.shape[:2]
+        cx, cy = w // 2, h // 2
+        overlay = cv2.cvtColor(mask_u8, cv2.COLOR_GRAY2BGR)
+        cv2.circle(overlay, (cx, cy), int(dot_r), (255, 0, 0), -1)  # RGB red
+        overlay_save_path = mask_save_path.replace("_dapi_mask.png", "_dapi_mask_overlay.png")
+        cv2.imwrite(overlay_save_path, cv2.cvtColor(overlay, cv2.COLOR_RGB2BGR))
+        return f"Processed: {os.path.basename(dapi_file)} otsu={int(otsu_thr)} used={thr}{extra} saved: {mask_save_path}"
+
+    except Exception as e:
+        return f"Failed: {dapi_file}, Error: {e}"
+
+def process_he(image_file, upscale=2, intensity_threshold=0.6, dot_r=4):
+    try:
+        rgb_tile = np.array(Image.open(image_file))
+        labeled_mask, mask_dark = segment_super_dark_nuclei_full(
+            rgb_tile, upsample_scale=upscale, n_smooth=2, intensity_threshold=float(intensity_threshold)
+        )
+        mask_save_path = image_file.replace("_he_patch.png", "_he_mask.png")
+        cv2.imwrite(mask_save_path, mask_dark.astype(np.uint8) * 255)
+        # ---- save overlay with center red dot ----
+        mask_u8 = (mask_dark.astype(np.uint8) * 255)  # uint8 0/255
+        h, w = mask_u8.shape[:2]
+        cx, cy = w // 2, h // 2
+        overlay = cv2.cvtColor(mask_u8, cv2.COLOR_GRAY2BGR)
+        cv2.circle(overlay, (cx, cy), int(dot_r), (255, 0, 0), -1)
+        overlay_save_path = image_file.replace("_he_patch.png", "_he_mask_overlay.png")
+        cv2.imwrite(overlay_save_path, cv2.cvtColor(overlay, cv2.COLOR_RGB2BGR))
+        return f"Processed: {image_file} with int_thr {intensity_threshold} mask: {mask_save_path}  overlay: {overlay_save_path}"
+
+    except Exception as e:
+        return f"Failed: {image_file}, Error: {e}"
 
 # ==========================================================
 # MAIN
 # ==========================================================
-def main(run_dir, do_refine=True):
+def main(run_dir):
     start_time = time.time()
 
     print("[INFO] Loading metadata")
@@ -314,7 +399,7 @@ def main(run_dir, do_refine=True):
     with open("../images_info.json") as f:
         images_info = json.load(f)
 
-    DAPI_PATCH_LEN = 500
+    DAPI_PATCH_LEN = 200
     HE_PATCH_LEN = load_initial_affine_and_compute_he_patch(
         run_dir,
         images_info,
@@ -325,9 +410,7 @@ def main(run_dir, do_refine=True):
     DAPI_PATH = images_info["DAPI_path"]
     print("[INFO] Loading full-res images. This could take about 1 min ⚠️", flush=True)
 
-
     he_img, *_ = read_image(HE_PATH, keep_16bit=True, level=0, channel="he")
-    # tif_he, he_img = open_ome_level_lazy(HE_PATH, series=0, level=0)
 
     global lut
     lut_path = images_info.get(
@@ -335,10 +418,7 @@ def main(run_dir, do_refine=True):
         f"{scripts_dir}/glasbey_inverted.lut",
     )
     lut = np.fromfile(lut_path, dtype=np.uint8).reshape(256, 3)
-
     dapi_img, *_ = read_image(DAPI_PATH, keep_16bit=True, level=0, channel="dapi")
-    # dapi_rgb = dapi_to_lut_rgb(dapi_img, lut, threshold=300)
-    # tif_dapi, dapi_img = open_ome_level_lazy(DAPI_PATH, series=0, level=0)
 
     t_after_io = time.time()
     io_sec = t_after_io - start_time
@@ -418,7 +498,6 @@ def main(run_dir, do_refine=True):
                 out_w, out_h = meta["rectified_wh"]  # NOTE: [W, H]
                 xB_tile, yB_tile = (out_w / 2.0, out_h / 2.0)   # center in rectified coords
             else:
-                # bbox tile fallback: center in bbox-local coords
                 xB_tile, yB_tile = (float(he_info["w"]) / 2.0, float(he_info["h"]) / 2.0)
 
         xB_global, yB_global = he_point_tile_to_global(he_info, xB_tile, yB_tile, S)
@@ -440,8 +519,21 @@ def main(run_dir, do_refine=True):
     out_json = os.path.join(out_dir, "nuclei_centroids_global.json")
     with open(out_json, "w") as f:
         json.dump(output_coord_record, f, indent=2)
+    print(f"[INFO] Saved centroids to {out_json}", flush=True)
 
-    print(f"[INFO] Saved refined centroids to {out_json}", flush=True)
+
+    pilot_dapi_offset, pilot_he_thr = load_pilot_mask_params(
+        out_dir,
+        default_dapi_offset=0,
+        default_he_thr=0.6,
+    )
+    out_dir = Path(out_dir)
+    for f in glob(str(out_dir / "*_dapi_raw.png")):
+        print(process_dapi(f,THR_OFFSET=pilot_dapi_offset))
+    for f in glob(str(out_dir / "*_he_patch.png")):
+        print(process_he(f, intensity_threshold=pilot_he_thr))
+    print(f"[INFO] Saved nuclei masks", flush=True)
+
     print("[DONE]", flush=True)
 
 # ==========================================================
@@ -449,6 +541,6 @@ def main(run_dir, do_refine=True):
 # ==========================================================
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        raise RuntimeError("Usage: python 7_refine_nuclei_centroids.py <RUN_DIR>")
+        raise RuntimeError("Usage: python 7_get_nuclei_patches.py <RUN_DIR>")
     run_dir = sys.argv[1]
     main(run_dir)
