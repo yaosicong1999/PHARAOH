@@ -56,8 +56,8 @@ def show_nucleus_patch_in_memory(
     )
     root.title("STEP 8: DAPI & H&E Patch Gallery")
     idx = [0]
-    show_auto_centroids = [True]  # True: 读 *_overlay.png；False: 读非overlay
-    dapi_mode = ["luted"]  # "luted" or "raw"
+    show_auto_centroids = [True]
+    dapi_mode = ["luted"]
     # ---------- Labels ----------
     tk.Label(root, text="DAPI", font=("Helvetica", 15)).grid(row=0, column=0)
     tk.Label(root, text="DAPI nuclei mask", font=("Helvetica", 15)).grid(row=0, column=1)
@@ -117,7 +117,7 @@ def show_nucleus_patch_in_memory(
             return p1
         return os.path.join(output_folder, second)
 
-    manual_path = Path(output_folder) / "manual_centroids.jsonl"
+    manual_path = Path(output_folder) / "manual_centroids.json"
 
     def load_raw_numpy(path, is_mask=False, case_id=None, apply_case=False):
         if not os.path.exists(path):
@@ -543,7 +543,6 @@ def show_nucleus_patch_in_memory(
             lbl.config(image=im)
             lbl.image = im
 
-        # 绑定点击：打开放大拾取
         def bind_click(label_widget, raw_img, kind):
             label_widget.bind(
                 "<Button-1>",
