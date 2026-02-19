@@ -240,7 +240,7 @@ def select_he():
     he_path = path
     if not path:
         return
-    he_orig, he_level = read_image(path)
+    he_orig, he_level = read_image(path, channel="he")
     print(f"he_orig shape is", he_orig.shape)
     he_h = extract_hematoxylin_channel(he_orig)
     he_h_proc = enhance_hematoxylin_channel(he_h)
@@ -318,7 +318,7 @@ def select_dapi():
     dapi_path = path
     if not path:
         return
-    dapi_img, dapi_level = read_image(path, keep_16bit=True, force_rgb=False)
+    dapi_img, dapi_level = read_image(path, keep_16bit=True, force_rgb=False, channel="dapi")
     dapi_img_view = dapi_img.copy()
     dapi_orig_shape = dapi_img.shape[:2]
     dapi_gui_shape = dapi_orig_shape

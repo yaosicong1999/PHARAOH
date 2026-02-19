@@ -450,7 +450,6 @@ def save_dapi_tiles_intensity(
     if dapi_gray16.ndim == 3:
         dapi_gray16 = dapi_gray16[..., 0]
     if dapi_gray16.dtype != np.uint16:
-        # 如果 read_image 给你的不是 uint16，这里也能容错
         dapi_gray16 = dapi_gray16.astype(np.uint16)
 
     if not os.path.exists(output_folder):
@@ -1111,9 +1110,8 @@ class Step3SamplingApp(tk.Tk):
             print(f"[INFO] DAPI_PATH={DAPI_PATH}", flush=True)
             print(f"[INFO] DAPI_LEVEL={DAPI_LEVEL}", flush=True)
 
-            # 读 dapi（沿用你的 my_utils.read_image）
             from my_utils import read_image
-            dapi16, _ = read_image(DAPI_PATH, keep_16bit=True, level=DAPI_LEVEL)
+            dapi16, _ = read_image(DAPI_PATH, keep_16bit=True, level=DAPI_LEVEL, channel="dapi")
             timer.mark("Read DAPI")
 
             # debug preview
@@ -1292,7 +1290,7 @@ class Step3SamplingApp(tk.Tk):
 
             report_stage(2, "Saving DAPI tiles (intensity + LUT)")
 
-            dapi16_lvl1, _ = read_image(DAPI_PATH, keep_16bit=True, level=1)
+            dapi16_lvl1, _ = read_image(DAPI_PATH, keep_16bit=True, level=1, channel="dapi")
             if dapi16_lvl1.ndim == 3:
                 dapi16_lvl1 = dapi16_lvl1[..., 0]
             tick(20, f"Read DAPI level=1 (u16) shape={getattr(dapi16_lvl1, 'shape', None)} dtype={dapi16_lvl1.dtype}")
@@ -1337,7 +1335,7 @@ class Step3SamplingApp(tk.Tk):
             h_mat = data["H_mat"]
             tick(72, "Loaded initial alignment")
 
-            he_img2, _ = read_image(HE_PATH, keep_16bit=True, level=1)
+            he_img2, _ = read_image(HE_PATH, keep_16bit=True, level=1, channel="he")
             tick(78, f"Read HE level=1 shape={getattr(he_img2, 'shape', None)}")
 
             he_tiles = save_he_tiles(

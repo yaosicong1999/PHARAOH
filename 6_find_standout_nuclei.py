@@ -9,8 +9,9 @@ import time
 import json
 import sys
 
-MIN_GOOD_TILES = 119          # “pairs>=2” 的 tile 数阈值
-FALLBACK_SCORE_THR = 0.50    # final_full_iou 阈值
+GOOD_NUCLEI_MIN = 2
+MIN_GOOD_TILES = 20          # “pairs>=n” 的 tile 数阈值
+FALLBACK_SCORE_THR = 0.40    # final_full_iou 阈值
 MIN_FALLBACK_TILES = 20      # fallback tile 数阈值
 
 good_tile_count = 0
@@ -708,7 +709,7 @@ if __name__ == "__main__":
         n_pairs = len(pairs)
         if n_pairs == 0:
             print("  [DEBUG] No valid A/B pairs found after filtering")
-        if (n_pairs >= 2) and (final_full_score > FALLBACK_SCORE_THR):
+        if (n_pairs >= GOOD_NUCLEI_MIN) and (final_full_score > FALLBACK_SCORE_THR):
             good_tile_count += 1
         # -----------------------------
         # Map top-K pairs to ORIGINAL coords NOW (store into fallback_candidates)
@@ -790,16 +791,15 @@ if __name__ == "__main__":
         print(f"[TIME] {prefix}: {t_patch_end - t_patch_start:.2f} sec")
         print(f"[PROGRESS] TILES {idx}/{total}", flush=True)
 
-    print(f"[INFO] good tiles (n_pairs>=2): {good_tile_count}")
+    print(f"[INFO] good tiles (n_pairs>={GOOD_NUCLEI_MIN}): {good_tile_count}")
     selected_tiles = None
     mode = None
     if good_tile_count >= MIN_GOOD_TILES:
-        # 用 n_pairs>=2 的 tiles
         selected_tiles = [
             t for t in fallback_candidates
-            if (t["n_pairs"] >= 2) and (t["final_full_score"] > FALLBACK_SCORE_THR)
+            if (t["n_pairs"] >= GOOD_NUCLEI_MIN) and (t["final_full_score"] > FALLBACK_SCORE_THR)
         ]
-        mode = "pairs>=2"
+        mode = "pairs>=n"
     else:
         # fallback: 用 score>0.30 的 tiles
         score_tiles = [t for t in fallback_candidates if t["final_full_score"] > FALLBACK_SCORE_THR]
@@ -811,7 +811,7 @@ if __name__ == "__main__":
         else:
             raise RuntimeError(
                 f"Not enough good tiles. "
-                f"good_tiles(n_pairs>=2)={good_tile_count} (<{MIN_GOOD_TILES}), "
+                f"good_tiles(n_pairs>={GOOD_NUCLEI_MIN})={good_tile_count} (<{MIN_GOOD_TILES}), "
                 f"score_tiles(final_full_score>{FALLBACK_SCORE_THR})={len(score_tiles)} (<{MIN_FALLBACK_TILES}). "
                 f"Need better tiles/masks."
             )
@@ -822,7 +822,7 @@ if __name__ == "__main__":
     # --------------------------------
     final_records = []
 
-    if mode == "pairs>=2":
+    if mode == "pairs>=n":
         for t in selected_tiles:
             prefix = t["tile"]
             take = t["pairs_mapped"][:2]  # 你要几个pair就改这里
