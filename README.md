@@ -1,5 +1,7 @@
 ## HistoPyrAlign (Beta version 2.0)
 
+### ⚠️ Now please only test on Xenium data. Refinement is needed for other platforms.
+
 HistoPyrAlign is a scalable and generalizable framework for multimodal tissue image alignment and spatial transcriptomics enhancement.
 
 It enables fast, robust, GUI-based, and GPU-free semi-automatic registration between DAPI imaging from multiplexed imaging platforms (Xenium, CosMx, CODEX, CyCIF), and histology (H&E), supporting both same-section and adjacent-section alignment.
