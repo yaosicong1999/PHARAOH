@@ -344,86 +344,96 @@ def show_nucleus_patch_in_memory(
 
         return pad_to_fixed_size(Image.fromarray(img))
 
-    # def calculate_affine_ransac():
-    #     """
-    #     Fit affine from dapi_centroid_global -> he_centroid_global using RANSAC.
-    #     Uses nuclei_centroids_global.json under run_dir.
-    #     Saves to: RUN_DIR/dapi_to_he_affine_level0.json
-    #     """
-    #     try:
-    #         run_dir = Path(output_folder).resolve().parent  # nuclei_dir/.. = RUN_DIR
-    #         info_path = Path(output_folder) / "nuclei_centroids_global.json"
-    #         if not info_path.exists():
-    #             messagebox.showerror("Missing file", f"Cannot find:\n{info_path}")
-    #             return
-    #
-    #         with open(info_path, "r") as f:
-    #             nuclei_info = json.load(f)
-    #
-    #         if len(nuclei_info) < 3:
-    #             messagebox.showerror("Not enough points", "Need at least 3 nucleus pairs to estimate affine.")
-    #             return
-    #
-    #         # src: DAPI, dst: HE
-    #         src = np.array([x["dapi_centroid_global"] for x in nuclei_info], dtype=np.float32)
-    #         dst = np.array([x["he_centroid_global"] for x in nuclei_info], dtype=np.float32)
-    #
-    #         # ---- RANSAC affine ----
-    #         # NOTE: threshold can be tuned. 3~10 px usually OK depending on noise.
-    #         M, inliers = cv2.estimateAffine2D(
-    #             src, dst,
-    #             method=cv2.RANSAC,
-    #             ransacReprojThreshold=5.0,
-    #             maxIters=5000,
-    #             confidence=0.99,
-    #             refineIters=10
-    #         )
-    #
-    #         if M is None:
-    #             messagebox.showerror("RANSAC failed", "cv2.estimateAffine2D returned None. Try adjusting threshold or check point order.")
-    #             return
-    #
-    #         inlier_count = int(inliers.sum()) if inliers is not None else 0
-    #         total = len(nuclei_info)
-    #
-    #         # 2x3 -> 3x3
-    #         H = np.eye(3, dtype=float)
-    #         H[:2, :3] = M
-    #
-    #         out = {
-    #             "from": "dapi_level0",
-    #             "to": "he_level0",
-    #             "method": "cv2.estimateAffine2D(RANSAC)",
-    #             "ransacReprojThreshold": 5.0,
-    #             "maxIters": 5000,
-    #             "confidence": 0.99,
-    #             "refineIters": 10,
-    #             "num_points": total,
-    #             "num_inliers": inlier_count,
-    #             "affine_2x3": M.tolist(),
-    #             "affine_3x3": H.tolist(),
-    #         }
-    #
-    #         out_path = run_dir / "dapi_to_he_affine_level0.json"
-    #         with open(out_path, "w") as f:
-    #             json.dump(out, f, indent=2)
-    #
-    #         messagebox.showinfo(
-    #             "Affine estimated",
-    #             f"Saved:\n{out_path}\n\nInliers: {inlier_count}/{total}\n\nM (2x3):\n{M}"
-    #         )
-    #
-    #     except Exception as e:
-    #         messagebox.showerror("Error", str(e))
+    def _tps_kernel(r2: np.ndarray) -> np.ndarray:
+        """U(r) = r^2 log(r^2), safe at 0."""
+        out = np.zeros_like(r2, dtype=np.float64)
+        mask = r2 > 0
+        out[mask] = r2[mask] * np.log(r2[mask])
+        return out
 
-    def calculate_perspective_ransac():
+    def fit_tps(src: np.ndarray, dst: np.ndarray, reg: float = 1e-3):
         """
-        Fit homography (perspective) from dapi_centroid_global -> he_centroid_global using RANSAC.
-        Uses nuclei_centroids_global.json under run_dir.
+        Fit 2D TPS mapping src -> dst.
+
+        Parameters
+        ----------
+        src : (N,2)
+        dst : (N,2)
+        reg : float
+
+        Returns
+        -------
+        dict with keys:
+            ctrl : (N,2) control points
+            w    : (N,2) TPS weights
+            a    : (3,2) affine part
+            reg  : float
+        """
+        src = np.asarray(src, dtype=np.float64)
+        dst = np.asarray(dst, dtype=np.float64)
+
+        n = src.shape[0]
+        if n < 3:
+            raise ValueError("TPS needs at least 3 points.")
+        if src.shape != dst.shape or src.shape[1] != 2:
+            raise ValueError("src and dst must both be (N,2).")
+
+        diff = src[:, None, :] - src[None, :, :]
+        r2 = np.sum(diff * diff, axis=2)
+        K = _tps_kernel(r2)
+
+        P = np.concatenate([np.ones((n, 1)), src], axis=1)  # (N,3)
+
+        L = np.zeros((n + 3, n + 3), dtype=np.float64)
+        L[:n, :n] = K + reg * np.eye(n)
+        L[:n, n:] = P
+        L[n:, :n] = P.T
+
+        Y = np.zeros((n + 3, 2), dtype=np.float64)
+        Y[:n, :] = dst
+
+        params = np.linalg.solve(L, Y)
+        w = params[:n, :]  # (N,2)
+        a = params[n:, :]  # (3,2)
+
+        return {"ctrl": src, "w": w, "a": a, "reg": float(reg)}
+
+    def apply_tps(xy: np.ndarray, model: dict) -> np.ndarray:
+        """
+        Apply TPS model to xy, shape (M,2).
+        """
+        xy = np.asarray(xy, dtype=np.float64)
+
+        ctrl = model["ctrl"]
+        w = model["w"]
+        a = model["a"]
+
+        diff = xy[:, None, :] - ctrl[None, :, :]
+        r2 = np.sum(diff * diff, axis=2)
+        K = _tps_kernel(r2)
+
+        P = np.concatenate([np.ones((xy.shape[0], 1)), xy], axis=1)  # (M,3)
+
+        return K @ w + P @ a
+
+    def calculate_perspective_ransac(transform_type="homography"):
+        """
+        Fit transform from dapi_centroid_global -> he_centroid_global.
+
+        Modes
+        -----
+        affine:
+            affine only
+        homography:
+            homography only
+        tps:
+            homography first, then TPS refinement on homography inliers
+
+        Uses nuclei_centroids_global.json under output_folder.
         Saves to: RUN_DIR/dapi_to_he_homography_level0.json
         """
         try:
-            run_dir = Path(output_folder).resolve().parent  # nuclei_dir/.. = RUN_DIR
+            run_dir = Path(output_folder).resolve().parent
             info_path = Path(output_folder) / "nuclei_centroids_global.json"
             if not info_path.exists():
                 messagebox.showerror("Missing file", f"Cannot find:\n{info_path}")
@@ -432,47 +442,136 @@ def show_nucleus_patch_in_memory(
             with open(info_path, "r") as f:
                 nuclei_info = json.load(f)
 
-            if len(nuclei_info) < 4:
+            transform_type = transform_type.lower().strip()
+            if transform_type not in ("homography", "affine", "tps"):
+                messagebox.showerror(
+                    "Invalid transform_type",
+                    "transform_type must be 'homography', 'affine', or 'tps'"
+                )
+                return
+
+            if len(nuclei_info) < 3 and transform_type == "affine":
+                messagebox.showerror("Not enough points", "Need at least 3 nucleus pairs to estimate affine.")
+                return
+            if len(nuclei_info) < 4 and transform_type in ("homography", "tps"):
                 messagebox.showerror("Not enough points",
-                                     "Need at least 4 nucleus pairs to estimate homography (perspective).")
+                                     "Need at least 4 nucleus pairs to estimate homography / TPS init.")
                 return
 
             # src: DAPI, dst: HE
             src = np.array([x["dapi_centroid_global"] for x in nuclei_info], dtype=np.float32)
             dst = np.array([x["he_centroid_global"] for x in nuclei_info], dtype=np.float32)
 
-            # ---- RANSAC homography ----
-            # ransacReprojThreshold: tune like 3~15 px depending on centroid noise / resolution mismatch
+            # ---- RANSAC params ----
             ransac_thr = 8.0
             maxIters = 10000
             confidence = 0.995
 
-            H, inliers = cv2.findHomography(
-                src, dst,
-                method=cv2.RANSAC,
-                ransacReprojThreshold=ransac_thr,
-                maxIters=maxIters,
-                confidence=confidence
-            )
+            H = None
+            inliers = None
+            tps_model = None
 
-            if H is None:
-                messagebox.showerror(
-                    "RANSAC failed",
-                    "cv2.findHomography returned None. Try adjusting threshold or check point order / outliers."
+            # ---- Estimate transform ----
+            if transform_type == "affine":
+                A, inliers = cv2.estimateAffine2D(
+                    src, dst,
+                    method=cv2.RANSAC,
+                    ransacReprojThreshold=ransac_thr,
+                    maxIters=maxIters,
+                    confidence=confidence,
+                    refineIters=10
                 )
-                return
+                if A is not None:
+                    H = np.vstack([A, [0.0, 0.0, 1.0]]).astype(np.float64)
+                method_str = "cv2.estimateAffine2D(RANSAC) -> 3x3"
 
+                if H is None:
+                    messagebox.showerror(
+                        "Affine RANSAC failed",
+                        "Affine estimation returned None. Try adjusting threshold or check point order / outliers."
+                    )
+                    return
+
+                # reprojection with affine
+                src_h = np.concatenate([src, np.ones((len(src), 1), dtype=np.float32)], axis=1)
+                proj = (H @ src_h.T).T
+                proj_xy = proj[:, :2] / np.clip(proj[:, 2:3], 1e-8, None)
+                err = np.linalg.norm(proj_xy - dst, axis=1)
+
+            elif transform_type == "homography":
+                H, inliers = cv2.findHomography(
+                    src, dst,
+                    method=cv2.RANSAC,
+                    ransacReprojThreshold=ransac_thr,
+                    maxIters=maxIters,
+                    confidence=confidence
+                )
+                method_str = "cv2.findHomography(RANSAC)"
+
+                if H is None:
+                    messagebox.showerror(
+                        "Homography RANSAC failed",
+                        "Homography estimation returned None. Try adjusting threshold or check point order / outliers."
+                    )
+                    return
+
+                src_h = np.concatenate([src, np.ones((len(src), 1), dtype=np.float32)], axis=1)
+                proj = (H.astype(np.float64) @ src_h.T).T
+                proj_xy = proj[:, :2] / np.clip(proj[:, 2:3], 1e-8, None)
+                err = np.linalg.norm(proj_xy - dst, axis=1)
+
+            else:  # tps
+                # 1) homography init: dapi -> he
+                H, inliers = cv2.findHomography(
+                    src, dst,
+                    method=cv2.RANSAC,
+                    ransacReprojThreshold=ransac_thr,
+                    maxIters=maxIters,
+                    confidence=confidence
+                )
+                method_str = "cv2.findHomography(RANSAC) + TPS (forward+inverse)"
+
+                if H is None:
+                    messagebox.showerror(
+                        "Homography RANSAC failed",
+                        "Homography estimation returned None. Cannot initialize TPS."
+                    )
+                    return
+
+                mask = inliers.ravel().astype(bool) if inliers is not None else np.ones(len(src), dtype=bool)
+                src_in = src[mask].astype(np.float64)   # dapi inliers
+                dst_in = dst[mask].astype(np.float64)   # he   inliers
+
+                if len(src_in) < 3:
+                    messagebox.showerror(
+                        "Not enough inliers",
+                        f"Need at least 3 inliers for TPS, got {len(src_in)}."
+                    )
+                    return
+
+                # 2) fit BOTH directions
+                tps_reg = 1e-2
+
+                # forward: dapi -> he
+                tps_model_fwd = fit_tps(src_in, dst_in, reg=tps_reg)
+
+                # inverse: he -> dapi
+                tps_model_inv = fit_tps(dst_in, src_in, reg=tps_reg)
+
+                # keep forward as primary model for point reprojection stats
+                tps_model = tps_model_fwd
+
+                # reprojection with forward TPS on all points
+                proj_xy = apply_tps(src.astype(np.float64), tps_model_fwd)
+                err = np.linalg.norm(proj_xy - dst.astype(np.float64), axis=1)
+
+            # ---- Error summary ----
             inlier_count = int(inliers.sum()) if inliers is not None else 0
             total = len(nuclei_info)
 
-            # Optional: compute median reprojection error on inliers (for quick sanity check)
-            # (keep lightweight; can remove if you want)
-            src_h = np.concatenate([src, np.ones((len(src), 1), dtype=np.float32)], axis=1)  # Nx3
-            proj = (H @ src_h.T).T  # Nx3
-            proj_xy = proj[:, :2] / np.clip(proj[:, 2:3], 1e-8, None)
-            err = np.linalg.norm(proj_xy - dst, axis=1)
             if inliers is not None:
-                err_in = err[inliers.ravel().astype(bool)]
+                mask = inliers.ravel().astype(bool)
+                err_in = err[mask]
                 med_err = float(np.median(err_in)) if len(err_in) else float("nan")
                 mean_err = float(np.mean(err_in)) if len(err_in) else float("nan")
             else:
@@ -482,29 +581,66 @@ def show_nucleus_patch_in_memory(
             out = {
                 "from": "dapi_level0",
                 "to": "he_level0",
-                "method": "cv2.findHomography(RANSAC)",
+                "method": method_str,
                 "ransacReprojThreshold": float(ransac_thr),
                 "maxIters": int(maxIters),
                 "confidence": float(confidence),
                 "num_points": int(total),
                 "num_inliers": int(inlier_count),
-                "homography_3x3": H.tolist(),
                 "inlier_median_reproj_error_px": med_err,
                 "inlier_mean_reproj_error_px": mean_err,
             }
+
+            if transform_type in ("affine", "homography"):
+                out["homography_3x3"] = H.tolist()
+
+            else:  # tps
+                out["initial_homography_3x3"] = H.tolist()
+                out["tps_regularization"] = float(tps_reg)
+                # forward TPS: dapi -> he
+                out["forward_tps"] = {
+                    "from": "dapi_level0",
+                    "to": "he_level0",
+                    "control_points_src": tps_model_fwd["ctrl"].tolist(),
+                    "control_points_dst": dst_in.tolist(),
+                    "weights": tps_model_fwd["w"].tolist(),
+                    "affine_2x3": tps_model_fwd["a"].T.tolist(),
+                }
+                # inverse TPS: he -> dapi
+                out["inverse_tps"] = {
+                    "from": "he_level0",
+                    "to": "dapi_level0",
+                    "control_points_src": tps_model_inv["ctrl"].tolist(),
+                    "control_points_dst": src_in.tolist(),
+                    "weights": tps_model_inv["w"].tolist(),
+                    "affine_2x3": tps_model_inv["a"].T.tolist(),
+                }
 
             out_path = run_dir / "dapi_to_he_homography_level0.json"
             with open(out_path, "w") as f:
                 json.dump(out, f, indent=2)
 
-            messagebox.showinfo(
-                "Homography estimated",
-                f"Saved:\n{out_path}\n\nInliers: {inlier_count}/{total}\n"
-                f"Median inlier reproj err: {med_err:.2f}px\n\nH (3x3):\n{H}"
-            )
+            if transform_type in ("affine", "homography"):
+                msg = (
+                    f"Saved:\n{out_path}\n\n"
+                    f"Inliers: {inlier_count}/{total}\n"
+                    f"Median inlier reproj err: {med_err:.2f}px\n\n"
+                    f"H (3x3):\n{H}"
+                )
+            else:
+                msg = (
+                    f"Saved:\n{out_path}\n\n"
+                    f"Homography inliers used for TPS: {inlier_count}/{total}\n"
+                    f"Median inlier reproj err: {med_err:.2f}px\n\n"
+                    f"Initial H (3x3):\n{H}\n\n"
+                    f"TPS control points: {len(tps_model['ctrl'])}"
+                )
+
+            messagebox.showinfo("Transform estimated", msg)
 
         except Exception as e:
             messagebox.showerror("Error", str(e))
+
     # ---------- Core ----------
     def update_images():
         i = idx[0]

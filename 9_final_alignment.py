@@ -3,6 +3,9 @@ import sys
 import json
 from pathlib import Path
 import numpy as np
+import tifffile as tf
+import zarr
+import tempfile
 import cv2
 import tkinter as tk
 from tkinter import messagebox, filedialog
@@ -16,8 +19,6 @@ Image.MAX_IMAGE_PIXELS = None
 # =============================
 # CONFIG
 # =============================
-DISPLAY_LEVEL = 4
-DISPLAY_SCALE = 2 ** DISPLAY_LEVEL
 TILE_SIZE = (420, 420)
 BG_COLOR = (240, 240, 240)
 
@@ -202,6 +203,79 @@ def load_homography(path: Path):
     H2 = H3[:2, :].copy().astype(np.float32)
 
     return H2, H3
+def load_tps(path: Path):
+    """
+    Load TPS transform from json.
+
+    Returns
+    -------
+    model : dict
+        {
+            "ctrl": (N,2) control points (src)
+            "w":    (N,2) TPS weights
+            "a":    (3,2) affine part
+        }
+
+    Notes
+    -----
+    Compatible with json produced by calculate_perspective_ransac(mode="tps").
+    """
+
+    data = json.load(open(path, "r"))
+    print(f"[DEBUG] TPS json keys: {list(data.keys())}", flush=True)
+
+    # ---- required keys ----
+    required = [
+        "tps_control_points_src",
+        "tps_control_points_dst",
+        "tps_weights",
+        "tps_affine_2x3"
+    ]
+
+    for k in required:
+        if k not in data:
+            raise ValueError(
+                f"[ERROR] Missing TPS key '{k}' in json.\n"
+                f"Got keys: {list(data.keys())}"
+            )
+
+    ctrl = np.array(data["tps_control_points_src"], dtype=np.float64)
+    dst  = np.array(data["tps_control_points_dst"], dtype=np.float64)
+    w    = np.array(data["tps_weights"], dtype=np.float64)
+
+    A2x3 = np.array(data["tps_affine_2x3"], dtype=np.float64)
+
+    print(f"[DEBUG] TPS ctrl shape={ctrl.shape}", flush=True)
+    print(f"[DEBUG] TPS weights shape={w.shape}", flush=True)
+    print(f"[DEBUG] TPS affine shape={A2x3.shape}", flush=True)
+
+    if ctrl.shape[1] != 2:
+        raise ValueError(f"[ERROR] ctrl shape invalid: {ctrl.shape}")
+
+    if w.shape[0] != ctrl.shape[0]:
+        raise ValueError(
+            f"[ERROR] TPS weights mismatch: ctrl={ctrl.shape}, weights={w.shape}"
+        )
+
+    if A2x3.shape != (2, 3):
+        raise ValueError(
+            f"[ERROR] TPS affine must be (2,3), got {A2x3.shape}"
+        )
+
+    # convert to internal format (3x2 affine like in TPS solver)
+    a = np.zeros((3, 2), dtype=np.float64)
+    a[0] = A2x3[:, 0]
+    a[1] = A2x3[:, 1]
+    a[2] = A2x3[:, 2]
+
+    model = {
+        "ctrl": ctrl,
+        "w": w,
+        "a": a,
+    }
+
+    return model
+
 
 def transform_xy_affine(xy: np.ndarray, A2x3: np.ndarray) -> np.ndarray:
     """
@@ -328,8 +402,11 @@ class FinalAlignmentApp(tk.Tk):
         self.case_id = int(self.info.get("DAPI_orientation_case", 0))
 
         # -------- config --------
-        self.display_level = DISPLAY_LEVEL
+        # -------- config --------
+        self.display_level = int(self.info["DAPI_level"])
         self.display_scale = float(2 ** self.display_level)
+        print(f"[INFO] DISPLAY_LEVEL = {self.display_level}", flush=True)
+        print(f"[INFO] DISPLAY_SCALE = {self.display_scale}", flush=True)
         self.cache = {
             # base
             "dapi_base": self.run_dir / f"9_cache_dapi_base_L{self.display_level}.png",
@@ -414,6 +491,16 @@ class FinalAlignmentApp(tk.Tk):
         ).pack(side="left", expand=True, fill="x")
 
         tk.Button(
+            btns, text="Export registered DAPI (OME-TIFF)",
+            command=self.export_registered_dapi_ome
+        ).pack(side="left", expand=True, fill="x")
+
+        tk.Button(
+            btns, text="Export DAPI registered (L0 uint16 OME-TIFF)",
+            command=lambda: self.export_registered_dapi_L0_uint16(tile=1024)
+        ).pack(side="left", expand=True, fill="x")
+
+        tk.Button(
             btns, text="Load cell data (cells.csv.gz)",
             command=self.load_cell_data
         ).pack(side="left", expand=True, fill="x")
@@ -490,6 +577,118 @@ class FinalAlignmentApp(tk.Tk):
         """
         Click to load nuclei keypoints + homography and build overlay.
         """
+        def load_tps(path: Path, direction="forward"):
+            """
+            direction:
+              - 'forward' : dapi -> he
+              - 'inverse' : he   -> dapi
+            """
+            data = json.load(open(path, "r"))
+            print(f"[DEBUG] TPS json keys: {list(data.keys())}", flush=True)
+
+            if direction == "forward":
+                key = "forward_tps"
+            elif direction == "inverse":
+                key = "inverse_tps"
+            else:
+                raise ValueError("direction must be 'forward' or 'inverse'")
+
+            if key not in data:
+                raise ValueError(f"[ERROR] Missing {key} in json. Keys: {list(data.keys())}")
+
+            d = data[key]
+
+            ctrl = np.array(d["control_points_src"], dtype=np.float64)
+            w = np.array(d["weights"], dtype=np.float64)
+            A2x3 = np.array(d["affine_2x3"], dtype=np.float64)
+
+            if ctrl.ndim != 2 or ctrl.shape[1] != 2:
+                raise ValueError(f"[ERROR] ctrl shape invalid: {ctrl.shape}")
+            if w.shape[0] != ctrl.shape[0] or w.shape[1] != 2:
+                raise ValueError(f"[ERROR] weights shape invalid: {w.shape}, ctrl={ctrl.shape}")
+            if A2x3.shape != (2, 3):
+                raise ValueError(f"[ERROR] affine_2x3 invalid: {A2x3.shape}")
+
+            # internal TPS affine format: (3,2)
+            a = np.zeros((3, 2), dtype=np.float64)
+            a[0, :] = A2x3[:, 0]
+            a[1, :] = A2x3[:, 1]
+            a[2, :] = A2x3[:, 2]
+
+            return {
+                "ctrl": ctrl,
+                "w": w,
+                "a": a,
+            }
+
+        def _tps_kernel(r2: np.ndarray) -> np.ndarray:
+            out = np.zeros_like(r2, dtype=np.float64)
+            mask = r2 > 0
+            out[mask] = r2[mask] * np.log(r2[mask])
+            return out
+
+        def apply_tps(xy: np.ndarray, model: dict) -> np.ndarray:
+            xy = np.asarray(xy, dtype=np.float64)
+            ctrl = model["ctrl"]
+            w = model["w"]
+            a = model["a"]
+
+            diff = xy[:, None, :] - ctrl[None, :, :]
+            r2 = np.sum(diff * diff, axis=2)
+            K = _tps_kernel(r2)
+
+            P = np.concatenate([np.ones((xy.shape[0], 1)), xy], axis=1)  # (N,3)
+            return K @ w + P @ a
+
+        def load_transform_mode(path: Path):
+            data = json.load(open(path, "r"))
+
+            if "inverse_tps" in data and "forward_tps" in data:
+                return "tps"
+            elif "homography_3x3" in data:
+                return "matrix"
+            elif "initial_homography_3x3" in data:
+                # tps json but maybe incomplete
+                return "tps"
+            else:
+                raise ValueError(f"[ERROR] Unknown transform json format. Keys: {list(data.keys())}")
+
+        def build_tps_remap_for_display(tps_model, out_shape_hw, display_scale):
+            """
+            Build map_x, map_y in DISPLAY space for cv2.remap.
+
+            Parameters
+            ----------
+            tps_model : dict
+                inverse TPS model: HE(level0) -> DAPI(level0)
+            out_shape_hw : (H, W)
+                output display image shape, typically he_rgb.shape[:2]
+            display_scale : float
+                level0_px / display_px
+            """
+            H, W = out_shape_hw
+            s = float(display_scale)
+
+            gx, gy = np.meshgrid(
+                np.arange(W, dtype=np.float32),
+                np.arange(H, dtype=np.float32)
+            )
+            pts_disp = np.stack([gx.ravel(), gy.ravel()], axis=1).astype(np.float64)
+
+            # display HE px -> level0 HE px
+            pts_he_lvl0 = pts_disp * s
+
+            # inverse TPS: HE(level0) -> DAPI(level0)
+            pts_dapi_lvl0 = apply_tps(pts_he_lvl0, tps_model)
+
+            # level0 DAPI px -> display DAPI px
+            pts_dapi_disp = pts_dapi_lvl0 / s
+
+            map_x = pts_dapi_disp[:, 0].reshape(H, W).astype(np.float32)
+            map_y = pts_dapi_disp[:, 1].reshape(H, W).astype(np.float32)
+
+            return map_x, map_y
+
         try:
             # -------- load nuclei points (LEVEL 0 global px) --------
             nuclei_path = self.run_dir / "nuclei_patches/nuclei_centroids_global.json"
@@ -498,29 +697,61 @@ class FinalAlignmentApp(tk.Tk):
             self.he_pts0   = np.array([x["he_centroid_global"]   for x in nuclei], np.float32)
             print(f"[INFO] Loaded nuclei: {len(self.dapi_pts0)}", flush=True)
 
-            # -------- load homography level0 --------
-            _, self.H3 = load_homography(self.run_dir / "dapi_to_he_homography_level0.json")
-            # -------- build display homography --------
+            # -------- load transform --------
+            tf_path = self.run_dir / "dapi_to_he_homography_level0.json"
+            mode = load_transform_mode(tf_path)
+
             s = float(self.display_scale)
-            S = np.array([[s, 0, 0],
-                          [0, s, 0],
-                          [0, 0, 1]], dtype=np.float32)
-            S_inv = np.array([[1 / s, 0, 0],
-                              [0, 1 / s, 0],
+
+            if mode == "matrix":
+                # affine / homography path
+                _, self.H3 = load_homography(tf_path)
+
+                S = np.array([[s, 0, 0],
+                              [0, s, 0],
                               [0, 0, 1]], dtype=np.float32)
-            H_disp = (S_inv @ self.H3 @ S).astype(np.float32)
-            # -------- warp + overlay --------
-            self.warped_dapi = cv2.warpPerspective(
-                self.dapi_rgb,
-                H_disp,
-                (self.he_rgb.shape[1], self.he_rgb.shape[0]),
-                flags=cv2.INTER_LINEAR,
-                borderMode=cv2.BORDER_CONSTANT,
-            )
+                S_inv = np.array([[1 / s, 0, 0],
+                                  [0, 1 / s, 0],
+                                  [0, 0, 1]], dtype=np.float32)
+
+                H_disp = (S_inv @ self.H3 @ S).astype(np.float32)
+
+                self.warped_dapi = cv2.warpPerspective(
+                    self.dapi_rgb,
+                    H_disp,
+                    (self.he_rgb.shape[1], self.he_rgb.shape[0]),
+                    flags=cv2.INTER_LINEAR,
+                    borderMode=cv2.BORDER_CONSTANT,
+                )
+
+            elif mode == "tps":
+                # TPS path: for image warp we must use inverse TPS (HE -> DAPI)
+                self.tps_inv = load_tps(tf_path, direction="inverse")
+
+                map_x, map_y = build_tps_remap_for_display(
+                    self.tps_inv,
+                    out_shape_hw=self.he_rgb.shape[:2],
+                    display_scale=self.display_scale
+                )
+
+                self.warped_dapi = cv2.remap(
+                    self.dapi_rgb,
+                    map_x,
+                    map_y,
+                    interpolation=cv2.INTER_LINEAR,
+                    borderMode=cv2.BORDER_CONSTANT
+                )
+
+            else:
+                raise ValueError(f"Unknown transform mode: {mode}")
+
+            # -------- overlay --------
             self.he_dapi_overlay = cv2.addWeighted(self.he_rgb, 0.7, self.warped_dapi, 0.8, 0)
             cv2.imwrite(str(self.cache["overlay"]), self.he_dapi_overlay)
 
-            # -------- load homography level0 --------
+
+
+            # -------- manual alignment overlay --------
             data_manual = json.load(open(self.run_dir / "manual_initial_alignment.json", "r"))
             H3m = np.array(data_manual['H_mat_level_0'], dtype=np.float32)
             # -------- build display homography --------
@@ -580,6 +811,212 @@ class FinalAlignmentApp(tk.Tk):
             messagebox.showerror("Load alignment failed", str(e), parent=self)
             raise
 
+    def export_registered_dapi_ome(self):
+        """
+        Export DAPI warped into HE space at DISPLAY_LEVEL as an OME-TIFF.
+        Output: <run_dir>/9_dapi_registered_L{DISPLAY_LEVEL}.ome.tif
+        """
+        if self.warped_dapi is None:
+            messagebox.showinfo(
+                "Not available",
+                "No warped DAPI in memory yet.\nClick 'Load keypoints + alignment matrix' first.",
+                parent=self
+            )
+            return
+
+        # self.warped_dapi is BGR uint8 (because dapi_rgb is LUT RGB->BGR)
+        # If you want 16-bit original intensity warped, that is a different export (full-res).
+        out_path = self.run_dir / f"9_dapi_registered_L{self.display_level}.ome.tif"
+
+        # OME-style metadata (basic). Axes: YXC because it's color.
+        # Resolution/PhysicalSize at display level is scaled by display_scale.
+        try:
+            # if you have pixel size from images_info.json, use it; otherwise omit.
+            # (Here we try to reuse your info dict if it has pixel size)
+            psx = self.info.get("HE_physical_size_x_um", None)
+            psy = self.info.get("HE_physical_size_y_um", None)
+            if psx is not None and psy is not None:
+                psx = float(psx) * self.display_scale
+                psy = float(psy) * self.display_scale
+                meta = {
+                    "axes": "YXC",
+                    "PhysicalSizeX": psx,
+                    "PhysicalSizeY": psy,
+                    "PhysicalSizeXUnit": "µm",
+                    "PhysicalSizeYUnit": "µm",
+                }
+            else:
+                meta = {"axes": "YXC"}
+        except Exception:
+            meta = {"axes": "YXC"}
+
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        tf.imwrite(
+            str(out_path),
+            self.warped_dapi[..., ::-1],  # BGR->RGB for writing
+            photometric="rgb",
+            compression="lzw",
+            metadata=meta
+        )
+
+        messagebox.showinfo(
+            "Exported",
+            f"Saved:\n{out_path}",
+            parent=self
+        )
+
+    def export_registered_dapi_L0_uint16(self, tile=1024):
+        """
+        Read DAPI L0 (uint16) -> warp to HE L0 space using dapi_to_he_homography_level0.json -> save OME-TIFF.
+        Output: <run_dir>/9_dapi_registered_L0.ome.tif
+
+        Notes:
+        - Uses zarr window reads from DAPI OME-TIFF pyramid: root["0"].
+        - Tile-wise warp, writes into a memmap to avoid huge RAM usage.
+        """
+        # ---- paths ----
+        info = self.info  # loaded images_info.json in __init__
+        dapi_path = info["DAPI_path"]
+        he_path = info["HE_path"]
+        H_path = self.run_dir / "dapi_to_he_homography_level0.json"
+        out_path = self.run_dir / "9_dapi_registered_L0.ome.tif"
+
+        # ---- load H (DAPI->HE) ----
+        data = json.load(open(H_path, "r"))
+        H = None
+        for k in ("homography_3x3", "H_mat", "H", "matrix_3x3"):
+            if k in data:
+                H = np.array(data[k], dtype=np.float64)
+                break
+        if H is None or H.shape != (3, 3):
+            raise ValueError(f"Invalid homography in {H_path}. keys={list(data.keys())}")
+        Hinv = np.linalg.inv(H)
+
+        # ---- HE L0 shape (output canvas) ----
+        he_path = Path(he_path)
+        suffix = he_path.suffix.lower()
+
+        if suffix in [".tif", ".tiff", ".ome"]:
+            with tf.TiffFile(str(he_path)) as tif:
+                page = tif.pages[0]
+                HE_H, HE_W = page.shape[:2]
+        elif suffix in [".jpg", ".jpeg", ".png"]:
+            with Image.open(str(he_path)) as img:
+                HE_W, HE_H = img.size  # PIL 是 (W,H)
+        else:
+            raise ValueError(f"Unsupported HE format: {he_path}")
+        print("[EXPORT L0] HE size:", HE_W, HE_H, flush=True)
+
+        # ---- open DAPI L0 via zarr ----
+        store = tf.imread(dapi_path, aszarr=True)
+        root = zarr.open(store, mode="r")
+        if "0" not in root:
+            raise ValueError(f"DAPI zarr root has no '0'. keys={list(root.keys())[:20]}")
+        z = root["0"]  # L0 uint16
+        DAPI_H, DAPI_W = z.shape[:2]
+        print("[EXPORT L0] DAPI L0:", DAPI_W, DAPI_H, "dtype:", z.dtype, flush=True)
+
+        # ---- helper: bbox in DAPI for a target HE tile ----
+        def tile_src_bbox(x0, y0, tw, th):
+            corners = np.array(
+                [[x0, y0], [x0 + tw, y0], [x0, y0 + th], [x0 + tw, y0 + th]],
+                dtype=np.float64
+            ).reshape(-1, 1, 2)
+            src = cv2.perspectiveTransform(corners, Hinv).reshape(-1, 2)
+            xmin = int(np.floor(src[:, 0].min()))
+            xmax = int(np.ceil(src[:, 0].max()))
+            ymin = int(np.floor(src[:, 1].min()))
+            ymax = int(np.ceil(src[:, 1].max()))
+            xmin = max(0, xmin);
+            ymin = max(0, ymin)
+            xmax = min(DAPI_W, xmax);
+            ymax = min(DAPI_H, ymax)
+            return xmin, ymin, xmax, ymax
+
+        # ---- output buffer: memmap (avoid 1GB RAM) ----
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        tmp_raw = Path(tempfile.mkstemp(prefix="dapi_reg_L0_", suffix=".dat")[1])
+        out_mm = np.memmap(tmp_raw, dtype=np.uint16, mode="w+", shape=(HE_H, HE_W))
+
+        # ---- tile-wise warp ----
+        for y0 in range(0, HE_H, tile):
+            th = min(tile, HE_H - y0)
+            for x0 in range(0, HE_W, tile):
+                tw = min(tile, HE_W - x0)
+
+                xmin, ymin, xmax, ymax = tile_src_bbox(x0, y0, tw, th)
+                if xmin >= xmax or ymin >= ymax:
+                    continue
+
+                # read DAPI patch (uint16)
+                patch = np.asarray(z[ymin:ymax, xmin:xmax], dtype=np.uint16)
+                if patch.size == 0:
+                    continue
+
+                # local homography: output-tile coords -> src-patch coords
+                # H maps (x_dapi, y_dapi) -> (x_he, y_he)
+                # For cv2.warpPerspective(src, M, dsize), M maps src->dst,
+                # but we are warping src patch into dst tile directly, easiest:
+                # Use H_local = H @ T where T translates patch coords back to full DAPI coords.
+                T = np.array([[1, 0, xmin],
+                              [0, 1, ymin],
+                              [0, 0, 1]], dtype=np.float64)
+                H_srcpatch_to_he = H @ T
+
+                # We want the tile region in HE at (x0,y0). So shift HE coords by (-x0, -y0):
+                S = np.array([[1, 0, -x0],
+                              [0, 1, -y0],
+                              [0, 0, 1]], dtype=np.float64)
+                M = S @ H_srcpatch_to_he  # srcpatch -> tile coords
+
+                warped = cv2.warpPerspective(
+                    patch,
+                    M,
+                    (tw, th),
+                    flags=cv2.INTER_LINEAR,
+                    borderMode=cv2.BORDER_CONSTANT,
+                    borderValue=0
+                )
+
+                out_mm[y0:y0 + th, x0:x0 + tw] = warped
+
+            print(f"[EXPORT L0] row done y0={y0}/{HE_H}", flush=True)
+
+        out_mm.flush()
+
+        # ---- write OME-TIFF (YX, uint16) ----
+        meta = {"axes": "YX"}
+        # 如果你在 images_info.json 里有 HE 的物理像素尺寸（um/px），可以写进去（可选）
+        try:
+            psx = info.get("HE_physical_size_x_um", None)
+            psy = info.get("HE_physical_size_y_um", None)
+            if psx is not None and psy is not None:
+                meta.update({
+                    "PhysicalSizeX": float(psx),
+                    "PhysicalSizeY": float(psy),
+                    "PhysicalSizeXUnit": "µm",
+                    "PhysicalSizeYUnit": "µm",
+                })
+        except Exception:
+            pass
+
+        tf.imwrite(
+            str(out_path),
+            out_mm,  # memmap works as ndarray-like
+            photometric="minisblack",
+            compression="lzw",
+            metadata=meta,
+            bigtiff=True
+        )
+
+        # cleanup temp
+        try:
+            del out_mm
+            tmp_raw.unlink(missing_ok=True)
+        except Exception:
+            pass
+
+        messagebox.showinfo("Exported", f"Saved:\n{out_path}", parent=self)
     # --------------------------
     # panel helpers (same as before)
     # --------------------------
@@ -600,7 +1037,9 @@ class FinalAlignmentApp(tk.Tk):
 
         dapi_lut_thr = int(self.info.get("DAPI_LUT_threshold", 300))
         dapi16, _ = read_image(self.info["DAPI_path"], keep_16bit=True, level=self.display_level, channel="dapi")
+        print(dapi16.max())
         lut = np.fromfile("glasbey_inverted.lut", dtype=np.uint8).reshape(256, 3)
+        print(dapi_lut_thr)
         rgb = dapi_to_lut_rgb(dapi16, lut, threshold=dapi_lut_thr)
         bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
         self._imsave(self.cache["dapi_base"], bgr)
@@ -730,7 +1169,7 @@ class FinalAlignmentApp(tk.Tk):
                 color="red",
                 save_name=str(out_png),
                 save_fig=True,
-                dot_size=5 / 2 ** (2 ** (DISPLAY_LEVEL - 2))
+                dot_size=max(1, 5 / (2 ** max(self.display_level - 2, 0)))
             )
             messagebox.showinfo(
                 "Loaded",
