@@ -541,7 +541,7 @@ def show_nucleus_patch_in_memory(
                 flush=True
             )
 
-    def calculate_perspective_ransac(transform_type="tps"):
+    def calculate_perspective_ransac(transform_type="homography"):
         """
         Fit transform from dapi_centroid_global -> he_centroid_global.
 
