@@ -2,6 +2,7 @@ import os
 import sys
 import json
 import time
+import math
 from pathlib import Path
 import numpy as np
 import cv2
@@ -49,7 +50,7 @@ def load_step3_params(script_path: Path):
 
     # defaults (fallback if json missing or keys missing)
     step3 = {
-        "number_of_tiles": 120,
+        "n_tiles": 120,
         "tile_size": 600,
         "min_dist_factor": 1.5,
     }
@@ -269,19 +270,40 @@ def make_tissue_mask_from_dapi_gray(
     return out, density
 
 
-def make_available_mask_boundary_only(mask_tissue255: np.ndarray, boundary_radius: int = 0):
-    h, w = mask_tissue255.shape[:2]
-    tissue = (mask_tissue255 > 0)
+def make_available_mask_by_eroding_valid_region(valid_mask_255: np.ndarray, radius: int):
+    """
+    valid_mask_255:
+        255 = valid region
+        0   = invalid region
 
-    if boundary_radius <= 0:
-        inner = np.ones((h, w), dtype=bool)
-    else:
-        inner = np.zeros((h, w), dtype=bool)
-        inner[boundary_radius:h - boundary_radius, boundary_radius:w - boundary_radius] = True
+    return mask_available:
+        0   = available for sampling
+        255 = unavailable
+    """
+    valid = (valid_mask_255 > 0).astype(np.uint8)
 
-    available = tissue & inner
-    return np.where(available, 0, 255).astype(np.uint8)
+    if radius > 0:
+        ksize = 2 * int(radius) + 1
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (ksize, ksize))
+        valid = cv2.erode(valid, kernel, iterations=1)
 
+    return np.where(valid > 0, 0, 255).astype(np.uint8)
+
+
+def choose_extract_level(x, k,
+                         anchor_sampling_tile=50,
+                         min_extract_level=1,
+                         max_extract_level=None):
+
+    level_shift = round(math.log2(k / anchor_sampling_tile))
+    n = x - level_shift
+
+    if max_extract_level is not None:
+        n = min(n, max_extract_level)
+
+    n = max(min_extract_level, n)
+
+    return int(n)
 
 def get_valid_coords(mask_available, max_points=250_000, seed=0):
     ys, xs = np.where(mask_available == 0)
@@ -836,6 +858,128 @@ def centroids_to_tiles(points_xy, tile_size):
         tiles.append({"x0": float(x - half), "y0": float(y - half), "w": float(tile_size), "h": float(tile_size)})
     return tiles
 
+def prune_tiles_out_of_he(
+    tiles,
+    h_mat,
+    he_img_shape,
+    rescale_factor=1.0,
+    margin_ratio=0.0,
+    min_overlap_ratio=0.15,
+    require_center_inside=False,
+):
+    """
+    Prune DAPI tiles that project mostly outside HE image.
+
+    Args
+    ----
+    tiles : list[dict or tuple]
+        DAPI tiles, each as (x0,y0,w,h) or {"x0","y0","w","h"} in DAPI coords.
+    h_mat : 3x3 or 2x3
+        DAPI -> HE transform.
+    he_img_shape : tuple
+        he_rgb.shape
+    rescale_factor : float
+        factor converting HE coords -> current he_img pixel coords
+    margin_ratio : float
+        optional expansion ratio before projection, same convention as save_he_tiles.
+        Usually set to 0.0 for pruning based on the true DAPI tile footprint.
+    min_overlap_ratio : float
+        keep tile only if projected polygon overlap area / projected polygon area >= this.
+    require_center_inside : bool
+        if True, projected tile center must also be inside HE image.
+
+    Returns
+    -------
+    kept_tiles, kept_indices, dropped_indices
+    """
+    H = np.asarray(h_mat, dtype=float)
+    if H.shape == (2, 3):
+        H = np.vstack([H, [0.0, 0.0, 1.0]])
+    if H.shape != (3, 3):
+        raise ValueError(f"h_mat must be 3x3 or 2x3, got {H.shape}")
+
+    h_img, w_img = he_img_shape[:2]
+    img_poly = Polygon([(0, 0), (w_img, 0), (w_img, h_img), (0, h_img)])
+
+    kept_tiles = []
+    kept_indices = []
+    dropped_indices = []
+
+    for idx, p in enumerate(tiles):
+        x0, y0, w, h = _tile_to_xywh(p)
+        x1 = x0 + w
+        y1 = y0 + h
+
+        # optional expand
+        if margin_ratio and margin_ratio != 0:
+            expand = 1.0 + float(margin_ratio)
+            cx = (x0 + x1) / 2.0
+            cy = (y0 + y1) / 2.0
+            half_w = (w / 2.0) * expand
+            half_h = (h / 2.0) * expand
+            x0p, x1p = cx - half_w, cx + half_w
+            y0p, y1p = cy - half_h, cy + half_h
+        else:
+            x0p, x1p, y0p, y1p = x0, x1, y0, y1
+
+        corners = np.array([
+            [x0p, y0p],
+            [x1p, y0p],
+            [x1p, y1p],
+            [x0p, y1p],
+        ], dtype=float)
+
+        corners_h = np.hstack([corners, np.ones((4, 1), dtype=float)])
+        proj = (H @ corners_h.T).T
+        ww = proj[:, 2:3]
+
+        if not np.all(np.isfinite(ww)):
+            dropped_indices.append(idx)
+            continue
+
+        eps = 1e-9
+        ww_safe = np.where(np.abs(ww) < eps, np.sign(ww) * eps + (ww == 0) * eps, ww)
+        he_xy = proj[:, :2] / ww_safe
+        he_xy = he_xy * float(rescale_factor)
+
+        if not np.all(np.isfinite(he_xy)):
+            dropped_indices.append(idx)
+            continue
+
+        try:
+            tile_poly = Polygon(he_xy)
+        except Exception:
+            dropped_indices.append(idx)
+            continue
+
+        if (not tile_poly.is_valid) or tile_poly.area <= 1e-6:
+            dropped_indices.append(idx)
+            continue
+
+        inter = tile_poly.intersection(img_poly)
+        overlap_ratio = inter.area / tile_poly.area if tile_poly.area > 0 else 0.0
+
+        keep = overlap_ratio >= float(min_overlap_ratio)
+
+        if keep and require_center_inside:
+            center = np.array([[(x0 + x1) / 2.0, (y0 + y1) / 2.0, 1.0]], dtype=float)
+            cproj = (H @ center.T).T
+            cw = cproj[:, 2:3]
+            cw_safe = np.where(np.abs(cw) < eps, np.sign(cw) * eps + (cw == 0) * eps, cw)
+            cxy = (cproj[:, :2] / cw_safe) * float(rescale_factor)
+            cx_he, cy_he = float(cxy[0, 0]), float(cxy[0, 1])
+            if not (0 <= cx_he < w_img and 0 <= cy_he < h_img):
+                keep = False
+
+        if keep:
+            kept_tiles.append(p)
+            kept_indices.append(idx)
+        else:
+            dropped_indices.append(idx)
+
+    return kept_tiles, kept_indices, dropped_indices
+
+
 # =============================
 # GUI App
 # =============================
@@ -1088,25 +1232,50 @@ class Step3SamplingApp(tk.Tk):
             seed = int(time.time() * 1000) % (2 ** 31 - 1)
             print(f"[INFO] Sampling seed = {seed}", flush=True)
 
+            ## read reading level
             info_path = self.run_dir / "images_info.json"
             if not info_path.exists():
                 raise FileNotFoundError(f"missing {info_path}")
-
             info = json.load(open(info_path, "r"))
             DAPI_PATH = info["DAPI_path"]
             DAPI_LEVEL = int(info["DAPI_level"])
             print(f"[INFO] DAPI_PATH={DAPI_PATH}", flush=True)
             print(f"[INFO] DAPI_LEVEL={DAPI_LEVEL}", flush=True)
-
             from my_utils import read_image
             dapi16, _ = read_image(DAPI_PATH, keep_16bit=True, level=DAPI_LEVEL, channel="dapi")
             timer.mark("Read DAPI")
-
-            # debug preview
             cv2.imwrite(str(self.run_dir / "3_dbg_dapi_gray.png"), normalize_uint16_to_uint8(dapi16))
             timer.mark("Save gray preview")
 
-            # tissue mask + density
+            # choose DAPI extract level first
+            target_tile_size_at_extract = int(self.step3.get("tile_size", 400))
+            if "dapi_level_override" in self.step3 and self.step3["dapi_level_override"] not in [None, "None"]:
+                DAPI_EXTRACT_LEVEL = int(self.step3["dapi_level_override"])
+            else:
+                DAPI_EXTRACT_LEVEL = choose_extract_level(
+                    x=DAPI_LEVEL,
+                    k=target_tile_size_at_extract,
+                    min_extract_level=1,
+                    max_extract_level=DAPI_LEVEL,
+                )
+            print(f"[INFO] DAPI_EXTRACT_LEVEL={DAPI_EXTRACT_LEVEL}", flush=True)
+
+            # tile size + radius in sampling coords
+            # target tile size is defined at extract level
+            tile_size_at_extract = float(self.step3["tile_size"])   # e.g. 600 px at extract level
+            N_TILES = int(self.step3["n_tiles"])
+            min_dist_fac = float(self.step3["min_dist_factor"])
+            scale_extract_to_sampling = 2 ** (DAPI_LEVEL - DAPI_EXTRACT_LEVEL)
+            TILE_SIZE = tile_size_at_extract / scale_extract_to_sampling
+            MIN_DIST = TILE_SIZE * min_dist_fac
+            # buffer also defined in extract-level pixels, then mapped to sampling level
+            buffer_at_extract = float(self.step3.get("buffer_px_at_extract", 0))
+            buffer = buffer_at_extract / scale_extract_to_sampling
+            print(f"[INFO] tile_size_at_extract={tile_size_at_extract}", flush=True)
+            print(f"[INFO] TILE_SIZE@sampling={TILE_SIZE}", flush=True)
+            print(f"[INFO] MIN_DIST@sampling={MIN_DIST}", flush=True)
+
+            # tissue mask + density at sampling level
             mask_tissue, density = make_tissue_mask_from_dapi_gray(
                 dapi16,
                 blur_ksize=13,
@@ -1116,33 +1285,50 @@ class Step3SamplingApp(tk.Tk):
                 morph_open=0,
                 min_area=3000
             )
-            cv2.imwrite(str(self.run_dir / "3_dbg_tissue_mask.png"), mask_tissue)
-
             mask_dense = apply_density_filter(
                 mask_tissue, density,
                 mode="percentile",
-                p=40,
+                p=25,
                 morph_close=11
             )
-            cv2.imwrite(str(self.run_dir / "3_dbg_density_mask.png"), mask_dense)
+            if dapi16.ndim == 3:
+                dapi16_2d = dapi16[..., 0]
+            else:
+                dapi16_2d = dapi16
+            nonvoid_mask = (dapi16_2d > 0).astype(np.uint8) * 255
+            seam_safe_radius = int(round(float(self.step3.get("seam_safe_radius", 3))))
+            if seam_safe_radius > 0:
+                k = cv2.getStructuringElement(
+                    cv2.MORPH_ELLIPSE,
+                    (2 * seam_safe_radius + 1, 2 * seam_safe_radius + 1)
+                )
+                nonvoid_mask = cv2.erode(nonvoid_mask, k, iterations=1)
+            mask_dense = mask_dense.astype(np.uint8)
+            nonvoid_mask = nonvoid_mask.astype(np.uint8)
+            valid_mask = cv2.bitwise_and(mask_dense, nonvoid_mask)
+            cv2.imwrite(str(self.run_dir / "3_dbg_nonvoid_mask.png"), nonvoid_mask)
+            cv2.imwrite(str(self.run_dir / "3_dbg_density_mask.png"), valid_mask)
+
+            print(f"[INFO] mask_tissue > 0: {np.count_nonzero(mask_tissue > 0)}", flush=True)
+            print(f"[INFO] mask_dense  > 0: {np.count_nonzero(mask_dense > 0)}", flush=True)
+            print(f"[INFO] nonvoid_mask > 0: {np.count_nonzero(nonvoid_mask > 0)}", flush=True)
+            print(f"[INFO] valid_mask > 0: {np.count_nonzero(valid_mask > 0)}", flush=True)
             timer.mark("Make tissue+density mask")
 
-            # boundary-only available mask
-            tile_size_lvl1 = float(self.step3["tile_size"])  # in level=1 coordinates
-            print(f"tile size used is {tile_size_lvl1}")
-            N_TILES = int(self.step3["n_tiles"])
-            min_dist_fac = float(self.step3["min_dist_factor"])
-            TILE_SIZE = tile_size_lvl1 / (2 ** (DAPI_LEVEL - 1))  # convert to current DAPI_LEVEL pixel space
-            MIN_DIST = TILE_SIZE * min_dist_fac
+            # erode in sampling coords
+            safe_radius = int(np.ceil(TILE_SIZE / 2 + buffer))
+            safe_radius = min(safe_radius, int(TILE_SIZE * 0.10))
+            print(f"[INFO] safe_radius@sampling={safe_radius}", flush=True)
+            avail = make_available_mask_by_eroding_valid_region(
+                valid_mask,
+                radius=safe_radius
+            )
+            print(f"[INFO] avail == 0: {np.count_nonzero(avail == 0)}", flush=True)
 
-            buffer = 10 / (2 ** (DAPI_LEVEL - 1))
-            boundary_radius = int(np.ceil(TILE_SIZE * np.sqrt(2) / 2)) + int(buffer)
-            avail = make_available_mask_boundary_only(mask_dense, boundary_radius=boundary_radius)
             avail_flipped = 255 - avail
             avail_path = self.run_dir / "3_dbg_available_after_erode.png"
             cv2.imwrite(str(avail_path), avail_flipped)
-            timer.mark("Make available mask (boundary)")
-
+            timer.mark("Make available mask (eroded interior)")
             points_xy = cvt_masked(
                 avail,
                 N_POINTS=N_TILES,
@@ -1151,9 +1337,10 @@ class Step3SamplingApp(tk.Tk):
                 seed=seed
             )
             timer.mark("CVT sampling")
+            self.current_dapi_extract_level = DAPI_EXTRACT_LEVEL
+
             # ndi_score = normalized_dispersion_index_corrected(points_xy, avail)
             # print("NDI Score:", ndi_score)
-
             tiles = centroids_to_tiles(points_xy, tile_size=TILE_SIZE)
 
             self.current_points_xy = points_xy
@@ -1163,8 +1350,15 @@ class Step3SamplingApp(tk.Tk):
 
             # save points
             out_json = self.run_dir / "sampled_points.json"
-            json.dump({"dapi_level": DAPI_LEVEL, "points_xy": points_xy.tolist()},
-                      open(out_json, "w"), indent=2)
+            json.dump(
+                {"dapi_level": DAPI_LEVEL,
+                 "dapi_extract_level": DAPI_EXTRACT_LEVEL,
+                 "tile_size_sampling": TILE_SIZE,
+                 "points_xy": points_xy.tolist(),
+                },
+                open(out_json, "w"),
+                indent=2
+            )
             timer.mark("Save points json")
 
             overlay_bgr = draw_points_overlay(
@@ -1280,44 +1474,11 @@ class Step3SamplingApp(tk.Tk):
             from my_utils import read_image, dapi_to_lut_rgb
             tick(12)
 
-            report_stage(2, "Saving DAPI tiles (intensity + LUT)")
-
-            if DAPI_TILE_LEVEL_OVERRIDE == "None":
-                dapi16_lvl1, _ = read_image(DAPI_PATH, keep_16bit=True, level=1, channel="dapi")
-                tick(20, f" Now reading dapi tile automatically from level 1 with shape={getattr(dapi16_lvl1, 'shape', None)} dtype={dapi16_lvl1.dtype}")
-            elif isinstance(DAPI_TILE_LEVEL_OVERRIDE, int):
-                dapi16_lvl1, _ = read_image(DAPI_PATH, keep_16bit=True, level=DAPI_TILE_LEVEL_OVERRIDE, channel="dapi")
-                tick(20, f" Now reading dapi tile from level {DAPI_TILE_LEVEL_OVERRIDE} by parameter override with shape={getattr(dapi16_lvl1, 'shape', None)} dtype={dapi16_lvl1.dtype}")
-            else:
-                raise ValueError("DAPI_TILE_LEVEL_OVERRIDE in parameter.json['step3'] must be 'None' or int")
-            if dapi16_lvl1.ndim == 3:
-                dapi16_lvl1 = dapi16_lvl1[..., 0]
-
-            save_dapi_tiles_intensity(
-                dapi16_lvl1,
-                tiles,
-                str(output_folder),
-                rescale_factor=2 ** (DAPI_LEVEL - 1),
-                prefix="tile",
-                start_index=0,
-                save_u16=False,
-                save_u8_preview=True,
-            )
-            tick(30, "Saved DAPI intensity tiles (u16 + u8 preview)")
-
-            dapi_rgb2 = dapi_to_lut_rgb(dapi16_lvl1, lut, threshold=dapi_lut_threshold)
-            tick(38, "Applied LUT to DAPI")
-
-            dapi_tiles = save_dapi_tiles(
-                dapi_rgb2, tiles, str(output_folder),
-                rescale_factor=2 ** (DAPI_LEVEL - 1)
-            )
-            tick(55, f"Saved DAPI LUT tiles: {len(dapi_tiles) if hasattr(dapi_tiles, '__len__') else 'done'}")
-
             # ------------------------------
-            # 6. Save HE tiles using transformation
+            # 先准备 alignment + HE，用来 prune
             # ------------------------------
-            report_stage(3, "Saving HE tiles")
+            report_stage(2, "Loading HE / pruning out-of-HE tiles")
+
             path_clicked = self.run_dir / "clicked_blob_initial_alignment.json"
             path_manual = self.run_dir / "manual_initial_alignment.json"
             if path_clicked.exists():
@@ -1328,36 +1489,134 @@ class Step3SamplingApp(tk.Tk):
                 q.put(("log", f"[INFO] Using alignment from: {path_manual.name}"))
             else:
                 raise FileNotFoundError(
-                    "Neither clicked_blob_initial_alignment.json nor manual_initial_alignment.json found.")
+                    "Neither clicked_blob_initial_alignment.json nor manual_initial_alignment.json found."
+                )
 
             h_mat = data["H_mat"]
-            tick(72, "Loaded initial alignment")
+            tick(20, "Loaded initial alignment")
 
-            if HE_TILE_LEVEL_OVERRIDE == "None":
-                if HE_LEVEL <= DAPI_LEVEL:
-                    he_img2, _ = read_image(HE_PATH, keep_16bit=True, level=1, channel="he")
-                    tick(78, f"Now reading H&E tile automatically from level 1 with shape={getattr(he_img2, 'shape', None)}")
-                    rescale_f = 2 ** (HE_LEVEL - 1)
-                else:
-                    he_img2, _ = read_image(HE_PATH, keep_16bit=True, level=1 + HE_LEVEL - DAPI_LEVEL, channel="he")
-                    tick(78, f"Now reading H&E tile automatically from level{1 + HE_LEVEL - DAPI_LEVEL} with shape={getattr(he_img2, 'shape', None)}")
-                    rescale_f = 2 ** (HE_LEVEL - (1 + HE_LEVEL - DAPI_LEVEL))
+            DAPI_EXTRACT_LEVEL = getattr(self, "current_dapi_extract_level", None)
+            if DAPI_EXTRACT_LEVEL is None:
+                DAPI_EXTRACT_LEVEL = 1
+
+            if HE_TILE_LEVEL_OVERRIDE in [None, "None"]:
+                he_read_level = HE_LEVEL - (DAPI_LEVEL - DAPI_EXTRACT_LEVEL)
+                he_read_level = max(1, he_read_level)
             elif isinstance(HE_TILE_LEVEL_OVERRIDE, int):
-                he_img2, _ = read_image(HE_PATH, keep_16bit=True, level=HE_TILE_LEVEL_OVERRIDE, channel="he")
-                tick(78, f"Now reading H&E tile from level {HE_TILE_LEVEL_OVERRIDE} by parameter override with shape={getattr(he_img2, 'shape', None)}")
-                rescale_f = 2 ** (HE_LEVEL - HE_TILE_LEVEL_OVERRIDE)
+                he_read_level = int(HE_TILE_LEVEL_OVERRIDE)
             else:
-                raise ValueError("DAPI_TILE_LEVEL_OVERRIDE must be 'None' or int")
+                raise ValueError("HE_TILE_LEVEL_OVERRIDE must be None, 'None', or int")
+
+            he_img2, _ = read_image(
+                HE_PATH,
+                keep_16bit=True,
+                level=he_read_level,
+                channel="he"
+            )
+            tick(
+                28,
+                f"Now reading H&E tile from level {he_read_level} "
+                f"with shape={getattr(he_img2, 'shape', None)}"
+            )
+
+            rescale_f = 2 ** (HE_LEVEL - he_read_level)
+
+            # ---- prune tiles that fall mostly outside HE ----
+            prune_flag = bool(parameters["step3"].get("prune_out_of_he", True))
+            min_he_overlap_ratio = float(parameters["step3"].get("min_he_overlap_ratio", 0.15))
+
+            if prune_flag:
+                tiles_before = len(tiles)
+                tiles, kept_idx, dropped_idx = prune_tiles_out_of_he(
+                    tiles=tiles,
+                    h_mat=h_mat,
+                    he_img_shape=he_img2.shape,
+                    rescale_factor=rescale_f,
+                    margin_ratio=0.0,  # 建议按真实 tile footprint 判定
+                    min_overlap_ratio=min_he_overlap_ratio,
+                    require_center_inside=False,
+                )
+                q.put(("log",
+                       f"[INFO] prune_out_of_he=True | kept {len(tiles)}/{tiles_before} tiles | "
+                       f"dropped {len(dropped_idx)} | min_he_overlap_ratio={min_he_overlap_ratio}"))
+
+                # 同步更新 points_xy，避免 DAPI/HE tile 编号不一致
+                if len(kept_idx) < len(points_xy):
+                    points_xy = points_xy[np.array(kept_idx, dtype=int)]
+            else:
+                q.put(("log", "[INFO] prune_out_of_he=False, keeping all tiles"))
+
+            tick(35, f"Tiles after prune: {len(tiles)}")
+
+            # ------------------------------
+            # 再保存 DAPI
+            # ------------------------------
+            report_stage(2, "Saving DAPI tiles (intensity + LUT)")
+
+            DAPI_EXTRACT_LEVEL = getattr(self, "current_dapi_extract_level", None)
+            if DAPI_EXTRACT_LEVEL is None:
+                if DAPI_TILE_LEVEL_OVERRIDE in [None, "None"]:
+                    DAPI_EXTRACT_LEVEL = 1
+                elif isinstance(DAPI_TILE_LEVEL_OVERRIDE, int):
+                    DAPI_EXTRACT_LEVEL = int(DAPI_TILE_LEVEL_OVERRIDE)
+                else:
+                    raise ValueError("DAPI_TILE_LEVEL_OVERRIDE in parameter.json['step3'] must be None, 'None', or int")
+
+            dapi16_extract, _ = read_image(
+                DAPI_PATH,
+                keep_16bit=True,
+                level=DAPI_EXTRACT_LEVEL,
+                channel="dapi"
+            )
+            tick(
+                45,
+                f"Now reading DAPI tile from level {DAPI_EXTRACT_LEVEL} "
+                f"with shape={getattr(dapi16_extract, 'shape', None)} dtype={dapi16_extract.dtype}"
+            )
+
+            if dapi16_extract.ndim == 3:
+                dapi16_extract = dapi16_extract[..., 0]
+            dapi_rescale_factor = 2 ** (DAPI_LEVEL - DAPI_EXTRACT_LEVEL)
+
+            save_dapi_tiles_intensity(
+                dapi16_extract,
+                tiles,
+                str(output_folder),
+                rescale_factor=dapi_rescale_factor,
+                prefix="tile",
+                start_index=0,
+                save_u16=False,
+                save_u8_preview=True,
+            )
+            tick(58, "Saved DAPI intensity tiles (u16 + u8 preview)")
+
+            dapi_rgb2 = dapi_to_lut_rgb(dapi16_extract, lut, threshold=dapi_lut_threshold)
+            tick(66, "Applied LUT to DAPI")
+
+            dapi_tiles = save_dapi_tiles(
+                dapi_rgb2,
+                tiles,
+                str(output_folder),
+                rescale_factor=dapi_rescale_factor
+            )
+            tick(78, f"Saved DAPI LUT tiles: {len(dapi_tiles) if hasattr(dapi_tiles, '__len__') else 'done'}")
+
+            # ------------------------------
+            # 再保存 HE
+            # ------------------------------
+            report_stage(3, "Saving HE tiles")
 
             he_tiles = save_he_tiles(
-                he_img2, tiles, h_mat, str(output_folder),
+                he_img2,
+                tiles,
+                h_mat,
+                str(output_folder),
                 rescale_factor=rescale_f,
                 mode="rectified",
                 margin_ratio=parameters['step3']['he_tile_margin_ratio'],
                 case_id=self.case_id,
             )
             tick(95, f"Saved HE tiles: {len(he_tiles) if hasattr(he_tiles, '__len__') else 'done'}")
-
             # done
             dt = time.perf_counter() - timer0
             q.put(("log", f"[DONE] Extract finished in {dt:.2f}s"))

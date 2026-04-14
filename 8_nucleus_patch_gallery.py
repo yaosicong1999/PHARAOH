@@ -416,21 +416,143 @@ def show_nucleus_patch_in_memory(
 
         return K @ w + P @ a
 
-    def calculate_perspective_ransac(transform_type="homography"):
+
+    def balanced_grid_sample_pairs(
+        src,
+        dst,
+        grid_shape=(6, 6),
+        max_per_cell=4,
+        prefer="spread",
+        score=None,
+        use_dst_for_binning=False,
+    ):
+        """
+        Spatially balanced sampling of point pairs.
+
+        Parameters
+        ----------
+        src : (N,2)
+            source points, usually DAPI
+        dst : (N,2)
+            destination points, usually HE
+        grid_shape : (gx, gy)
+            number of bins along x and y
+        max_per_cell : int
+            keep at most this many pairs per cell
+        prefer : str
+            "spread" -> farthest-point-like greedy inside each cell
+            "random" -> random sampling inside each cell
+            "score"  -> top score inside each cell (requires score)
+        score : (N,) or None
+            optional score, larger = better
+        use_dst_for_binning : bool
+            if True, bin on dst instead of src
+
+        Returns
+        -------
+        keep_idx : np.ndarray of shape (M,)
+            selected indices
+        """
+        src = np.asarray(src)
+        dst = np.asarray(dst)
+        pts = dst if use_dst_for_binning else src
+
+        n = len(pts)
+        if n == 0:
+            return np.array([], dtype=int)
+
+        gx, gy = int(grid_shape[0]), int(grid_shape[1])
+        gx = max(gx, 1)
+        gy = max(gy, 1)
+
+        x = pts[:, 0]
+        y = pts[:, 1]
+
+        xmin, xmax = float(x.min()), float(x.max())
+        ymin, ymax = float(y.min()), float(y.max())
+
+        # avoid zero division
+        xr = max(xmax - xmin, 1e-6)
+        yr = max(ymax - ymin, 1e-6)
+
+        xi = np.floor((x - xmin) / xr * gx).astype(int)
+        yi = np.floor((y - ymin) / yr * gy).astype(int)
+
+        xi = np.clip(xi, 0, gx - 1)
+        yi = np.clip(yi, 0, gy - 1)
+
+        cell_to_indices = {}
+        for i in range(n):
+            key = (xi[i], yi[i])
+            cell_to_indices.setdefault(key, []).append(i)
+
+        keep = []
+
+        for key, inds in cell_to_indices.items():
+            inds = np.array(inds, dtype=int)
+
+            if len(inds) <= max_per_cell:
+                keep.extend(inds.tolist())
+                continue
+
+            if prefer == "random":
+                picked = np.random.choice(inds, size=max_per_cell, replace=False)
+
+            elif prefer == "score":
+                if score is None:
+                    raise ValueError("prefer='score' requires score")
+                cell_scores = np.asarray(score)[inds]
+                order = np.argsort(-cell_scores)
+                picked = inds[order[:max_per_cell]]
+
+            else:  # prefer == "spread"
+                # greedy farthest-point selection within this cell
+                cell_pts = pts[inds]
+                picked_local = [0]  # start from first
+                remaining = list(range(1, len(cell_pts)))
+
+                while len(picked_local) < max_per_cell and remaining:
+                    chosen = cell_pts[picked_local]
+                    cand = cell_pts[remaining]
+
+                    # distance to nearest chosen point
+                    d2 = ((cand[:, None, :] - chosen[None, :, :]) ** 2).sum(axis=2)
+                    min_d2 = d2.min(axis=1)
+                    best_j = int(np.argmax(min_d2))
+                    picked_local.append(remaining[best_j])
+                    remaining.pop(best_j)
+
+                picked = inds[np.array(picked_local, dtype=int)]
+
+            keep.extend(picked.tolist())
+
+        keep = np.array(sorted(set(keep)), dtype=int)
+        return keep
+
+
+    def print_sampling_summary(src, keep_idx, name="balanced sample"):
+        src = np.asarray(src)
+        kept = src[keep_idx]
+        print(f"[INFO] {name}: kept {len(keep_idx)}/{len(src)} pairs", flush=True)
+        if len(kept) > 0:
+            print(
+                f"[INFO] {name}: kept x=[{kept[:,0].min():.1f}, {kept[:,0].max():.1f}] "
+                f"y=[{kept[:,1].min():.1f}, {kept[:,1].max():.1f}]",
+                flush=True
+            )
+
+    def calculate_perspective_ransac(transform_type="tps"):
         """
         Fit transform from dapi_centroid_global -> he_centroid_global.
 
         Modes
         -----
-        affine:
-            affine only
-        homography:
-            homography only
-        tps:
-            homography first, then TPS refinement on homography inliers
+        affine
+        homography
+        tps
+        local_tps
 
-        Uses nuclei_centroids_global.json under output_folder.
-        Saves to: RUN_DIR/dapi_to_he_homography_level0.json
+        Uses spatially balanced sampling before global fitting.
         """
         try:
             run_dir = Path(output_folder).resolve().parent
@@ -443,24 +565,50 @@ def show_nucleus_patch_in_memory(
                 nuclei_info = json.load(f)
 
             transform_type = transform_type.lower().strip()
-            if transform_type not in ("homography", "affine", "tps"):
+            if transform_type not in ("homography", "affine", "tps", "local_tps"):
                 messagebox.showerror(
                     "Invalid transform_type",
-                    "transform_type must be 'homography', 'affine', or 'tps'"
+                    "transform_type must be 'homography', 'affine', 'tps', or 'local_tps'"
                 )
                 return
 
             if len(nuclei_info) < 3 and transform_type == "affine":
                 messagebox.showerror("Not enough points", "Need at least 3 nucleus pairs to estimate affine.")
                 return
-            if len(nuclei_info) < 4 and transform_type in ("homography", "tps"):
+            if len(nuclei_info) < 4 and transform_type in ("homography", "tps", "local_tps"):
                 messagebox.showerror("Not enough points",
                                      "Need at least 4 nucleus pairs to estimate homography / TPS init.")
                 return
 
             # src: DAPI, dst: HE
-            src = np.array([x["dapi_centroid_global"] for x in nuclei_info], dtype=np.float32)
-            dst = np.array([x["he_centroid_global"] for x in nuclei_info], dtype=np.float32)
+            src_all = np.array([x["dapi_centroid_global"] for x in nuclei_info], dtype=np.float32)
+            dst_all = np.array([x["he_centroid_global"] for x in nuclei_info], dtype=np.float32)
+
+            # -----------------------------------
+            # spatially balanced sampling
+            # -----------------------------------
+            grid_shape = (6, 6)
+            max_per_cell = 4
+
+            keep_idx = balanced_grid_sample_pairs(
+                src_all,
+                dst_all,
+                grid_shape=grid_shape,
+                max_per_cell=max_per_cell,
+                prefer="spread",   # can change to "random" or "score"
+                score=None,
+                use_dst_for_binning=False
+            )
+
+            if transform_type == "affine" and len(keep_idx) < 3:
+                keep_idx = np.arange(len(src_all), dtype=int)
+            if transform_type in ("homography", "tps", "local_tps") and len(keep_idx) < 4:
+                keep_idx = np.arange(len(src_all), dtype=int)
+
+            print_sampling_summary(src_all, keep_idx, name="grid-balanced sample")
+
+            src = src_all[keep_idx]
+            dst = dst_all[keep_idx]
 
             # ---- RANSAC params ----
             ransac_thr = 8.0
@@ -470,6 +618,10 @@ def show_nucleus_patch_in_memory(
             H = None
             inliers = None
             tps_model = None
+            tps_model_fwd = None
+            tps_model_inv = None
+            src_in = None
+            dst_in = None
 
             # ---- Estimate transform ----
             if transform_type == "affine":
@@ -483,7 +635,7 @@ def show_nucleus_patch_in_memory(
                 )
                 if A is not None:
                     H = np.vstack([A, [0.0, 0.0, 1.0]]).astype(np.float64)
-                method_str = "cv2.estimateAffine2D(RANSAC) -> 3x3"
+                method_str = "grid-balanced cv2.estimateAffine2D(RANSAC) -> 3x3"
 
                 if H is None:
                     messagebox.showerror(
@@ -492,7 +644,6 @@ def show_nucleus_patch_in_memory(
                     )
                     return
 
-                # reprojection with affine
                 src_h = np.concatenate([src, np.ones((len(src), 1), dtype=np.float32)], axis=1)
                 proj = (H @ src_h.T).T
                 proj_xy = proj[:, :2] / np.clip(proj[:, 2:3], 1e-8, None)
@@ -506,7 +657,7 @@ def show_nucleus_patch_in_memory(
                     maxIters=maxIters,
                     confidence=confidence
                 )
-                method_str = "cv2.findHomography(RANSAC)"
+                method_str = "grid-balanced cv2.findHomography(RANSAC)"
 
                 if H is None:
                     messagebox.showerror(
@@ -520,8 +671,7 @@ def show_nucleus_patch_in_memory(
                 proj_xy = proj[:, :2] / np.clip(proj[:, 2:3], 1e-8, None)
                 err = np.linalg.norm(proj_xy - dst, axis=1)
 
-            else:  # tps
-                # 1) homography init: dapi -> he
+            else:  # tps or local_tps
                 H, inliers = cv2.findHomography(
                     src, dst,
                     method=cv2.RANSAC,
@@ -529,7 +679,11 @@ def show_nucleus_patch_in_memory(
                     maxIters=maxIters,
                     confidence=confidence
                 )
-                method_str = "cv2.findHomography(RANSAC) + TPS (forward+inverse)"
+
+                if transform_type == "tps":
+                    method_str = "grid-balanced cv2.findHomography(RANSAC) + TPS (forward+inverse)"
+                else:
+                    method_str = "grid-balanced cv2.findHomography(RANSAC) + TPS control pairs (LOCAL_TPS-ready)"
 
                 if H is None:
                     messagebox.showerror(
@@ -539,8 +693,8 @@ def show_nucleus_patch_in_memory(
                     return
 
                 mask = inliers.ravel().astype(bool) if inliers is not None else np.ones(len(src), dtype=bool)
-                src_in = src[mask].astype(np.float64)   # dapi inliers
-                dst_in = dst[mask].astype(np.float64)   # he   inliers
+                src_in = src[mask].astype(np.float64)
+                dst_in = dst[mask].astype(np.float64)
 
                 if len(src_in) < 3:
                     messagebox.showerror(
@@ -549,7 +703,6 @@ def show_nucleus_patch_in_memory(
                     )
                     return
 
-                # 2) fit BOTH directions
                 tps_reg = 1e-2
 
                 # forward: dapi -> he
@@ -558,16 +711,15 @@ def show_nucleus_patch_in_memory(
                 # inverse: he -> dapi
                 tps_model_inv = fit_tps(dst_in, src_in, reg=tps_reg)
 
-                # keep forward as primary model for point reprojection stats
                 tps_model = tps_model_fwd
 
-                # reprojection with forward TPS on all points
                 proj_xy = apply_tps(src.astype(np.float64), tps_model_fwd)
                 err = np.linalg.norm(proj_xy - dst.astype(np.float64), axis=1)
 
             # ---- Error summary ----
             inlier_count = int(inliers.sum()) if inliers is not None else 0
-            total = len(nuclei_info)
+            total_balanced = len(src)
+            total_raw = len(src_all)
 
             if inliers is not None:
                 mask = inliers.ravel().astype(bool)
@@ -582,10 +734,19 @@ def show_nucleus_patch_in_memory(
                 "from": "dapi_level0",
                 "to": "he_level0",
                 "method": method_str,
+                "transform_type": transform_type,
+                "sampling": {
+                    "type": "grid_balanced",
+                    "grid_shape": list(grid_shape),
+                    "max_per_cell": int(max_per_cell),
+                    "num_points_before_sampling": int(total_raw),
+                    "num_points_after_sampling": int(total_balanced),
+                    "selected_indices_from_original": keep_idx.tolist(),
+                },
                 "ransacReprojThreshold": float(ransac_thr),
                 "maxIters": int(maxIters),
                 "confidence": float(confidence),
-                "num_points": int(total),
+                "num_points": int(total_balanced),
                 "num_inliers": int(inlier_count),
                 "inlier_median_reproj_error_px": med_err,
                 "inlier_mean_reproj_error_px": mean_err,
@@ -594,10 +755,10 @@ def show_nucleus_patch_in_memory(
             if transform_type in ("affine", "homography"):
                 out["homography_3x3"] = H.tolist()
 
-            else:  # tps
+            else:
                 out["initial_homography_3x3"] = H.tolist()
                 out["tps_regularization"] = float(tps_reg)
-                # forward TPS: dapi -> he
+
                 out["forward_tps"] = {
                     "from": "dapi_level0",
                     "to": "he_level0",
@@ -606,7 +767,7 @@ def show_nucleus_patch_in_memory(
                     "weights": tps_model_fwd["w"].tolist(),
                     "affine_2x3": tps_model_fwd["a"].T.tolist(),
                 }
-                # inverse TPS: he -> dapi
+
                 out["inverse_tps"] = {
                     "from": "he_level0",
                     "to": "dapi_level0",
@@ -616,6 +777,13 @@ def show_nucleus_patch_in_memory(
                     "affine_2x3": tps_model_inv["a"].T.tolist(),
                 }
 
+                if transform_type == "local_tps":
+                    out["local_tps_ready"] = True
+                    out["note"] = (
+                        "This file stores forward/inverse TPS control pairs and global TPS parameters. "
+                        "Downstream code may ignore stored weights and refit local TPS on neighborhoods at runtime."
+                    )
+
             out_path = run_dir / "dapi_to_he_homography_level0.json"
             with open(out_path, "w") as f:
                 json.dump(out, f, indent=2)
@@ -623,17 +791,31 @@ def show_nucleus_patch_in_memory(
             if transform_type in ("affine", "homography"):
                 msg = (
                     f"Saved:\n{out_path}\n\n"
-                    f"Inliers: {inlier_count}/{total}\n"
+                    f"Raw points: {total_raw}\n"
+                    f"Balanced sample: {total_balanced}\n"
+                    f"Inliers: {inlier_count}/{total_balanced}\n"
                     f"Median inlier reproj err: {med_err:.2f}px\n\n"
                     f"H (3x3):\n{H}"
+                )
+            elif transform_type == "tps":
+                msg = (
+                    f"Saved:\n{out_path}\n\n"
+                    f"Raw points: {total_raw}\n"
+                    f"Balanced sample: {total_balanced}\n"
+                    f"Homography inliers used for TPS: {inlier_count}/{total_balanced}\n"
+                    f"Median inlier reproj err: {med_err:.2f}px\n\n"
+                    f"Initial H (3x3):\n{H}\n\n"
+                    f"TPS control points: {len(tps_model['ctrl'])}"
                 )
             else:
                 msg = (
                     f"Saved:\n{out_path}\n\n"
-                    f"Homography inliers used for TPS: {inlier_count}/{total}\n"
+                    f"Raw points: {total_raw}\n"
+                    f"Balanced sample: {total_balanced}\n"
+                    f"Homography inliers used for LOCAL_TPS-ready control pairs: {inlier_count}/{total_balanced}\n"
                     f"Median inlier reproj err: {med_err:.2f}px\n\n"
                     f"Initial H (3x3):\n{H}\n\n"
-                    f"TPS control points: {len(tps_model['ctrl'])}"
+                    f"Control points saved: {len(tps_model['ctrl'])}"
                 )
 
             messagebox.showinfo("Transform estimated", msg)

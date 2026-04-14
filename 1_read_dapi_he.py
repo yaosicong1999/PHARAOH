@@ -347,7 +347,7 @@ def create_dapi_slider():
         from_=0,
         to=2000,
         orient=tk.HORIZONTAL,
-        resolution=50,
+        resolution=10,
         showvalue=False,
         length=TILE_SIZE[0] - 50,
         variable=dapi_val,

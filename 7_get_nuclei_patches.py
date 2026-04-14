@@ -32,23 +32,36 @@ def apply_homography_xy(M3x3, x, y):
     w = q[2] if abs(q[2]) > 1e-12 else 1e-12
     return float(q[0] / w), float(q[1] / w)
 
-def he_point_tile_to_global(he_info, x_tile, y_tile, S):
+def extract_level_to_read_level(extract_level: int) -> int:
     """
-    If rectified: (x_tile,y_tile) is in rectified coords -> project back using M_rect_to_he (global level=1 coords)
-    Else: (x_tile,y_tile) is tile-local bbox coords -> x0/y0 add (global level=1 coords)
-    Return: (x_global_level0, y_global_level0)
+    convert step3 extract level convention to read_image level convention:
+      extract 1 -> read 0
+      extract 2 -> read 1
+      extract 3 -> read 2
+      ...
+    """
+    return max(0, int(extract_level) - 1)
+
+def he_point_tile_to_image_coords(he_info, x_tile, y_tile):
+    """
+    Return point coordinates in the SAME coordinate system as the loaded HE image
+    (i.e. HE_READ_LEVEL coordinates).
+
+    If rectified:
+        (x_tile, y_tile) is in rectified coords -> project back using M_rect_to_he
+    Else:
+        (x_tile, y_tile) is tile-local bbox coords -> x0/y0 add
     """
     meta = he_info.get("meta", {}) if isinstance(he_info, dict) else {}
 
     if meta.get("mode", None) == "rectified" and meta.get("M_rect_to_he", None) is not None:
         Minv = np.asarray(meta["M_rect_to_he"], dtype=float)
-        x1, y1 = apply_homography_xy(Minv, x_tile, y_tile)  # HE level=1 global coords
-        return x1 * S, y1 * S
+        x_img, y_img = apply_homography_xy(Minv, x_tile, y_tile)
+        return x_img, y_img
 
-    # bbox / non-rectified fallback: tile-local -> level=1 global -> level0
-    x1 = float(he_info["x0"]) + float(x_tile)
-    y1 = float(he_info["y0"]) + float(y_tile)
-    return x1 * S, y1 * S
+    x_img = float(he_info["x0"]) + float(x_tile)
+    y_img = float(he_info["y0"]) + float(y_tile)
+    return x_img, y_img
 
 def ensure_gray_uint16(x):
     x = np.asarray(x)
@@ -396,6 +409,8 @@ def main(run_dir):
         dapi_tiles = json.load(f)
     with open("he_tile_info.json") as f:
         he_tiles = json.load(f)
+    with open("../sampled_points.json") as f:
+        sampled_info = json.load(f)
     with open("../images_info.json") as f:
         images_info = json.load(f)
 
@@ -408,17 +423,31 @@ def main(run_dir):
     )
     HE_PATH = images_info["HE_path"]
     DAPI_PATH = images_info["DAPI_path"]
+    DAPI_LEVEL = int(images_info["DAPI_level"])
+    HE_LEVEL = int(images_info["HE_level"])
+    DAPI_EXTRACT_LEVEL = int(sampled_info["dapi_extract_level"])
+    # step3 extract level -> actual read_image level
+    DAPI_READ_LEVEL = extract_level_to_read_level(DAPI_EXTRACT_LEVEL)
+    # keep HE at the same effective scale as DAPI, then also shift by -1
+    HE_EXTRACT_LEVEL = HE_LEVEL - (DAPI_LEVEL - DAPI_EXTRACT_LEVEL)
+    HE_EXTRACT_LEVEL = max(1, int(HE_EXTRACT_LEVEL))
+    HE_READ_LEVEL = extract_level_to_read_level(HE_EXTRACT_LEVEL)
+    print(f"[INFO] DAPI_LEVEL={DAPI_LEVEL}, HE_LEVEL={HE_LEVEL}", flush=True)
+    print(f"[INFO] DAPI_EXTRACT_LEVEL={DAPI_EXTRACT_LEVEL} -> DAPI_READ_LEVEL={DAPI_READ_LEVEL}", flush=True)
+    print(f"[INFO] HE_EXTRACT_LEVEL={HE_EXTRACT_LEVEL} -> HE_READ_LEVEL={HE_READ_LEVEL}", flush=True)
     print("[INFO] Loading full-res images. This could take about 1 min ⚠️", flush=True)
 
-    he_img, *_ = read_image(HE_PATH, keep_16bit=True, level=0, channel="he")
+    dapi_scale_to_level0 = 2 ** DAPI_READ_LEVEL
+    he_scale_to_level0 = 2 ** HE_READ_LEVEL
 
+    he_img, *_ = read_image(HE_PATH, keep_16bit=True, level=HE_READ_LEVEL, channel="he")
     global lut
     lut_path = images_info.get(
         "DAPI_LUT",
         f"{scripts_dir}/glasbey_inverted.lut",
     )
     lut = np.fromfile(lut_path, dtype=np.uint8).reshape(256, 3)
-    dapi_img, *_ = read_image(DAPI_PATH, keep_16bit=True, level=0, channel="dapi")
+    dapi_img, *_ = read_image(DAPI_PATH, keep_16bit=True, level=DAPI_READ_LEVEL, channel="dapi")
 
     t_after_io = time.time()
     io_sec = t_after_io - start_time
@@ -432,24 +461,18 @@ def main(run_dir):
     total = len(nuclei)
     print(f"[INFO] Refining {total} nuclei centroids", flush=True)
 
+    dapi_scale_extract_to_read = 2 ** (DAPI_EXTRACT_LEVEL - DAPI_READ_LEVEL)
+    he_scale_extract_to_read = 2 ** (HE_EXTRACT_LEVEL - HE_READ_LEVEL)
+
     for i, n in enumerate(nuclei, 1):
         tile_id = n["tile"]
         nucleus_id = n.get("nucleus_id", 0)
         dapi_info = dapi_tiles[tile_id]
 
-        DAPI_TILE_LEVEL_OVERRIDE = parameters["step3"]["dapi_level_override"]
-        if DAPI_TILE_LEVEL_OVERRIDE == "None":
-            LEVEL_DIFF = 1
-        elif isinstance(DAPI_TILE_LEVEL_OVERRIDE, int):
-            LEVEL_DIFF = DAPI_TILE_LEVEL_OVERRIDE
-        else:
-            raise ValueError("DAPI_TILE_LEVEL_OVERRIDE in parameter.json['step3'] must be 'None' or int")
-
-        S = 2 ** LEVEL_DIFF
-        # ---- choose tile coords ----
         xA_tile, yA_tile = n["original"]["dapi"]
-        xA_global = int(round(dapi_info["x0"] * S + xA_tile * S))
-        yA_global = int(round(dapi_info["y0"] * S + yA_tile * S))
+
+        xA_global = int(round((float(dapi_info["x0"]) + float(xA_tile)) * dapi_scale_extract_to_read))
+        yA_global = int(round((float(dapi_info["y0"]) + float(yA_tile)) * dapi_scale_extract_to_read))
 
         output_xA_global, output_yA_global, _, _ = extract_patch_and_mark_point(
             dapi_img,
@@ -466,41 +489,32 @@ def main(run_dir):
             "tile_id": tile_id,
             "nucleus_id": nucleus_id,
             "mode": n.get("mode", "nuclei_pair"),
-            "dapi_centroid_global": [float(output_xA_global), float(output_yA_global)],
+            "dapi_centroid_global": [
+                float(output_xA_global * dapi_scale_to_level0),
+                float(output_yA_global * dapi_scale_to_level0),
+            ],
             "he_centroid_global": None,
         })
-        print(f"[PROGRESS] DAPI {i}/{total}", flush=True)
 
     for i, n in enumerate(nuclei, 1):
         tile_id = n["tile"]
         nucleus_id = n.get("nucleus_id", 0)
         he_info = he_tiles[tile_id]
 
-        DAPI_LEVEL = images_info["DAPI_level"]
-        HE_LEVEL = images_info["HE_level"]
-        HE_TILE_LEVEL_OVERRIDE = parameters["step3"]["he_level_override"]
-        if HE_TILE_LEVEL_OVERRIDE == "None":
-            if HE_LEVEL <= DAPI_LEVEL:
-                LEVEL_DIFF = 1
-            else:
-                LEVEL_DIFF = 1 + HE_LEVEL - DAPI_LEVEL
-        elif isinstance(HE_TILE_LEVEL_OVERRIDE, int):
-            LEVEL_DIFF = HE_TILE_LEVEL_OVERRIDE
-        else:
-            raise ValueError("DAPI_TILE_LEVEL_OVERRIDE must be 'None' or int")
-        S = 2 ** LEVEL_DIFF
-
         if "original" in n and "he" in n["original"] and n["original"]["he"] is not None:
             xB_tile, yB_tile = n["original"]["he"]
         else:
             meta = he_info.get("meta", {}) if isinstance(he_info, dict) else {}
             if meta.get("mode") == "rectified" and meta.get("rectified_wh") is not None:
-                out_w, out_h = meta["rectified_wh"]  # NOTE: [W, H]
-                xB_tile, yB_tile = (out_w / 2.0, out_h / 2.0)   # center in rectified coords
+                out_w, out_h = meta["rectified_wh"]
+                xB_tile, yB_tile = (out_w / 2.0, out_h / 2.0)
             else:
                 xB_tile, yB_tile = (float(he_info["w"]) / 2.0, float(he_info["h"]) / 2.0)
 
-        xB_global, yB_global = he_point_tile_to_global(he_info, xB_tile, yB_tile, S)
+        xB_img, yB_img = he_point_tile_to_image_coords(he_info, xB_tile, yB_tile)
+
+        xB_global = float(xB_img) * he_scale_extract_to_read
+        yB_global = float(yB_img) * he_scale_extract_to_read
 
         output_xB_global, output_yB_global, _, _ = extract_patch_and_mark_point(
             he_img,
@@ -513,8 +527,10 @@ def main(run_dir):
             save_overlay=True,
         )
 
-        output_coord_record[i - 1]["he_centroid_global"] = [float(output_xB_global), float(output_yB_global)]
-        print(f"[PROGRESS] HE {i}/{total}", flush=True)
+        output_coord_record[i - 1]["he_centroid_global"] = [
+            float(output_xB_global * he_scale_to_level0),
+            float(output_yB_global * he_scale_to_level0),
+        ]
 
     out_json = os.path.join(out_dir, "nuclei_centroids_global.json")
     with open(out_json, "w") as f:

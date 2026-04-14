@@ -10,9 +10,9 @@ import json
 import sys
 
 GOOD_NUCLEI_MIN = 2
-MIN_GOOD_TILES = 20          # “pairs>=n” 的 tile 数阈值
-FALLBACK_SCORE_THR = 0.40    # final_full_iou 阈值
-MIN_FALLBACK_TILES = 20      # fallback tile 数阈值
+MIN_GOOD_TILES = 40          # “pairs>=n” 的 tile 数阈值
+FALLBACK_SCORE_THR = 0.30    # score 阈值
+MIN_FALLBACK_TILES = 20     # fallback tile 数阈值
 
 good_tile_count = 0
 fallback_candidates = []

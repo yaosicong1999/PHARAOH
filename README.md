@@ -1,8 +1,8 @@
-## HistoPyrAlign (Beta version 2.0)
+## PHARAOH (Beta version 3.0)
 
 ### ⚠️ Now please only test on Xenium data. Refinement is needed for other platforms.
 
-HistoPyrAlign is a scalable and generalizable framework for multimodal tissue image alignment and spatial transcriptomics enhancement.
+PHARAOH is a scalable and generalizable framework for multimodal tissue image alignment and spatial transcriptomics enhancement.
 
 It enables fast, robust, GUI-based, and GPU-free semi-automatic registration between DAPI imaging from multiplexed imaging platforms (Xenium, CosMx, CODEX, CyCIF), and histology (H&E), supporting both same-section and adjacent-section alignment.
 
@@ -10,7 +10,7 @@ It enables fast, robust, GUI-based, and GPU-free semi-automatic registration bet
 
 ## 📂 Required Input Files
 
-In order to run the HistoPyrAlign platform, you will need the following files:
+In order to run the PHARAOH platform, you will need the following files:
 
 1. An image containing one DAPI channel (should be on the first channel if of multi-channels), in the format of `.ome.tif`, `.tif` or `.jpg`. 
 
@@ -26,8 +26,8 @@ In order to achieve the best alignment performance, please consider using raw, u
 
 First, clone the repository:
 ```bash
-git clone https://github.com/yaosicong1999/HistoPyrAlign.git
-cd HistoPyrAlign/version_2.0
+git clone https://github.com/yaosicong1999/PHARAOH.git
+cd PHARAOH/version_3.0
 ```
 We recommend installing Pixel2Gene in a dedicated Conda environment. 
 ```bash
@@ -36,7 +36,7 @@ bash install_conda_env.sh
 Typical installation time is approximately 10–20 minutes on a standard Linux desktop with internet access, depending on network speed and package resolution.
 
 ### Tested environments
-HistoPyrAlign has been tested on MacOS 15.7.3.
+PHARAOH has been tested on MacOS 15.7.3.
 
 ---
 
@@ -174,10 +174,7 @@ There are three buttons in the Step 3 viewer:
 
    These parameters will be saved and applied in the main nuclei masking step.
 
-   ⚠️ This step is optional, but strongly recommended.  
-   It improves robustness of downstream alignment, especially for:
-   - Low-quality Xenium data  
-   - Adjacent tissue slices  
+   ⚠️ This step is optional for in-sample Xenium registration, but strongly recommended for adjacent-section registration.  
 
 3.` Extract Current Tiles`  
    Extracts all sampled tiles based on the sampled centroid locations.
