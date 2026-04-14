@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -e
 
-ENV_NAME="histopyralign"
+ENV_NAME="PHARAOH"
 PYTHON_VERSION="3.10"
 
 echo "Creating conda environment: ${ENV_NAME}"
