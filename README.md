@@ -33,8 +33,12 @@ We recommend installing Pixel2Gene in a dedicated Conda environment.
 ```bash
 bash install_conda_env.sh
 ```
-Typical installation time is approximately 10–20 minutes on a standard Linux desktop with internet access, depending on network speed and package resolution.
+Typical installation time is approximately 5–20 minutes on a standard Linux desktop with internet access, depending on network speed and package resolution.
 
+Then simply:
+```bash
+conda activate PHARAOH
+```
 ### Tested environments
 PHARAOH has been tested on MacOS 15.7.3.
 
