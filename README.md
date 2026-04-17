@@ -248,7 +248,7 @@ The result is saved as: `dapi_to_he_homography_level0.json`
 Toggle the visibility of automatically detected centroids in each image.
 4. `DAPI: LUT / Raw`
 Switch between LUT-colored DAPI visualization and DAPI intensity image.
-5.  `Drop patch pair'
+5.  `Drop patch pair`
 Drop the current nuclei patch pair from the candidate list.
 
 #### Output
