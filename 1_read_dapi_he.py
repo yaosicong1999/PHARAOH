@@ -1,21 +1,83 @@
-import tkinter as tk
-from tkinter import filedialog
-from PIL import Image, ImageTk
-import numpy as np
-import cv2
-import os
-from my_utils import read_image, extract_hematoxylin_channel, enhance_hematoxylin_channel, dapi_to_lut_rgb
-from sklearn.cluster import DBSCAN
-from scipy import ndimage as ndi
-from pathlib import Path
-import sys
 import json
+import os
+import sys
+import tkinter as tk
 import tkinter.messagebox as messagebox
-Image.MAX_IMAGE_PIXELS = None  # disable the check
-from PIL import Image, ImageDraw, ImageOps
+from datetime import datetime
+from pathlib import Path
+from tkinter import filedialog
+import cv2
+import numpy as np
+from PIL import Image, ImageDraw, ImageOps, ImageTk
+from scipy import ndimage as ndi
+from sklearn.cluster import DBSCAN
+print("[Stage1] importing my_utils...", flush=True)
+from my_utils import (
+    dapi_to_lut_rgb,
+    enhance_hematoxylin_channel,
+    extract_hematoxylin_channel,
+    read_image,
+)
+print("[Stage1] imports done", flush=True)
+Image.MAX_IMAGE_PIXELS = None
 
-TILE_SIZE = (320, 320)   # 你可以改成 256×256，和 gallery 一致
-length = TILE_SIZE[0]
+TILE_SIZE = (320, 320)
+
+
+ORIENTATION_CASES = {
+    0: np.array([[ 1,  0],
+                 [ 0,  1]]),   # identity
+
+    1: np.array([[ 0, -1],
+                 [ 1,  0]]),   # rot90 CW
+
+    2: np.array([[-1,  0],
+                 [ 0, -1]]),   # rot180
+
+    3: np.array([[ 0,  1],
+                 [-1,  0]]),   # rot270 CW (90 CCW)
+
+    4: np.array([[ 1,  0],
+                 [ 0, -1]]),   # flip vertical
+
+    5: np.array([[-1,  0],
+                 [ 0,  1]]),   # flip horizontal
+
+    6: np.array([[0, 1],
+                 [1, 0]], np.float32),  # rot90 CW then flip H  (== transpose)
+
+    7: np.array([[0, -1],
+                 [-1, 0]], np.float32),  # rot90 CW then flip V  (== anti-transpose)
+}
+
+def get_pipeline_timing_json_path():
+    return Path(RUN_DIR) / "pipeline_times.json"
+
+def log_event(event_name, **extra):
+    out_json = get_pipeline_timing_json_path()
+    now_str = datetime.now().isoformat(timespec="seconds")
+
+    data = {}
+    if out_json.exists():
+        try:
+            with open(out_json, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except Exception:
+            data = {}
+
+    stage_key = "stage1_events"
+    if stage_key not in data or not isinstance(data[stage_key], list):
+        data[stage_key] = []
+
+    rec = {
+        "event": event_name,
+        "time": now_str,
+    }
+    rec.update(extra)
+    data[stage_key].append(rec)
+
+    with open(out_json, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
 
 def make_na_tile(size=TILE_SIZE, bg=240):
     img = Image.new("RGB", size, (bg, bg, bg))
@@ -65,38 +127,13 @@ def normalize_to_uint8(img):
     return img.astype(np.uint8)
 
 def on_close():
+    log_event("system_ready_exit", exit_mode="window_close")
     print("Window closed, exiting process.")
     try:
-        root.destroy()   # 关闭 Tk
-    except:
+        root.destroy()
+    except Exception:
         pass
-    sys.exit(0)          # 结束 Python 进程
-
-ORIENTATION_CASES = {
-    0: np.array([[ 1,  0],
-                 [ 0,  1]]),   # identity
-
-    1: np.array([[ 0, -1],
-                 [ 1,  0]]),   # rot90 CW
-
-    2: np.array([[-1,  0],
-                 [ 0, -1]]),   # rot180
-
-    3: np.array([[ 0,  1],
-                 [-1,  0]]),   # rot270 CW (90 CCW)
-
-    4: np.array([[ 1,  0],
-                 [ 0, -1]]),   # flip vertical
-
-    5: np.array([[-1,  0],
-                 [ 0,  1]]),   # flip horizontal
-
-    6: np.array([[0, 1],
-                 [1, 0]], np.float32),  # rot90 CW then flip H  (== transpose)
-
-    7: np.array([[0, -1],
-                 [-1, 0]], np.float32),  # rot90 CW then flip V  (== anti-transpose)
-}
+    sys.exit(0)
 
 # ---- Load LUT once ----
 lut_path = "glasbey_inverted.lut"
@@ -109,17 +146,17 @@ he_mask_img = None
 he_dense_mask = None
 
 dapi_img = None
-dapi_mask_img = None  # new for 3rd DAPI
-dapi_img_view = None  # 当前用于显示 & mask 的 DAPI（可旋转/翻转）
-dapi_lut_img = None   # 用来保存第二行的 LUT 彩色图 (uint8, 3-channel)
+dapi_mask_img = None
+dapi_img_view = None
+dapi_lut_img = None
 
-dapi_btn_frame = None   # 容器，延迟显示
+dapi_btn_frame = None
 dapi_gui_affine = np.eye(3, dtype=np.float32)
 dapi_orig_shape = None
 dapi_gui_shape = None
 
-he_slider = None  # H&E slider
-dapi_slider = None       # DAPI LUT slider
+he_slider = None
+dapi_slider = None
 
 he_level = None
 dapi_level = None
@@ -236,14 +273,28 @@ def count_components(mask_u8, min_area=2000):
 # ---- GUI Functions ----
 def select_he():
     global he_orig, he_h_proc, he_mask_img, he_dense_mask, he_slider, he_level, he_path
+
+    log_event("user_click_he_import")
     path = filedialog.askopenfilename(title="Select H&E Image")
     he_path = path
+
     if not path:
+        log_event("user_cancel_he_selection")
         return
+
     he_orig, he_level = read_image(path, channel="he")
-    print(f"he_orig shape is", he_orig.shape)
+    print("he_orig shape is", he_orig.shape)
+
     he_h = extract_hematoxylin_channel(he_orig)
     he_h_proc = enhance_hematoxylin_channel(he_h)
+
+    log_event(
+        "system_ready_he_import",
+        he_path=str(path),
+        he_shape=list(he_orig.shape),
+        he_level=he_level,
+    )
+
     update_grid()
     if he_slider is None:
         create_he_slider()
@@ -314,21 +365,34 @@ def update_he(threshold):
 def select_dapi():
     global dapi_img, dapi_img_view, dapi_slider, dapi_level, dapi_path
     global dapi_btn_frame, dapi_gui_affine, dapi_orig_shape, dapi_gui_shape
+
+    log_event("user_click_dapi_import")
     path = filedialog.askopenfilename(title="Select DAPI Image")
     dapi_path = path
+
     if not path:
+        log_event("user_cancel_dapi_selection")
         return
+
     dapi_img, dapi_level = read_image(path, keep_16bit=True, force_rgb=False, channel="dapi")
     dapi_img_view = dapi_img.copy()
     dapi_orig_shape = dapi_img.shape[:2]
     dapi_gui_shape = dapi_orig_shape
     dapi_gui_affine = np.eye(3, dtype=np.float32)
 
+    log_event(
+        "system_ready_dapi_import",
+        dapi_path=str(path),
+        dapi_shape=list(dapi_img.shape),
+        dapi_level=dapi_level,
+    )
+
     update_grid()
     if dapi_slider is None:
         create_dapi_slider()
     else:
         update_dapi(int(dapi_slider.get()))
+
     if dapi_btn_frame is not None:
         dapi_btn_frame.grid(row=5, column=1, padx=5, pady=5, sticky="we")
 
@@ -458,7 +522,6 @@ def save_rgb_png(img_np, out_path):
         arr = cv2.cvtColor(arr, cv2.COLOR_GRAY2RGB)
     elif arr.ndim == 3 and arr.shape[2] == 3:
         arr = arr.copy()
-    # uint16 -> uint8 (简单线性缩放到 0-255)
     if arr.dtype == np.uint16:
         arr8 = (arr / 256).clip(0, 255).astype(np.uint8)
     else:
@@ -469,40 +532,50 @@ def save_rgb_png(img_np, out_path):
 def confirm_and_save():
     global he_orig, dapi_lut_img, he_dense_mask, dapi_mask_img, RUN_DIR, RUN_ID
 
+    log_event("user_click_save")
+
     if he_dense_mask is None or dapi_mask_img is None or he_orig is None or dapi_lut_img is None:
         messagebox.showerror("Error", "Please load & threshold both H&E and DAPI first.")
         return
 
     os.makedirs(RUN_DIR, exist_ok=True)
 
-    # ======================================================
-    # 1. Save low-level original images + masks INTO run folder
-    # ======================================================
-    he_img_path   = os.path.join(RUN_DIR, "1_he_level_image.png")
+    he_img_path = os.path.join(RUN_DIR, "1_he_level_image.png")
     dapi_lut_path = os.path.join(RUN_DIR, "1_dapi_lut.png")
-    he_mask_path  = os.path.join(RUN_DIR, "1_confirmed_he_dense_mask.png")
-    dapi_mask_path= os.path.join(RUN_DIR, "1_confirmed_dapi_mask.png")
+    he_mask_path = os.path.join(RUN_DIR, "1_confirmed_he_dense_mask.png")
+    dapi_mask_path = os.path.join(RUN_DIR, "1_confirmed_dapi_mask.png")
 
-    # he_orig 可能是 uint8/uint16；用你已有逻辑保存也行
     Image.fromarray(he_orig).save(he_img_path)
     cv2.imwrite(dapi_lut_path, dapi_lut_img)
     cv2.imwrite(he_mask_path, he_dense_mask)
     cv2.imwrite(dapi_mask_path, dapi_mask_img)
 
-    # ======================================================
-    # 2. Save images_info.json INTO run folder
-    # ======================================================
     update_he(int(he_slider.get()))
     update_dapi(int(dapi_slider.get()))
     save_current_levels_json(
         json_path=os.path.join(RUN_DIR, "images_info.json"),
-        RUN_ID=RUN_ID
+        RUN_ID=RUN_ID,
     )
 
-    messagebox.showinfo("Saved", f"Step 1 outputs saved to:\n{RUN_DIR}\n\nYou can now run Step 2 in 0_pipeline.")
+    log_event(
+        "system_ready_save",
+        save_dir=str(RUN_DIR),
+        he_path=str(he_img_path),
+        dapi_lut_path=str(dapi_lut_path),
+        he_mask_path=str(he_mask_path),
+        dapi_mask_path=str(dapi_mask_path),
+    )
+
+    messagebox.showinfo(
+        "Saved",
+        f"Step 1 outputs saved to:\n{RUN_DIR}\n\nYou can now run Step 2 in 0_pipeline.",
+    )
+
+    log_event("user_click_exit")
+    log_event("system_ready_exit", exit_mode="save_then_exit")
+
     root.destroy()
     sys.exit(0)
-
 
 
 def infer_dapi_orientation_case(dapi_gui_affine, tol=1e-4):
@@ -562,6 +635,7 @@ def save_current_levels_json(json_path="images_info.json", RUN_ID=None):
 
 def rotate_dapi_cw():
     global dapi_img_view, dapi_gui_affine, dapi_gui_shape
+    log_event("user_click_rotate_cw")
     if dapi_img_view is None:
         return
 
@@ -580,9 +654,11 @@ def rotate_dapi_cw():
 
     update_grid()
     update_dapi(dapi_slider.get() if dapi_slider else 300)
+    log_event("system_ready_rotate_cw")
 
 def rotate_dapi_ccw():
     global dapi_img_view, dapi_gui_affine, dapi_gui_shape
+    log_event("user_click_rotate_ccw")
     if dapi_img_view is None:
         return
 
@@ -601,9 +677,12 @@ def rotate_dapi_ccw():
 
     update_grid()
     update_dapi(dapi_slider.get() if dapi_slider else 300)
+    log_event("system_ready_rotate_ccw")
+
 
 def flip_dapi_vertical():
     global dapi_img_view, dapi_gui_affine
+    log_event("user_click_flip_v")
     if dapi_img_view is None:
         return
     H0, W0 = dapi_gui_shape
@@ -616,9 +695,12 @@ def flip_dapi_vertical():
     dapi_img_view = np.flipud(dapi_img_view)
     update_grid()
     update_dapi(dapi_slider.get() if dapi_slider else 300)
+    log_event("system_ready_flip_v")
+
 
 def flip_dapi_horizontal():
     global dapi_img_view, dapi_gui_affine
+    log_event("user_click_flip_h")
     if dapi_img_view is None:
         return
     H0, W0 = dapi_gui_shape
@@ -631,6 +713,8 @@ def flip_dapi_horizontal():
     dapi_img_view = np.fliplr(dapi_img_view)
     update_grid()
     update_dapi(dapi_slider.get() if dapi_slider else 300)
+    log_event("system_ready_flip_h")
+
 
 def update_confirm_button_state():
     if (
@@ -660,7 +744,7 @@ def main():
     global he_orig_label, he_mask_label, he_dense_label
     global dapi_gray_label, dapi_lut_label, dapi_mask_label
     global confirm_btn
-    global btn_rotate_cw, btn_rotate_ccw, btn_flip_v, btn_flip_h
+    global btn_rotate_cw, btn_rotate_ccw, btn_flip_v, btn_flip_h, dapi_btn_frame
 
 
     RUN_DIR = Path(sys.argv[1]).resolve()
@@ -808,6 +892,7 @@ def main():
 
     update_confirm_button_state()
     update_dapi_transform_buttons_state()
+    log_event("system_ready_initial_start")
     root.mainloop()
 
 if __name__ == "__main__":

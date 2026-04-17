@@ -1,36 +1,67 @@
 import math
 import numpy as np
 import cv2
+from datetime import datetime
+import json
 import os, sys, json
 from pathlib import Path
-from PyQt5.QtCore import Qt, QPointF, QRectF, QProcess, QEvent
+from PyQt5.QtCore import Qt, QPointF, QRectF, QEvent
 from PyQt5.QtGui import QPixmap, QTransform, QColor, QPainterPath, QImage
 from PyQt5.QtWidgets import (
     QApplication, QGraphicsView, QGraphicsScene,
     QGraphicsItem, QGraphicsRectItem, QGraphicsPixmapItem,
     QVBoxLayout, QWidget, QPushButton, QHBoxLayout,
-    QMessageBox, QDialog, QLabel, QProgressBar, QFileDialog
+    QMessageBox, QFileDialog
 )
 from my_utils import mask_to_rgba, warp_mask, overlay_rgba_on_bgr
+print("[Stage2] imports done", flush=True)
+
+# -----------------------------
+# Utilities
+# -----------------------------
+def log_event(run_dir, event_name, stage="stage2", **extra):
+    out_json = Path(run_dir) / "pipeline_times.json"
+    now_str = datetime.now().isoformat(timespec="seconds")
+
+    # -------- load existing --------
+    if out_json.exists():
+        try:
+            with open(out_json, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except Exception:
+            data = {}
+    else:
+        data = {}
+
+    # -------- stage key --------
+    stage_key = f"{stage}_events"
+    if stage_key not in data or not isinstance(data[stage_key], list):
+        data[stage_key] = []
+
+    # -------- record --------
+    rec = {
+        "event": event_name,
+        "time": now_str,
+    }
+    rec.update(extra)
+    data[stage_key].append(rec)
+
+    # -------- write --------
+    with open(out_json, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
+
+    # debug print
+    print(f"[LOG] {event_name} -> {out_json}", flush=True)
 
 def cvH_to_qtransform(H: np.ndarray) -> QTransform:
     H = np.asarray(H, dtype=np.float64)
     if abs(H[2, 2]) > 1e-12:
         H = H / H[2, 2]
-
-    # OpenCV:
-    # x'=(h11 x + h12 y + h13)/(h31 x + h32 y + h33)
-    # y'=(h21 x + h22 y + h23)/(h31 x + h32 y + h33)
-    #
-    # Qt:
-    # x'=(m11 x + m21 y + m31)/(m13 x + m23 y + m33)
-    # y'=(m12 x + m22 y + m32)/(m13 x + m23 y + m33)
     return QTransform(
-        float(H[0, 0]), float(H[1, 0]), float(H[2, 0]),  # m11 m12 m13
-        float(H[0, 1]), float(H[1, 1]), float(H[2, 1]),  # m21 m22 m23
-        float(H[0, 2]), float(H[1, 2]), float(H[2, 2])   # m31 m32 m33
+        float(H[0, 0]), float(H[1, 0]), float(H[2, 0]),
+        float(H[0, 1]), float(H[1, 1]), float(H[2, 1]),
+        float(H[0, 2]), float(H[1, 2]), float(H[2, 2])
     )
-
 
 def set_override_cursor(cursor_shape):
     """Avoid stacking override cursors on every hoverMove."""
@@ -56,7 +87,6 @@ def mask_to_colored_pixmap(path, fg_rgba=(255, 0, 0, 255), bg_rgba=(0, 0, 0, 0))
     w, h = img.width(), img.height()
 
     # QImage ARGB32 memory layout is BGRA on little-endian platforms.
-    # We'll write channels accordingly.
     fr, fg, fb, fa = fg_rgba
     br, bg, bb, ba = bg_rgba
 
@@ -67,7 +97,6 @@ def mask_to_colored_pixmap(path, fg_rgba=(255, 0, 0, 255), bg_rgba=(0, 0, 0, 0))
     arr = np.frombuffer(ptr, dtype=np.uint8).reshape((h, w, 4))
 
     # Build mask: treat any non-zero in RGB as foreground
-    # (For grayscale masks, R==G==B, so this is fine.)
     mask = (arr[..., 2] > 0) | (arr[..., 1] > 0) | (arr[..., 0] > 0)
 
     # Write BGRA (not RGBA)
@@ -76,18 +105,9 @@ def mask_to_colored_pixmap(path, fg_rgba=(255, 0, 0, 255), bg_rgba=(0, 0, 0, 0))
 
     return QPixmap.fromImage(img)
 
-def qpixmap_to_bgr(pix: QPixmap) -> np.ndarray:
-    """QPixmap -> BGR uint8 (H,W,3)."""
-    img = pix.toImage().convertToFormat(QImage.Format_ARGB32)
-    w, h = img.width(), img.height()
-
-    ptr = img.bits()
-    ptr.setsize(img.byteCount())
-    arr = np.frombuffer(ptr, dtype=np.uint8).reshape((h, w, 4))  # BGRA
-
-    bgr = arr[..., :3].copy()  # BG R
-    return bgr
-
+# =========================
+# Low-level graphics items
+# =========================
 class ResizeHandle(QGraphicsRectItem):
     VISUAL_SIZE = 10
     HIT_SIZE = 28
@@ -150,7 +170,6 @@ class ResizeHandle(QGraphicsRectItem):
         self.overlay.end_drag()
         event.accept()
 
-
 class DapiOverlayItem(QGraphicsPixmapItem):
     MODE_AFFINE = "affine"
     MODE_PERSPECTIVE = "perspective"
@@ -194,9 +213,6 @@ class DapiOverlayItem(QGraphicsPixmapItem):
 
         pts_scene = [self.mapToScene(QPointF(x, y)) for x, y in self._src_corners_local]
         self._dst_corners_scene = np.array([[p.x(), p.y()] for p in pts_scene], dtype=np.float32)
-
-        # make sure transform is purely represented by the homography (avoid double transforms)
-        # We build H from src->dst and setTransform directly.
         self._apply_h_from_corners()
 
     def enter_affine_mode(self):
@@ -393,19 +409,25 @@ class DapiOverlayItem(QGraphicsPixmapItem):
             for h in self.handles:
                 h.setVisible(visible)
 
+# =========================
+# View class
+# =========================
 class ManualAlignView(QGraphicsView):
     """
-    支持两套底图/overlay：
-      - mask 模式：he_mask_pix / dapi_mask_pix
-      - original 模式：he_orig_pix / dapi_orig_pix
+    Supports two background/overlay modes:
+      - mask mode: he_mask_pix / dapi_mask_pix
+      - original mode: he_orig_pix / dapi_orig_pix
 
-    swap 时记录当前 overlay pose，并把 pose 应用到另一套 pixmap 上。
+    When switching modes, the current overlay pose is preserved
+    and applied to the other pixmap set.
     """
     MODE_MASK = "mask"
     MODE_ORIG = "original"
-    def __init__(self, he_mask_path, dapi_mask_path, he_orig_path, dapi_orig_path, case_id):
+    # -------------------------
+    # init / view setup
+    # -------------------------
+    def __init__(self, he_mask_path, dapi_mask_path, he_orig_path, dapi_orig_path):
         super().__init__()
-        self.case_id = int(case_id)   # ✅ 保存到 view
         self.scene = QGraphicsScene()
         self.setScene(self.scene)
 
@@ -431,6 +453,11 @@ class ManualAlignView(QGraphicsView):
         self.mode = self.MODE_ORIG
         self.overlay.setOpacity(0.5)
 
+        self.view_pad = 0.95
+        self.view_pad_min = 0.2
+        self.view_pad_max = 1.8
+        self.view_pad_step = 0.05
+
         self.fit_bg_to_view()
         self.init_overlay_pose(scale=0.85)
 
@@ -442,12 +469,6 @@ class ManualAlignView(QGraphicsView):
         self.installEventFilter(self)
         self.setFocusPolicy(Qt.StrongFocus)
         self.setFocus()
-
-    def leaveEvent(self, event):
-        clear_override_cursor()
-        if self._overlay_hidden_by_key:
-            self._set_overlay_hidden(False)
-        super().leaveEvent(event)
 
     def fit_bg_to_view(self):
         bg_rect = self.he_item.boundingRect()
@@ -466,8 +487,14 @@ class ManualAlignView(QGraphicsView):
         self.resetTransform()
         self.fitInView(scene_rect, Qt.KeepAspectRatio)
 
-        pad = 0.95
+        pad = getattr(self, "view_pad", 0.95)
         self.scale(pad, pad)
+
+    def adjust_view_pad(self, delta):
+        old_pad = self.view_pad
+        self.view_pad = max(self.view_pad_min, min(self.view_pad_max, self.view_pad + delta))
+        print(f"[zoom] view_pad: {old_pad:.2f} -> {self.view_pad:.2f}", flush=True)
+        self.fit_bg_to_view()
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -477,20 +504,51 @@ class ManualAlignView(QGraphicsView):
         event.ignore()
 
     def keyPressEvent(self, event):
+        mods = event.modifiers()
+
+        # macOS Command key = MetaModifier
+        is_cmd = bool(mods & Qt.MetaModifier)
+
+        if is_cmd and event.key() in (Qt.Key_Plus, Qt.Key_Equal):
+            self.adjust_view_pad(+self.view_pad_step)
+            event.accept()
+            return
+
+        if is_cmd and event.key() in (Qt.Key_Minus, Qt.Key_Underscore):
+            self.adjust_view_pad(-self.view_pad_step)
+            event.accept()
+            return
+
         if event.key() == Qt.Key_Q:
             T = QTransform(self.overlay.transform())
             T.rotate(-5)
             self.overlay.setTransform(T)
             self.overlay.update_handles()
-        elif event.key() == Qt.Key_E:
+            event.accept()
+            return
+
+        if event.key() == Qt.Key_E:
             T = QTransform(self.overlay.transform())
             T.rotate(5)
             self.overlay.setTransform(T)
             self.overlay.update_handles()
-        else:
-            super().keyPressEvent(event)
+            event.accept()
+            return
 
+        super().keyPressEvent(event)
+
+    def leaveEvent(self, event):
+        clear_override_cursor()
+        if self._overlay_hidden_by_key:
+            self._set_overlay_hidden(False)
+        super().leaveEvent(event)
+
+    # -------------------------
+    # overlay pose helpers
+    # -------------------------
     def init_overlay_pose(self, scale=0.35):
+        self.overlay.enter_affine_mode()
+
         bg_rect = self.he_item.sceneBoundingRect()
         bg_center = bg_rect.center()
 
@@ -511,11 +569,8 @@ class ManualAlignView(QGraphicsView):
 
         self.overlay.update_handles()
 
-    # -------------------------
-    # Pose record / apply
-    # -------------------------
     def get_overlay_pose(self):
-        """返回 overlay 当前 pose（必须包含 pos/rotation/transform）。"""
+        """Return the current overlay pose (must include pos/rotation/transform)."""
         return {
             "pos": QPointF(self.overlay.pos()),
             "rotation": float(self.overlay.rotation()),
@@ -524,7 +579,8 @@ class ManualAlignView(QGraphicsView):
 
     def apply_overlay_pose_keep_scene_center(self, pose):
         """
-        把 pose 应用到 overlay，同时保持“overlay 的 scene center 不变”，避免换 pixmap 后中心漂移。
+        Apply a pose to the overlay while keeping its scene center unchanged,
+        preventing drift after swapping pixmaps.
         """
         # old scene center (based on current pixmap)
         old_center_scene = self.overlay.mapToScene(self.overlay.boundingRect().center())
@@ -534,7 +590,7 @@ class ManualAlignView(QGraphicsView):
         self.overlay.setTransform(pose["transform"])
         self.overlay.setPos(pose["pos"])
 
-        # after applying, compute new center and compensate by shifting pos
+        # compute new center and compensate shift
         new_center_scene = self.overlay.mapToScene(self.overlay.boundingRect().center())
         delta = old_center_scene - new_center_scene
         self.overlay.setPos(self.overlay.pos() + delta)
@@ -543,10 +599,10 @@ class ManualAlignView(QGraphicsView):
 
     def swap_mode(self):
         """
-        核心：按 swap 的时候
-          1) 记录当前 overlay pose
-          2) 切换底图 + overlay pixmap
-          3) 把 pose 应用到新 pixmap 上（并用 center 补偿）
+        Core logic when swapping modes:
+          1) Record current overlay pose
+          2) Switch background + overlay pixmap
+          3) Apply pose to the new pixmap (with center compensation)
         """
         clear_override_cursor()
 
@@ -555,8 +611,8 @@ class ManualAlignView(QGraphicsView):
         if self.mode == self.MODE_MASK:
             # switch to original
             self.mode = self.MODE_ORIG
-            self.he_item.setPixmap(self.he_orig_pix)
             self.overlay.setOpacity(0.5)
+            self.he_item.setPixmap(self.he_orig_pix)
             self.overlay.setPixmap(self.dapi_orig_pix)
             self.apply_overlay_pose_keep_scene_center(pose)
             self.overlay.reset_perspective_cache()
@@ -569,18 +625,17 @@ class ManualAlignView(QGraphicsView):
             self.apply_overlay_pose_keep_scene_center(pose)
             self.overlay.reset_perspective_cache()
 
-
         self.fit_bg_to_view()
         self.overlay.update_handles()
 
     def get_corners_dapi_to_he(self):
         """
-        返回 4 对点：
-          src = DAPI local(pixel) corners
-          dst = HE pixel corners (scene coords)
-        顺序: TL, TR, BL, BR
+        Return 4 corner correspondences:
+          src = DAPI local (pixel) corners
+          dst = HE pixel corners (scene coordinates)
+        Order: TL, TR, BR, BL
         """
-        rect = self.overlay.boundingRect()  # DAPI local 坐标系里的矩形
+        rect = self.overlay.boundingRect()  # DAPI local coordinate rectangle
 
         src_qt = [rect.topLeft(), rect.topRight(), rect.bottomRight(), rect.bottomLeft()]
         dst_qt = [self.overlay.mapToScene(p) for p in src_qt]
@@ -591,9 +646,10 @@ class ManualAlignView(QGraphicsView):
 
     def apply_homography_to_overlay(self, H_gui2he: np.ndarray):
         """
-        Apply a 3x3 homography that maps overlay-local coords (GUI DAPI pixels)
-        directly to scene coords (HE pixels).
-        NOTE: This sets overlay pose immediately (rotation=0, pos=(0,0), transform=H).
+        Apply a 3x3 homography mapping overlay-local coordinates (GUI DAPI pixels)
+        directly to scene coordinates (HE pixels).
+
+        NOTE: This sets the overlay pose immediately (rotation=0, pos=(0,0), transform=H).
         """
         H = np.asarray(H_gui2he, dtype=np.float64)
         if H.shape != (3, 3):
@@ -603,28 +659,24 @@ class ManualAlignView(QGraphicsView):
         if abs(H[2, 2]) > 1e-12:
             H = H / H[2, 2]
 
-        # OpenCV H:
-        # x' = (h11 x + h12 y + h13)/(h31 x + h32 y + h33)
-        # y' = (h21 x + h22 y + h23)/(h31 x + h32 y + h33)
-        #
-        # Qt QTransform uses:
-        # x' = (m11 x + m21 y + m31)/(m13 x + m23 y + m33)
-        # y' = (m12 x + m22 y + m32)/(m13 x + m23 y + m33)
         qtT = QTransform(
-            float(H[0, 0]), float(H[1, 0]), float(H[2, 0]),  # m11 m12 m13
-            float(H[0, 1]), float(H[1, 1]), float(H[2, 1]),  # m21 m22 m23
-            float(H[0, 2]), float(H[1, 2]), float(H[2, 2])  # m31 m32 m33
+            float(H[0, 0]), float(H[1, 0]), float(H[2, 0]),
+            float(H[0, 1]), float(H[1, 1]), float(H[2, 1]),
+            float(H[0, 2]), float(H[1, 2]), float(H[2, 2])
         )
 
-        # Reset pose components that would "double apply" transforms
+        # reset pose components to avoid double transformation
         self.overlay.setRotation(0)
         self.overlay.setPos(0, 0)
         self.overlay.setTransform(qtT, combine=False)
         self.overlay.update_handles()
         self.overlay.reset_perspective_cache()
 
+    # -------------------------
+    # event filtering / visibility
+    # -------------------------
     def _set_overlay_hidden(self, hide: bool):
-        """统一入口，避免重复 setVisible。"""
+        """Unified entry to toggle overlay visibility (avoid redundant setVisible calls)."""
         if hide == self._overlay_hidden_by_key:
             return
         self._overlay_hidden_by_key = hide
@@ -633,8 +685,8 @@ class ManualAlignView(QGraphicsView):
     def eventFilter(self, obj, event):
         et = event.type()
 
-        # 兜底：有些情况下 Meta 的 press/release 不稳定，
-        # 用 modifiers 也能判断当前是否按着 Command。
+        # fallback: sometimes Meta key press/release is unreliable,
+        # so also check via modifiers
         def meta_down(e):
             try:
                 return bool(e.modifiers() & Qt.MetaModifier)
@@ -642,33 +694,35 @@ class ManualAlignView(QGraphicsView):
                 return False
 
         if et == QEvent.KeyPress:
-            # Command 按下（或任何按键但当前 meta 处于按下状态）
+            # Command pressed (or any key while Meta is held)
             if event.key() == Qt.Key_Meta or meta_down(event):
                 self._set_overlay_hidden(True)
-                return False  # 不要 consume，避免吃掉 Cmd+Q / Cmd+W 等
+                return False  # do not consume (avoid blocking Cmd+Q / Cmd+W)
 
         elif et == QEvent.KeyRelease:
-            # Command 松开
+            # Command released
             if event.key() == Qt.Key_Meta:
                 self._set_overlay_hidden(False)
                 return False
 
-            # 兜底：如果松开的是别的键，但此时 meta 已不再按下，也恢复
+            # fallback: if other key released but Meta no longer held, restore
             if self._overlay_hidden_by_key and not meta_down(event):
                 self._set_overlay_hidden(False)
                 return False
 
         elif et in (QEvent.FocusOut, QEvent.WindowDeactivate):
-            # 切走窗口/失去焦点时，强制恢复，避免“卡在隐藏状态”
+            # restore if window loses focus (avoid stuck hidden state)
             if self._overlay_hidden_by_key:
                 self._set_overlay_hidden(False)
 
         return super().eventFilter(obj, event)
 
-
+# =========================
+# Window class
+# =========================
 class ManualAlignWindow(QWidget):
     def __init__(self, run_dir, he_mask_path, dapi_mask_path, he_orig_path, dapi_orig_path,
-                 dapi_gui_affine, case_id=0, info=None):
+                 dapi_gui_affine, info=None):
         super().__init__()
         self.run_dir = str(run_dir)
         self.info = info or {}
@@ -679,7 +733,7 @@ class ManualAlignWindow(QWidget):
 
         self.setWindowTitle("Manual Alignment + Swap Mask/Original")
 
-        self.view = ManualAlignView(he_mask_path, dapi_mask_path, he_orig_path, dapi_orig_path, case_id=case_id)
+        self.view = ManualAlignView(he_mask_path, dapi_mask_path, he_orig_path, dapi_orig_path)
         self.resize(1400, 900)
 
         self.btn_load_h = QPushButton("Load H (.json)")
@@ -709,6 +763,30 @@ class ManualAlignWindow(QWidget):
 
         self.pose_mask = None
         self.pose_orig = None
+
+    def on_toggle_mode(self):
+        ov = self.view.overlay
+        if ov.mode == ov.MODE_AFFINE:
+            ov.enter_perspective_mode()
+            self.btn_mode.setText("Mode: Perspective")
+        else:
+            ov.enter_affine_mode()
+            self.btn_mode.setText("Mode: Affine")
+        ov.update_handles()
+
+    def on_reset(self):
+        clear_override_cursor()
+        self.view.init_overlay_pose(scale=0.85)
+        self.btn_mode.setText("Mode: Affine")
+
+    def on_swap(self):
+        cur_pose = self.view.get_overlay_pose()
+        if self.view.mode == self.view.MODE_MASK:
+            self.pose_mask = cur_pose
+        else:
+            self.pose_orig = cur_pose
+
+        self.view.swap_mode()
 
     def on_load_h_json(self):
         """
@@ -778,34 +856,10 @@ class ManualAlignWindow(QWidget):
                 "Loaded H",
                 f"Loaded {key_used} from:\n{path}\n\n"
                 f"H shape: {H.shape}\n"
-                f"(Not applied to GUI; stored only.)"
+                f"The homography has been applied to the current overlay."
             )
         except Exception as e:
             QMessageBox.warning(self, "Load failed", f"Failed to load H from json:\n{path}\n\nError: {e}")
-
-    def on_toggle_mode(self):
-        ov = self.view.overlay
-        if ov.mode == ov.MODE_AFFINE:
-            ov.enter_perspective_mode()
-            self.btn_mode.setText("Mode: Perspective")
-        else:
-            ov.enter_affine_mode()
-            self.btn_mode.setText("Mode: Affine")
-        ov.update_handles()
-
-    def on_reset(self):
-        clear_override_cursor()
-        self.view.init_overlay_pose(scale=0.85)
-
-    def on_swap(self):
-        # swap 前先把当前 pose 存到对应模式
-        cur_pose = self.view.get_overlay_pose()
-        if self.view.mode == self.view.MODE_MASK:
-            self.pose_mask = cur_pose
-        else:
-            self.pose_orig = cur_pose
-
-        self.view.swap_mode()
 
     def _pose_to_jsonable(self, pose):
         t = pose["transform"]
@@ -820,30 +874,30 @@ class ManualAlignWindow(QWidget):
         }
 
     def on_save(self):
-        # 先更新当前模式 pose
+        log_event(self.run_dir, "user_click_save_alignment")
         cur_pose = self.view.get_overlay_pose()
         if self.view.mode == self.view.MODE_MASK:
             self.pose_mask = cur_pose
         else:
             self.pose_orig = cur_pose
 
-        # 1) 四角：GUI DAPI -> HE
+        # 1) Corner correspondences: GUI DAPI -> HE
         src_gui, dst_he = self.view.get_corners_dapi_to_he()  # (4,2) float32
-        # 2) GUI -> original（和 blob matching 一样）
+        # 2) Convert GUI coordinates back to original DAPI coordinates
         T_gui = np.array(self.dapi_gui_affine, dtype=np.float32)  # original -> GUI
         if T_gui.shape == (2, 3):
             T_gui = np.vstack([T_gui, [0, 0, 1]]).astype(np.float32)
         T_gui_inv = np.linalg.inv(T_gui)  # GUI -> original
         src_gui_h = np.hstack([src_gui, np.ones((len(src_gui), 1), dtype=np.float32)])  # (4,3)
         src_orig = (T_gui_inv @ src_gui_h.T).T[:, :2].astype(np.float32)  # (4,2)
-        # 3) homography：ORIG DAPI -> HE
+        # 3) Estimate homography: original DAPI -> HE
         if src_orig.shape[0] != 4 or dst_he.shape[0] != 4:
             raise ValueError("Homography needs exactly 4 corner correspondences")
         H_homo = cv2.getPerspectiveTransform(src_orig.astype(np.float32),
                                              dst_he.astype(np.float32))
 
-        Ld = int(self.info.get("DAPI_level", 0))  # 你需要在 images_info.json 里明确写出来
-        Lh = int(self.info.get("HE_level", 0))  # 同上
+        Ld = int(self.info.get("DAPI_level", 0))
+        Lh = int(self.info.get("HE_level", 0))
         sd = float(2 ** Ld)
         sh = float(2 ** Lh)
         S_d = np.array([[sd, 0, 0],
@@ -927,8 +981,8 @@ class ManualAlignWindow(QWidget):
                 H_gui2he_mask,
                 (he_mask_bgr.shape[1], he_mask_bgr.shape[0])
             )
-            he_rgba = mask_to_rgba(he_mask_bgr, color_rgb=(255, 0, 0), alpha=0.5)  # 红
-            dapi_rgba = mask_to_rgba(warped_dapi_mask, color_rgb=(0, 0, 255), alpha=0.5)  # 蓝
+            he_rgba = mask_to_rgba(he_mask_bgr, color_rgb=(255, 0, 0), alpha=0.5)
+            dapi_rgba = mask_to_rgba(warped_dapi_mask, color_rgb=(0, 0, 255), alpha=0.5)
             out = overlay_rgba_on_bgr(he_mask_bgr, he_rgba)
             out = overlay_rgba_on_bgr(out, dapi_rgba)
             cv2.imwrite(str(run_dir / "2_manual_overlay_mask.png"), out)
@@ -963,11 +1017,13 @@ class ManualAlignWindow(QWidget):
         except Exception as e:
             print(f"[WARN] overlay save failed: {e}", flush=True)
 
+        log_event(self.run_dir, "system_ready_save_alignment")
         QMessageBox.information(self, "Step 2 Saved",
                                 "Alignment saved successfully.\n\n"
                                 "Return to the pipeline and run Step 3.")
+        log_event(self.run_dir, "user_click_exit")
+        log_event(self.run_dir, "system_ready_exit")
         QApplication.quit()
-
 
 
 if __name__ == "__main__":
@@ -1007,7 +1063,6 @@ if __name__ == "__main__":
     dapi_gui_affine = np.array(info["DAPI_gui_affine"], dtype=np.float32)
 
     app = QApplication(sys.argv)
-    case_id = int(info.get("DAPI_orientation_case", 0))
     window = ManualAlignWindow(
         run_dir=str(run_dir),
         he_mask_path=str(he_mask_path),
@@ -1015,363 +1070,8 @@ if __name__ == "__main__":
         he_orig_path=str(he_orig_path),
         dapi_orig_path=str(dapi_orig_path),
         dapi_gui_affine=dapi_gui_affine,
-        case_id=case_id,
-        info=info,
+        info=info
     )
     window.show()
-    sys.exit(app.exec_())
-
-class ManualAlignWindow(QWidget):
-    def __init__(self, run_dir, he_mask_path, dapi_mask_path, he_orig_path, dapi_orig_path,
-                 dapi_gui_affine, case_id=0, info=None):
-        super().__init__()
-        self.run_dir = str(run_dir)
-        self.info = info or {}
-        self.dapi_gui_affine = np.asarray(dapi_gui_affine, dtype=np.float32)
-
-        self.external_h_mat = None
-        self.external_h_source = None
-
-        self.setWindowTitle("Manual Alignment + Swap Mask/Original")
-
-        self.view = ManualAlignView(he_mask_path, dapi_mask_path, he_orig_path, dapi_orig_path, case_id=case_id)
-        self.resize(1400, 900)
-
-        self.btn_load_h = QPushButton("Load H (.json)")
-        self.btn_reset  = QPushButton("Reset")
-        self.btn_swap   = QPushButton("Swap Mask/Original")
-        self.btn_save   = QPushButton("Save Alignment")
-        self.btn_mode = QPushButton("Mode: Affine")
-
-        self.btn_load_h.clicked.connect(self.on_load_h_json)
-        self.btn_reset.clicked.connect(self.on_reset)
-        self.btn_swap.clicked.connect(self.on_swap)
-        self.btn_save.clicked.connect(self.on_save)
-        self.btn_mode.clicked.connect(self.on_toggle_mode)
-
-
-        hl = QHBoxLayout()
-        hl.addWidget(self.btn_load_h)
-        hl.addWidget(self.btn_mode)
-        hl.addWidget(self.btn_reset)
-        hl.addWidget(self.btn_swap)
-        hl.addWidget(self.btn_save)
-
-        layout = QVBoxLayout()
-        layout.addWidget(self.view)
-        layout.addLayout(hl)
-        self.setLayout(layout)
-
-        self.pose_mask = None
-        self.pose_orig = None
-
-    def on_load_h_json(self):
-        """
-        Load H matrix from an external json file and store it in memory.
-        NOTE: This does NOT update/apply to QPixmaps or overlay pose.
-        """
-        start_dir = self.run_dir if os.path.isdir(self.run_dir) else str(Path.cwd())
-
-        path, _ = QFileDialog.getOpenFileName(
-            self,
-            "Select alignment json (contains H_mat / H_homo)",
-            start_dir,
-            "JSON Files (*.json);;All Files (*)"
-        )
-        if not path:
-            return
-        try:
-            with open(path, "r") as f:
-                data = json.load(f)
-
-            # try multiple keys (your file might use H_mat or H_homo)
-            H = None
-            key_used = None
-            for k in ("H_mat", "H_homo", "H", "h_mat", "H_matrix", "homography_3x3"):
-                if k in data and data[k] is not None:
-                    H = np.asarray(data[k], dtype=np.float32)
-                    key_used = k
-                    break
-
-            if H is None:
-                raise KeyError("No H_mat / H_homo found in the selected json.")
-
-            # normalize to 3x3 if possible
-            if H.shape == (2, 3):
-                H = np.vstack([H, [0, 0, 1]]).astype(np.float32)
-            if H.shape != (3, 3):
-                raise ValueError(f"Expected H as (3,3) (or (2,3) convertible), got {H.shape}")
-
-            self.external_h_mat = H
-            self.external_h_source = path
-
-            # A: orig -> GUI (from images_info.json)
-            A = np.asarray(self.dapi_gui_affine, dtype=np.float64)
-            if A.shape == (2, 3):
-                A = np.vstack([A, [0, 0, 1]]).astype(np.float64)
-            if A.shape != (3, 3):
-                raise ValueError(f"dapi_gui_affine must be (2,3) or (3,3), got {A.shape}")
-
-            A_inv = np.linalg.inv(A)
-
-            # "subtract" the gui affine: H_gui2he = H_total * inv(A)
-            H_total = self.external_h_mat.astype(np.float64)
-            H_gui2he = H_total @ A_inv
-
-            # apply immediately to overlay pixmap (four-corner positioning)
-            self.view.apply_homography_to_overlay(H_gui2he)
-
-            # optional: also stash the current pose as pose_orig/mask so Save writes consistent state
-            cur_pose = self.view.get_overlay_pose()
-            if self.view.mode == self.view.MODE_MASK:
-                self.pose_mask = cur_pose
-            else:
-                self.pose_orig = cur_pose
-
-            QMessageBox.information(
-                self,
-                "Loaded H",
-                f"Loaded {key_used} from:\n{path}\n\n"
-                f"H shape: {H.shape}\n"
-                f"(Not applied to GUI; stored only.)"
-            )
-        except Exception as e:
-            QMessageBox.warning(self, "Load failed", f"Failed to load H from json:\n{path}\n\nError: {e}")
-
-    def on_toggle_mode(self):
-        ov = self.view.overlay
-        if ov.mode == ov.MODE_AFFINE:
-            ov.enter_perspective_mode()
-            self.btn_mode.setText("Mode: Perspective")
-        else:
-            ov.enter_affine_mode()
-            self.btn_mode.setText("Mode: Affine")
-        ov.update_handles()
-
-    def on_reset(self):
-        clear_override_cursor()
-        self.view.init_overlay_pose(scale=0.85)
-
-    def on_swap(self):
-        # swap 前先把当前 pose 存到对应模式
-        cur_pose = self.view.get_overlay_pose()
-        if self.view.mode == self.view.MODE_MASK:
-            self.pose_mask = cur_pose
-        else:
-            self.pose_orig = cur_pose
-
-        self.view.swap_mode()
-
-    def _pose_to_jsonable(self, pose):
-        t = pose["transform"]
-        p = pose["pos"]
-        return {
-            "pos_x": p.x(),
-            "pos_y": p.y(),
-            "rotation_deg": pose["rotation"],
-            "m11": t.m11(), "m12": t.m12(),
-            "m21": t.m21(), "m22": t.m22(),
-            "dx":  t.dx(),  "dy":  t.dy(),
-        }
-
-    def on_save(self):
-        # 先更新当前模式 pose
-        cur_pose = self.view.get_overlay_pose()
-        if self.view.mode == self.view.MODE_MASK:
-            self.pose_mask = cur_pose
-        else:
-            self.pose_orig = cur_pose
-
-        # 1) 四角：GUI DAPI -> HE
-        src_gui, dst_he = self.view.get_corners_dapi_to_he()  # (4,2) float32
-        # 2) GUI -> original（和 blob matching 一样）
-        T_gui = np.array(self.dapi_gui_affine, dtype=np.float32)  # original -> GUI
-        if T_gui.shape == (2, 3):
-            T_gui = np.vstack([T_gui, [0, 0, 1]]).astype(np.float32)
-        T_gui_inv = np.linalg.inv(T_gui)  # GUI -> original
-        src_gui_h = np.hstack([src_gui, np.ones((len(src_gui), 1), dtype=np.float32)])  # (4,3)
-        src_orig = (T_gui_inv @ src_gui_h.T).T[:, :2].astype(np.float32)  # (4,2)
-        # 3) homography：ORIG DAPI -> HE
-        if src_orig.shape[0] != 4 or dst_he.shape[0] != 4:
-            raise ValueError("Homography needs exactly 4 corner correspondences")
-        H_homo = cv2.getPerspectiveTransform(src_orig.astype(np.float32),
-                                             dst_he.astype(np.float32))
-
-        Ld = int(self.info.get("DAPI_level", 0))  # 你需要在 images_info.json 里明确写出来
-        Lh = int(self.info.get("HE_level", 0))  # 同上
-        sd = float(2 ** Ld)
-        sh = float(2 ** Lh)
-        S_d = np.array([[sd, 0, 0],
-                        [0, sd, 0],
-                        [0, 0, 1]], dtype=np.float64)
-        S_h = np.array([[sh, 0, 0],
-                        [0, sh, 0],
-                        [0, 0, 1]], dtype=np.float64)
-        H_mat_level_0 = (S_h @ H_homo.astype(np.float64) @ np.linalg.inv(S_d)).astype(np.float64)
-        data = {
-            "active_mode": self.view.mode,
-            "mask_pose": self._pose_to_jsonable(self.pose_mask) if self.pose_mask else None,
-            "original_pose": self._pose_to_jsonable(self.pose_orig) if self.pose_orig else None,
-            "H_mat": H_homo.tolist(),
-            "H_mat_level_0": H_mat_level_0.tolist()
-        }
-        with open(os.path.join(self.run_dir, "manual_initial_alignment.json"), "w") as f:
-            json.dump(data, f, indent=2)
-        print("Saved manual_alignment.json")
-
-        # --------------------------------
-        # save overlay images
-        # --------------------------------
-        try:
-            run_dir = Path(self.run_dir)
-
-            # ----- helpers -----
-            def _as_3x3(M):
-                M = np.asarray(M, dtype=np.float32)
-                if M.shape == (2, 3):
-                    M = np.vstack([M, [0, 0, 1]]).astype(np.float32)
-                if M.shape != (3, 3):
-                    raise ValueError(f"Expected (2,3) or (3,3), got {M.shape}")
-                return M
-
-            def _compute_H_gui2he():
-                # Uses CURRENT view.mode + CURRENT overlay pose + CURRENT pixmaps
-                src_gui, dst_he = self.view.get_corners_dapi_to_he()   # (4,2)
-                src_gui = np.asarray(src_gui, dtype=np.float32)
-                dst_he  = np.asarray(dst_he,  dtype=np.float32)
-                H = cv2.getPerspectiveTransform(src_gui, dst_he)       # 3x3
-                return H.astype(np.float32)
-
-            def _warp_overlay(bgr_bg, bgr_fg, H_3x3, out_path, alpha_bg=0.7, alpha_fg=0.8, interp=cv2.INTER_LINEAR):
-                H_3x3 = _as_3x3(H_3x3)
-                warped = cv2.warpPerspective(
-                    bgr_fg,
-                    H_3x3,
-                    (bgr_bg.shape[1], bgr_bg.shape[0]),
-                    flags=interp,
-                    borderMode=cv2.BORDER_CONSTANT,
-                )
-                out = cv2.addWeighted(bgr_bg, float(alpha_bg), warped, float(alpha_fg), 0)
-                cv2.imwrite(str(out_path), out)
-
-            # ----- stash current GUI state so we can restore -----
-            mode0 = self.view.mode
-            pose0 = self.view.get_overlay_pose()
-
-            # Make sure we have both poses recorded (so both overlays reflect what you saw)
-            if self.pose_mask is None:
-                # we at least have current pose for current mode already
-                if self.view.mode == self.view.MODE_MASK:
-                    self.pose_mask = self.view.get_overlay_pose()
-            if self.pose_orig is None:
-                if self.view.mode == self.view.MODE_ORIG:
-                    self.pose_orig = self.view.get_overlay_pose()
-
-            # =====================================================
-            # 1) Save MASK overlay  (mask images are already in GUI space)
-            # =====================================================
-            if self.view.mode != self.view.MODE_MASK:
-                self.view.swap_mode()
-            if self.pose_mask is not None:
-                self.view.apply_overlay_pose_keep_scene_center(self.pose_mask)
-            H_gui2he_mask = _compute_H_gui2he()
-            he_mask_bgr = cv2.imread(str(run_dir / "1_confirmed_he_dense_mask.png"))
-            dapi_mask_bgr = cv2.imread(str(run_dir / "1_confirmed_dapi_mask.png"))
-            warped_dapi_mask = warp_mask(
-                dapi_mask_bgr,
-                H_gui2he_mask,
-                (he_mask_bgr.shape[1], he_mask_bgr.shape[0])
-            )
-            he_rgba = mask_to_rgba(he_mask_bgr, color_rgb=(255, 0, 0), alpha=0.5)  # 红
-            dapi_rgba = mask_to_rgba(warped_dapi_mask, color_rgb=(0, 0, 255), alpha=0.5)  # 蓝
-            out = overlay_rgba_on_bgr(he_mask_bgr, he_rgba)
-            out = overlay_rgba_on_bgr(out, dapi_rgba)
-            cv2.imwrite(str(run_dir / "2_manual_overlay_mask.png"), out)
-            # =====================================================
-            # 2) Save ORIGINAL overlay (mask images are already in GUI space)
-            # =====================================================
-            if self.view.mode != self.view.MODE_ORIG:
-                self.view.swap_mode()
-            if self.pose_orig is not None:
-                self.view.apply_overlay_pose_keep_scene_center(self.pose_orig)
-            H_gui2he_orig = _compute_H_gui2he()
-            he_orig_bgr = cv2.imread(str(run_dir / "1_he_level_image.png"), cv2.IMREAD_COLOR)
-            dapi_raw_bgr = cv2.imread(str(run_dir / "1_dapi_lut.png"), cv2.IMREAD_COLOR)
-            if he_orig_bgr is None or dapi_raw_bgr is None:
-                raise RuntimeError("Failed to read original images for overlay saving.")
-            _warp_overlay(
-                he_orig_bgr,
-                dapi_raw_bgr,
-                H_gui2he_orig,
-                out_path=(run_dir / "2_manual_overlay_original.png"),
-                alpha_bg=0.7, alpha_fg=0.8,
-                interp=cv2.INTER_LINEAR,
-            )
-            print("[INFO] Saved overlays:",
-                  str(run_dir / "2_manual_overlay_original.png"),
-                  str(run_dir / "2_manual_overlay_mask.png"),
-                  flush=True)
-            if self.view.mode != mode0:
-                self.view.swap_mode()
-            self.view.apply_overlay_pose_keep_scene_center(pose0)
-
-        except Exception as e:
-            print(f"[WARN] overlay save failed: {e}", flush=True)
-
-        QMessageBox.information(self, "Step 2 Saved",
-                                "Alignment saved successfully.\n\n"
-                                "Return to the pipeline and run Step 3.")
-        QApplication.quit()
-
-
-
-if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print("Usage: python 2_manual_alignment.py <RUN_DIR>")
-        sys.exit(2)
-
-    run_dir = Path(sys.argv[1]).resolve()
-    if not run_dir.exists():
-        print(f"[ERROR] RUN_DIR not found: {run_dir}")
-        sys.exit(2)
-
-    info_path = run_dir / "images_info.json"
-    if not info_path.exists():
-        print(f"[ERROR] images_info.json not found in RUN_DIR: {info_path}")
-        sys.exit(2)
-
-    with open(info_path, "r") as f:
-        info = json.load(f)
-
-    RUN_ID = info.get("RUN_ID", info.get("run_id", run_dir.name.replace("runs_", "", 1)))
-    he_mask_path   = run_dir / "1_confirmed_he_dense_mask.png"
-    dapi_mask_path = run_dir / "1_confirmed_dapi_mask.png"
-    he_orig_path   = run_dir / "1_he_level_image.png"
-    dapi_orig_path = run_dir / "1_dapi_lut.png"
-
-    missing = [p for p in [he_mask_path, dapi_mask_path, he_orig_path, dapi_orig_path] if not p.exists()]
-    if missing:
-        print("[ERROR] Missing required Step 1 outputs:")
-        for p in missing:
-            print("  -", p)
-        sys.exit(2)
-
-    if "DAPI_gui_affine" not in info:
-        print("[ERROR] DAPI_gui_affine missing in images_info.json")
-        sys.exit(2)
-    dapi_gui_affine = np.array(info["DAPI_gui_affine"], dtype=np.float32)
-
-    app = QApplication(sys.argv)
-    case_id = int(info.get("DAPI_orientation_case", 0))
-    window = ManualAlignWindow(
-        run_dir=str(run_dir),
-        he_mask_path=str(he_mask_path),
-        dapi_mask_path=str(dapi_mask_path),
-        he_orig_path=str(he_orig_path),
-        dapi_orig_path=str(dapi_orig_path),
-        dapi_gui_affine=dapi_gui_affine,
-        case_id=case_id,
-        info=info,
-    )
-    window.show()
+    log_event(run_dir, "system_ready_initial_start")
     sys.exit(app.exec_())

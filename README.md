@@ -1,10 +1,10 @@
-## PHARAOH (Beta version 3.0)
+## PHARAOH (Beta version 3.1)
 
 ### ⚠️ Now please only test on Xenium data. Refinement is needed for other platforms.
 
 PHARAOH is a scalable and generalizable framework for multimodal tissue image alignment and spatial transcriptomics enhancement.
 
-It enables fast, robust, GUI-based, and GPU-free semi-automatic registration between DAPI imaging from multiplexed imaging platforms (Xenium, CosMx, CODEX, CyCIF), and histology (H&E), supporting both same-section and adjacent-section alignment.
+It enables fast, robust, GUI-based, and GPU-free semi-automatic registration between DAPI imaging from multiplexed imaging platforms (Xenium, CosMx, Orion, CODEX, cyCIF), and histology (H&E), supporting both same-section and adjacent-section alignment.
 
 
 
@@ -12,7 +12,7 @@ It enables fast, robust, GUI-based, and GPU-free semi-automatic registration bet
 
 In order to run the PHARAOH platform, you will need the following files:
 
-1. An image containing one DAPI channel (should be on the first channel if of multi-channels), in the format of `.ome.tif`, `.tif` or `.jpg`. 
+1. An image containing one DAPI/DNA channel (should be on the first channel if of multi-channels), in the format of `.ome.tif`, `.tif` or `.jpg`. 
 
     The DAPI file from Xenium platfrom typically is in the format of either `morphology_focus.ome.tif` or `morphology_focus/morphology_focus_0000.ome.tif`
 2. An H&E image from the same slice or an adjacent slice in the format of `.ome.tif`, `.tif` or `.jpg`. 
@@ -27,7 +27,7 @@ In order to achieve the best alignment performance, please consider using raw, u
 First, clone the repository:
 ```bash
 git clone https://github.com/yaosicong1999/PHARAOH.git
-cd PHARAOH/version_3.0
+cd PHARAOH/version_3.1
 ```
 We recommend installing Pixel2Gene in a dedicated Conda environment. 
 ```bash
@@ -227,12 +227,15 @@ Stage 4 generates an output folder `nuclei patches`.
 ###  Stage 5: View Nuclei Patches and Get Final Alignment
 Click the `Stage 5` button in the control panel to open the nuclei patch gallery.
 
-This viewer displays the extracted nuclei patches (or patches centered at the aligned centroids) for both DAPI and H&E images, allowing visual inspection. You can click any image to enlarge it.
+This viewer displays the extracted nuclei patches (or patches centered at the aligned centroids) for both DAPI and H&E images, allowing visual inspection. 
 
-> ⚠️ **Note:** This feature is still under development.  
-> In the enlarged view, you can click on the image to propose refined keypoints.  
-> Press `Enter` to save the selected point.
+You can click any image to enlarge either image.
+> ⚠️ **Note:** This feature is a test version.
 > 
+> 1. In the enlarged view, you can click on the image to propose refined keypoints. Press `Enter` to save the refined point.
+> 2. If refined keypoints are presented, press 'Delete' to drop the refined points.
+> 
+
 #### Available Controls in the Step 5 Viewer
 There are five buttons in the viewer:
 
@@ -245,6 +248,8 @@ The result is saved as: `dapi_to_he_homography_level0.json`
 Toggle the visibility of automatically detected centroids in each image.
 4. `DAPI: LUT / Raw`
 Switch between LUT-colored DAPI visualization and DAPI intensity image.
+5.  `Drop patch pair'
+Drop the current nuclei patch pair from the candidate list.
 
 #### Output
 After clicking `Calculate alignment matrix`, Stage 5 generates `dapi_to_he_homography_level0.json`.  
@@ -275,7 +280,86 @@ There are three buttons in the viewer:
 
 After completing Stage 6, the following outputs will be generated:
 
-- PNG images prefixed with `9_`
-- GIF images prefixed with `9_`
+- PNG images prefixed with `6_`
+- GIF images prefixed with `6_`
 
 ---
+
+## 🕹️  Parameters controls
+Parameter config file `parameters.json` controls key behaviors of the PHAROAH pipeline across stages 3–5, including tile sampling, nuclei extraction, patch generation, and final transformation estimation. ***Italic*** parameters are relatively important.
+
+###  🧩 Stage 3 — Tile Sampling
+Controls how image tiles are sampled for downstream processing.
+	
+- ***n_tiles***: Number of tiles sampled from the whole slide image.
+- ***tile_size***: Size (in pixels) of each sampled tile.
+- **min_dist_factor**: Controls spatial dispersion of tiles. Larger values enforce more separation between tiles.
+- **dapi_level_override / he_level_override**: Optional pyramid level override for DAPI / H&E images. Use "None" to automatically select levels.
+- **he_tile_margin_ratio**: Additional margin (relative to tile size) added when extracting H&E tiles.
+Helps ensure context coverage for cross-modality matching.
+
+
+###  🧬 Stage 4A — Nuclei Mask Extraction
+
+Controls preprocessing and segmentation of nuclei masks from DAPI and H&E.
+
+**DAPI-related**
+- **dapi_thr_offset**: Intensity threshold offset applied during binarization.
+- **dapi_mask_min_area_factor**: Minimum nucleus area as a fraction of patch size.  Used to filter small noisy components.
+- **dapi_mask_upscale_factor**: Upscaling factor applied to DAPI masks for higher-resolution refinement.
+
+**H&E-related**
+- **he_mask_n_smooth**: Number of smoothing iterations applied before thresholding.
+- **he_mask_intensity_threshold**: Threshold used to segment nuclei-like regions from H&E.
+- **he_mask_upscale_factor**: Upscaling factor for H&E masks.
+
+
+###  🔍 Stage 4B — Tile Matching & Global Initialization
+
+Controls how corresponding tiles are selected and aligned.
+
+**Tile filtering**
+- ***good_nuclei_min***: Minimum number of nuclei required for a tile to be considered valid.
+- ***min_good_tiles***: Minimum number of valid tiles required to proceed.
+- ***fallback_score_thr***: Threshold used when fallback matching is triggered.
+- ***min_fallback_tiles***: Minimum number of tiles required in fallback mode.
+
+**Pair selection**
+- ***pair_top_k***: Number of best candidate matches per tile.
+- ***pairs_to_take_per_tile***: Number of pairs retained per tile for alignment.
+
+**Multi-stage alignment search - Phase 1 (coarse search)**
+- **n_tiles**: Number of tiles used in coarse alignment.
+- **ds**: Downsampling factor for speed.
+- **scale_min, scale_max, scale_step**: Range and step size for scale search.
+- **shift_frac, shift_step_frac**: Range and step size for translation search (relative to image size).
+
+**Multi-stage alignment search - Phase 2 (refinement)**
+- **median_scale_frac**: Scale refinement around median estimate.
+- **scale_step**: Step size for scale refinement.
+- **shift_frac, shift_step_frac**: Translation refinement parameters.
+
+**Multi-stage alignment search - Phase 3 (fine refinement)**
+- **scale_range_frac, scale_step_frac**: Fine-scale search range and resolution.
+- **shift_range_frac, shift_step_frac**: Fine translation search parameters.
+
+###  🔬 Stage 4C — Patch Extraction
+
+Controls high-resolution local refinement patches.
+- ***dapi_patch_len***: Patch size (in pixels) for DAPI-centered regions.
+- **Other parameters (same as Stage 4A)**: Control mask extraction within patches.
+
+### 🧠 Stage 5 — Final Transformation Estimation
+
+Controls how the final global alignment is computed.
+	
+- ***transform_mode***:
+Type of transformation model.
+  - "affine" — linear transformation (rotation + translation + scaling)
+  - "homography" — projective transformation (default)
+  -  "tps" — thin-plate spline (nonlinear)
+  - "local_tps" — locally adaptive TPS (future/advanced use)
+
+- ***balance_points_bool***: Whether to apply spatially balanced sampling before fitting.
+   - false → use all nuclei pairs
+   - true → grid-based sampling to avoid spatial bias

@@ -7,18 +7,19 @@ from PyQt5.QtWidgets import (
     QApplication, QWidget, QLabel, QPushButton, QHBoxLayout, QVBoxLayout,
     QFileDialog, QMessageBox, QGroupBox, QGridLayout, QLineEdit
 )
+import json
 
 # =========================
-# CONFIG: change to your filenames
+# CONFIG
 # =========================
 PROJECT_ROOT = Path(__file__).resolve().parent
 STAGE1_SCRIPT = "1_read_dapi_he.py"
-STAGE2A_SCRIPT = "2a_blob_matching.py"
-STAGE2B_SCRIPT = "2b_manual_alignment.py"
+STAGE2_SCRIPT = "2_manual_alignment.py"
 STAGE3_SCRIPT = "3_get_tiles.py"
 STAGE4_SCRIPT = "4_tile_gallery.py"
-STAGE5_SCRIPT = "8_nucleus_patch_gallery.py"
-STAGE6_SCRIPT = "9_final_alignment.py"
+STAGE5_SCRIPT = "5_nucleus_patch_gallery.py"
+STAGE6_SCRIPT = "6_final_alignment.py"
+
 # =========================
 # Helpers
 # =========================
@@ -27,6 +28,42 @@ def now_run_dir_name():
 
 def ensure_dir(p: Path):
     p.mkdir(parents=True, exist_ok=True)
+
+def write_stage_click_time(run_dir: Path, stage_id: str):
+    append_stage_event(run_dir, stage_id, "user_click_initial_start")
+
+def write_stage_finish_time(run_dir: Path, stage_id: str, exit_code=None):
+    if exit_code is None:
+        append_stage_event(run_dir, stage_id, f"stage{stage_id}_finish")
+    else:
+        append_stage_event(run_dir, stage_id, f"stage{stage_id}_finish", exit_code=exit_code)
+
+def append_stage_event(run_dir: Path, stage_id: str, event_name: str, **extra):
+    out_json = run_dir / "pipeline_times.json"
+    now_str = datetime.now().isoformat(timespec="seconds")
+
+    data = {}
+    if out_json.exists():
+        try:
+            with open(out_json, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except Exception:
+            data = {}
+
+    stage_key = f"stage{stage_id}_events"
+
+    if stage_key not in data or not isinstance(data[stage_key], list):
+        data[stage_key] = []
+
+    rec = {
+        "event": event_name,
+        "time": now_str,
+    }
+    rec.update(extra)
+    data[stage_key].append(rec)
+
+    with open(out_json, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
 
 def stage1_done(run_dir: Path) -> bool:
     return (run_dir / "images_info.json").exists()
@@ -71,7 +108,7 @@ class PipelineWindow(QWidget):
         self.resize(860, 420)
 
         self.proc = None  # QProcess
-        self.active_step = None
+        self.active_stage = None
 
         # ---- RUN_DIR selector ----
         self.run_dir_edit = QLineEdit("")
@@ -91,57 +128,50 @@ class PipelineWindow(QWidget):
         self.btn_stage1 = QPushButton("Run Stage 1: Image Selection")
         self.lbl_stage1_status = QLabel(status_text(False))
         self.lbl_stage1_status.setStyleSheet(status_style(False))
-        self.btn_stage1.clicked.connect(lambda: self.run_step("1"))
+        self.btn_stage1.clicked.connect(lambda: self.run_stage("1"))
 
         # ---- Stage 2 UI ----
-        self.btn_stage2a = QPushButton("Run Stage 2A: Blob Matching")
-        self.btn_stage2b = QPushButton("Run Stage 2B: Manual Alignment")
+        self.btn_stage2 = QPushButton("Run Stage 2: Manual Alignment")
         self.lbl_stage2_status = QLabel(status_text(False))
         self.lbl_stage2_status.setStyleSheet(status_style(False))
-        self.btn_stage2a.clicked.connect(lambda: self.run_step("2a"))
-        self.btn_stage2b.clicked.connect(lambda: self.run_step("2b"))
-        stage2_btn_box = QWidget()
-        stage2_btn_layout = QVBoxLayout(stage2_btn_box)
-        stage2_btn_layout.setContentsMargins(0, 0, 0, 0)
-        stage2_btn_layout.setSpacing(8)
-        stage2_btn_layout.addWidget(self.btn_stage2a)
-        stage2_btn_layout.addWidget(self.btn_stage2b)
-        box = QGroupBox("Pipeline")
-        grid = QGridLayout()
-        grid.setHorizontalSpacing(20)
-        grid.setVerticalSpacing(14)
+        self.btn_stage2.clicked.connect(lambda: self.run_stage("2"))
 
         # ---- Stage 3 UI ----
         self.btn_stage3 = QPushButton("Run Stage 3: Tile Extraction")
         self.lbl_stage3_status = QLabel(status_text(False))
         self.lbl_stage3_status.setStyleSheet(status_style(False))
-        self.btn_stage3.clicked.connect(lambda: self.run_step("3"))
+        self.btn_stage3.clicked.connect(lambda: self.run_stage("3"))
         self.btn_stage4 = QPushButton("Run Stage 4: Nuclei Patch Extraction")
         self.lbl_stage4_status = QLabel(status_text(False))
         self.lbl_stage4_status.setStyleSheet(status_style(False))
-        self.btn_stage4.clicked.connect(lambda: self.run_step("4"))
+        self.btn_stage4.clicked.connect(lambda: self.run_stage("4"))
         self.btn_stage5 = QPushButton("Run Stage 5: Nuclei Patch Gallery + Final Alignment Calculation")
         self.lbl_stage5_status = QLabel(status_text(False))
         self.lbl_stage5_status.setStyleSheet(status_style(False))
-        self.btn_stage5.clicked.connect(lambda: self.run_step("5"))
+        self.btn_stage5.clicked.connect(lambda: self.run_stage("5"))
         self.btn_stage6 = QPushButton("Run Stage 6: Final Alignment Display")
         self.lbl_stage6_status = QLabel(status_text(False))
         self.lbl_stage6_status.setStyleSheet(status_style(False))
-        self.btn_stage6.clicked.connect(lambda: self.run_step("6"))
+        self.btn_stage6.clicked.connect(lambda: self.run_stage("6"))
 
         # Header row
-        hdr1 = QLabel("Stage 1: Select Images")
+        hdr1 = QLabel("Stage 1: select images")
         hdr1.setStyleSheet("font-size: 14px; font-weight: 700;")
-        hdr2 = QLabel("Stage 2: Get Initial Alignment")
+        hdr2 = QLabel("Stage 2: get initial alignment")
         hdr2.setStyleSheet("font-size: 14px; font-weight: 700;")
-        hdr3 = QLabel("Stage 3: Extract Tiles")
+        hdr3 = QLabel("Stage 3: extract tiles")
         hdr3.setStyleSheet("font-size: 14px; font-weight: 700;")
-        hdr4 = QLabel("Stage 4: Extract Nuclei Patches")
+        hdr4 = QLabel("Stage 4: extract nuclei patches")
         hdr4.setStyleSheet("font-size: 14px; font-weight: 700;")
-        hdr5 = QLabel("Stage 5: View Nuclei Patches and Get Final Alignment")
+        hdr5 = QLabel("Stage 5: view nuclei patches and get final alignment")
         hdr5.setStyleSheet("font-size: 14px; font-weight: 700;")
-        hdr6 = QLabel("Stage 6: View Final Alignment")
+        hdr6 = QLabel("Stage 6: view final alignment")
         hdr6.setStyleSheet("font-size: 14px; font-weight: 700;")
+
+        box = QGroupBox("Pipeline")
+        grid = QGridLayout()
+        grid.setHorizontalSpacing(20)
+        grid.setVerticalSpacing(14)
 
         grid.addWidget(hdr1, 0, 0, alignment=Qt.AlignLeft)
         grid.addWidget(hdr2, 0, 1, alignment=Qt.AlignLeft)
@@ -152,7 +182,7 @@ class PipelineWindow(QWidget):
 
         # Buttons row
         grid.addWidget(self.btn_stage1, 1, 0)
-        grid.addWidget(stage2_btn_box, 1, 1)
+        grid.addWidget(self.btn_stage2, 1, 1)
         grid.addWidget(self.btn_stage3, 4, 0)
         grid.addWidget(self.btn_stage4, 4, 1)
         grid.addWidget(self.btn_stage5, 7, 0)
@@ -270,58 +300,54 @@ class PipelineWindow(QWidget):
 
         self.btn_stage1.setEnabled(bool(run_dir) and idle and (not done1))
         can_run_stage2 = bool(run_dir) and done1 and idle and (not done2)
-        self.btn_stage2a.setEnabled(can_run_stage2)
-        self.btn_stage2b.setEnabled(can_run_stage2)
+        self.btn_stage2.setEnabled(can_run_stage2)
         self.btn_stage3.setEnabled(bool(run_dir) and done2 and idle and (not done3))
-        self.btn_stage4.setEnabled(bool(run_dir) and done3 and idle and (not done4))
+        self.btn_stage4.setEnabled(bool(run_dir) and done3 and idle)
         self.btn_stage5.setEnabled(can_view_stage5)
         self.btn_stage6.setEnabled(can_view_stage6)
 
     # ---------------------
-    # Run steps
+    # Run stages
     # ---------------------
-    def run_step(self, step_id):
+    def run_stage(self, stage_id):
         run_dir = self.get_run_dir()
         if run_dir is None:
             QMessageBox.warning(self, "No RUN_DIR", "Please choose or create a RUN_DIR first.")
             return
 
         ensure_dir(run_dir)
-
         if self.proc is not None:
-            QMessageBox.information(self, "Busy", "A step is already running.")
+            QMessageBox.information(self, "Busy", "A stage is already running.")
             return
+        write_stage_click_time(run_dir, stage_id)
 
-        if step_id == "1":
+        if stage_id == "1":
             script = STAGE1_SCRIPT
             args = [str(run_dir)]
-        elif step_id == "2a":
-            script = STAGE2A_SCRIPT
+        elif stage_id == "2":
+            script = STAGE2_SCRIPT
             args = [str(run_dir)]
-        elif step_id == "2b":
-            script = STAGE2B_SCRIPT
-            args = [str(run_dir)]
-        elif step_id == "3":
+        elif stage_id == "3":
             script = STAGE3_SCRIPT
             args = [str(run_dir)]
-        elif step_id == "4":
+        elif stage_id == "4":
             script = STAGE4_SCRIPT
             args = [str(run_dir)]
-        elif step_id == "5":
+        elif stage_id == "5":
             script = STAGE5_SCRIPT
             args = [str(run_dir)]
-        elif step_id == "6":
+        elif stage_id == "6":
             script = STAGE6_SCRIPT
             args = [str(run_dir)]
         else:
-            raise ValueError(step_id)
+            raise ValueError(stage_id)
 
         script_path = Path(__file__).resolve().parent / script
         if not script_path.exists():
             QMessageBox.critical(self, "Script not found", f"Cannot find script:\n{script_path}")
             return
 
-        self.active_step = step_id
+        self.active_stage = stage_id
         self.pre_stage1_exists = stage1_done(run_dir)
         self.pre_stage2_exists = stage2_done(run_dir)
 
@@ -336,8 +362,7 @@ class PipelineWindow(QWidget):
 
         # disable all while running
         self.btn_stage1.setEnabled(False)
-        self.btn_stage2a.setEnabled(False)
-        self.btn_stage2b.setEnabled(False)
+        self.btn_stage2.setEnabled(False)
         self.btn_stage3.setEnabled(False)
         self.btn_stage4.setEnabled(False)
         self.btn_stage5.setEnabled(False)
@@ -360,13 +385,18 @@ class PipelineWindow(QWidget):
             print(data, end="", file=sys.stderr)
 
     def _on_finished(self, exitCode, exitStatus):
-        step = self.active_step
-        self.active_step = None
+        stage = self.active_stage
+        run_dir = self.get_run_dir()
+
+        if stage is not None and run_dir is not None:
+            write_stage_finish_time(run_dir, stage, exit_code=exitCode)
+
+        self.active_stage = None
         self.proc = None
         self.refresh_status()
         run_dir = self.get_run_dir()
 
-        if step == "1":
+        if stage == "1":
             ok = bool(run_dir) and stage1_done(run_dir)
             if ok:
                 QMessageBox.information(self, "Stage 1 Saved", "Stage 1 outputs detected (images_info.json found).")
@@ -375,7 +405,7 @@ class PipelineWindow(QWidget):
                                     "Stage 1 window closed without saving.\n"
                                     "No images_info.json found, so Stage 1 is NOT finished.")
             return
-        if step in ("2a", "2b"):
+        if stage == "2":
             ok_now = bool(run_dir) and stage2_done(run_dir)
             if ok_now and not self.pre_stage2_exists:
                 QMessageBox.information(self, "Stage 2 Saved", "Stage 2 outputs detected (alignment json found).")
@@ -386,7 +416,7 @@ class PipelineWindow(QWidget):
                                     "Stage 2 window closed without saving.\n"
                                     "No alignment json found, so Stage 2 is NOT finished.")
             return
-        if step == "3":
+        if stage == "3":
             ok = bool(run_dir) and stage3_done(run_dir)
             if ok:
                 QMessageBox.information(self, "Stage 3 Saved", "Stage 3 outputs detected (tiles/ has files).")
@@ -395,7 +425,7 @@ class PipelineWindow(QWidget):
                                     "Stage 3 window/process ended without producing tiles.\n"
                                     "tiles/ is empty (or missing), so Stage 3 is NOT finished.")
             return
-        if step == "4":
+        if stage == "4":
             ok = bool(run_dir) and stage4_done(run_dir)
             if ok:
                 QMessageBox.information(self, "Stage 4 Saved", "Stage 4 outputs detected (nuclei/ has nuclei_info.json).")
@@ -406,8 +436,8 @@ class PipelineWindow(QWidget):
             return
         # fallback (shouldn't happen)
         if exitCode != 0:
-            print(f"[INFO] step={step} exitCode={exitCode} exitStatus={exitStatus}", flush=True)
-            QMessageBox.critical(self, "Stage Failed", f"Stage {step} failed (exit code = {exitCode}).")
+            print(f"[INFO] stage={stage} exitCode={exitCode} exitStatus={exitStatus}", flush=True)
+            QMessageBox.critical(self, "Stage Failed", f"Stage {stage} failed (exit code = {exitCode}).")
 
 
 if __name__ == "__main__":
