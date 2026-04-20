@@ -4,7 +4,7 @@
 
 PHARAOH is a scalable and generalizable framework for multimodal tissue image alignment and spatial transcriptomics enhancement.
 
-It enables fast, robust, GUI-based, and GPU-free semi-automatic registration between DAPI imaging from multiplexed imaging platforms (Xenium, CosMx, Orion, CODEX, cyCIF), and histology (H&E), supporting both same-section and adjacent-section alignment.
+It enables fast, robust, GUI-based, and GPU-free semi-automatic registration between DAPI imaging from multiplexed imaging platforms (Xenium, CosMx, Orion, CODEX, CycIF), and histology (H&E), supporting both same-section and adjacent-section alignment.
 
 
 
