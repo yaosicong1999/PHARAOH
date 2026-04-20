@@ -1113,13 +1113,6 @@ class FinalAlignmentApp(tk.Tk):
         path = filedialog.askopenfilename(
             parent=self,
             title="Select cells.csv.gz",
-            filetypes=[
-                ("cells.csv.gz (recommended)", "*.csv.gz"),
-                ("Gzipped CSV", "*.gz"),
-                ("All files", "*.*"),
-            ],
-            initialfile="cells.csv.gz",
-            defaultextension=".csv.gz",
         )
 
         if not path:
