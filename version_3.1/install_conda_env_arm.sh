@@ -12,11 +12,13 @@ source "$(conda info --base)/etc/profile.d/conda.sh"
 conda activate ${ENV_NAME}
 
 echo "Upgrading pip"
-pip install --upgrade pip setuptools wheel
+python -m pip install --upgrade pip setuptools wheel
+
+echo "Installing conda-managed binary deps"
+conda install -y -c conda-forge protobuf --override-channels
 
 echo "Installing packages (this may take a while)..."
-
-pip install \
+python -m pip install \
 aiohappyeyeballs==2.6.1 \
 aiohttp==3.13.2 \
 aiosignal==1.4.0 \
@@ -107,7 +109,6 @@ numcodecs==0.13.1 \
 numpy==2.2.6 \
 numpydoc==1.9.0 \
 ome-types==0.6.3 \
-opencv-python==4.12.0.88 \
 packaging==25.0 \
 pandas==2.3.3 \
 parso==0.8.5 \
@@ -138,9 +139,6 @@ pyproject_hooks==1.2.0 \
 PyQt5==5.15.11 \
 PyQt5-Qt5==5.15.18 \
 PyQt5_sip==12.17.1 \
-PyQt6==6.10.0 \
-PyQt6-Qt6==6.10.0 \
-PyQt6_sip==13.10.2 \
 python-dateutil==2.9.0.post0 \
 pytz==2025.2 \
 pyvips==3.1.1 \
@@ -181,7 +179,7 @@ toolz==1.1.0 \
 tornado==6.5.1 \
 tqdm==4.67.1 \
 traitlets==5.14.3 \
-triangle==20230923 \
+triangle2==20230923 \
 typer==0.20.0 \
 typing_extensions==4.15.0 \
 typing-inspection==0.4.2 \
@@ -196,7 +194,11 @@ wrapt==2.0.1 \
 xsdata==26.1 \
 yarl==1.22.0 \
 zarr==2.18.3 \
-zipp==3.23.0
+zipp==3.23.0 \
+opencv-python==4.12.0.88
+
+echo "Verifying OpenCV import"
+python -c "import cv2; print('cv2 OK:', cv2.__version__)"
 
 echo "✅ Environment ${ENV_NAME} installed successfully"
 echo "Activate with: conda activate ${ENV_NAME}"
