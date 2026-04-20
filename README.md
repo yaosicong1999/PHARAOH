@@ -29,18 +29,44 @@ First, clone the repository:
 git clone https://github.com/yaosicong1999/PHARAOH.git
 cd PHARAOH/version_3.1
 ```
-We recommend installing Pixel2Gene in a dedicated Conda environment. 
+We recommend installing PHARAOH in a dedicated Conda environment. 
+
+To check the architecture of your Conda environment, run:
 ```bash
-bash install_conda_env.sh
+echo "conda platform:" && conda info | grep platform && \
+echo "python arch:" && python -c "import platform; print(platform.machine())"
 ```
-Typical installation time is approximately 5–20 minutes on a standard Linux desktop with internet access, depending on network speed and package resolution.
+####  Case 1: Apple Silicon (native ARM)
+```bash
+conda platform:
+platform : osx-arm64
+python arch:
+arm64
+```
+Install using:
+```bash
+bash install_conda_env_arm.sh
+```
+####  Case 2: Intel (x86) or Apple Silicon using Rosetta
+```bash
+conda platform:
+platform : osx-arm64
+python arch:
+arm64
+```
+Install using:
+```bash
+bash install_conda_env_x86.sh
+```
+
+Typical installation time is approximately 5–20 minutes on a standard desktop with internet access, depending on network speed and package resolution.
 
 Then simply:
 ```bash
 conda activate PHARAOH
 ```
 ### Tested environments
-PHARAOH has been tested on MacOS 15.7.3.
+PHARAOH has been tested on MacOS 15.7.3 (Rosetta x86); MacOS 15.7.5 (Rosetta x86); MacOS 15.7.3 (Arm64).
 
 ---
 
