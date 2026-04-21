@@ -2,7 +2,7 @@
 import numpy as np
 import tifffile
 import cv2
-import zarr
+# import zarr
 from PIL import Image
 import math
 from skimage import color, exposure
@@ -508,28 +508,28 @@ def read_ome_tiff_subifd(path, series=0, page=0, min_size=1000, max_size=2000):
         print(f"Selected level {selected_level} with shape {pages[selected_level].shape}")
         return pages[selected_level].asarray()
 
-def open_ome_level_lazy(path, series=0, level=0):
-    tif = tifffile.TiffFile(path)
-    s = tif.series[series]
-
-    # levels: pyramidal -> s.levels[level]; non-pyramidal -> s itself
-    lv = s.levels[level] if hasattr(s, "levels") else s
-
-    root = zarr.open(lv.aszarr(), mode="r")
-
-    # root may be Array or Group
-    if isinstance(root, zarr.Array):
-        arr = root
-    else:
-        # root is Group: pick the first array inside
-        arrays = list(root.arrays())  # list of (name, zarr.Array)
-        if not arrays:
-            raise RuntimeError(f"No zarr arrays found in group. keys={list(root.group_keys())}")
-        name, arr = arrays[0]
-        print(f"[INFO] zarr root is Group, using first array: {name}")
-
-    print(f"[INFO] ome-tiff lazy array's shape={arr.shape}")
-    return tif, arr
+# def open_ome_level_lazy(path, series=0, level=0):
+#     tif = tifffile.TiffFile(path)
+#     s = tif.series[series]
+#
+#     # levels: pyramidal -> s.levels[level]; non-pyramidal -> s itself
+#     lv = s.levels[level] if hasattr(s, "levels") else s
+#
+#     root = zarr.open(lv.aszarr(), mode="r")
+#
+#     # root may be Array or Group
+#     if isinstance(root, zarr.Array):
+#         arr = root
+#     else:
+#         # root is Group: pick the first array inside
+#         arrays = list(root.arrays())  # list of (name, zarr.Array)
+#         if not arrays:
+#             raise RuntimeError(f"No zarr arrays found in group. keys={list(root.group_keys())}")
+#         name, arr = arrays[0]
+#         print(f"[INFO] zarr root is Group, using first array: {name}")
+#
+#     print(f"[INFO] ome-tiff lazy array's shape={arr.shape}")
+#     return tif, arr
 
 def read_crop_patch(img_z, x0, y0, w, h):
     if img_z.ndim == 3 and img_z.shape[-1] in (3, 4):  # Y,X,C
