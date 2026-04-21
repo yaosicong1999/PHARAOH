@@ -138,9 +138,6 @@ pyproject_hooks==1.2.0 \
 PyQt5==5.15.11 \
 PyQt5-Qt5==5.15.18 \
 PyQt5_sip==12.17.1 \
-PyQt6==6.10.0 \
-PyQt6-Qt6==6.10.0 \
-PyQt6_sip==13.10.2 \
 python-dateutil==2.9.0.post0 \
 pytz==2025.2 \
 pyvips==3.1.1 \
