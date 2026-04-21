@@ -50,9 +50,10 @@ bash install_conda_env_arm.sh
 ####  Case 2: Intel (x86) or Apple Silicon using Rosetta
 ```bash
 conda platform:
-platform : osx-arm64
+platform : osx-64
 python arch:
-arm64
+x86_64
+
 ```
 Install using:
 ```bash
