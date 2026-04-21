@@ -60,7 +60,7 @@ Install using:
 bash install_conda_env_x86.sh
 ```
 
-Typical installation time is approximately 5–20 minutes on a standard desktop with internet access, depending on network speed and package resolution.
+Typical installation time is approximately 5 minutes on a standard desktop with internet access, depending on network speed and package resolution.
 
 Then simply:
 ```bash
@@ -102,7 +102,7 @@ Large `.tif` or `.jpg` files may take longer to load due to reading and downsamp
 #### Adjust Visualization
 
 After loading both images, use the two `threshold sliders` to adjust:
-  - The *H channel* visualization for the H&E image (displayed in the second row)
+  - The *H channel* visualization for the H&E image (displayed in the second row, visualization only)
   - The *LUT-colored* DAPI image (displayed in the second row)
 
 For the DAPI image:
@@ -120,9 +120,14 @@ Before proceeding:
 This step is mandatory.
 
 
-#### Save Orientation
+#### Save Image Paths and DAPI Orientation
 
 Once everything looks correct, click `Confirm & Save Orientation`.
+
+#### Demo
+<p align="center">
+  <img alt="Demo" src="assets/demo_step1.gif" width="600">
+</p>
 
 #### Output
 
@@ -137,6 +142,12 @@ After completing Stage 1, the following outputs will be generated:
 
 Simply click the `Run Stage 2B: Manual Alignment` button in the control panel.  
 (`Run Stage 2A: Blob Matching` is currently suspended.)
+
+
+#### Adjust View Size
+Press `Control` and `+` or `-` at the same time to adjust the view size.
+
+
 
 #### Alignment Modes
 
@@ -171,6 +182,11 @@ To load a previously saved manual alignment:
 #### Saving Alignment
 
 Once alignment is satisfactory, click `Save Alignment` at the bottom of the viewer.
+
+#### Demo
+<p align="center">
+  <img alt="Demo" src="assets/demo_step2.gif" width="600">
+</p>
 
 #### Output
 
