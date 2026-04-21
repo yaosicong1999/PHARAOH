@@ -126,7 +126,7 @@ Once everything looks correct, click `Confirm & Save Orientation`.
 
 #### Demo
 <p align="center">
-  <img alt="Demo" src="assets/demo_step1.gif" width="600">
+  <img alt="Demo" src="assets/demo_stage1.gif" width="600">
 </p>
 
 #### Output
@@ -185,7 +185,7 @@ Once alignment is satisfactory, click `Save Alignment` at the bottom of the view
 
 #### Demo
 <p align="center">
-  <img alt="Demo" src="assets/demo_step2.gif" width="600">
+  <img alt="Demo" src="assets/demo_stage2.gif" width="600">
 </p>
 
 #### Output
@@ -226,6 +226,11 @@ There are three buttons in the Step 3 viewer:
 3.` Extract Current Tiles`  
    Extracts all sampled tiles based on the sampled centroid locations.
 
+#### Demo
+<p align="center">
+  <img alt="Demo" src="assets/demo_stage3.gif" width="600">
+</p>
+
 #### Output
 
 After completing Stage 3, the following outputs will be generated:
@@ -261,6 +266,13 @@ There are six buttons in the Stage 4 viewer:
 4. `Run Nuclei Patch Cropping`  
    Extracts paired DAPI and H&E patches based on the detected standout nuclei or aligned centers.
 
+#### Demo
+For demonstration purposes, this example uses only 20 selected tiles, though the number of tiles can be easily adjusted. See the **Parameter Controls** section for details.
+
+<p align="center">
+  <img alt="Demo" src="assets/demo_stage4.gif" width="600">
+</p>
+
 #### Output
 
 Stage 4 generates an output folder `nuclei patches`.
@@ -294,6 +306,11 @@ Switch between LUT-colored DAPI visualization and DAPI intensity image.
 5.  `Drop patch pair`
 Drop the current nuclei patch pair from the candidate list.
 
+#### Demo
+<p align="center">
+  <img alt="Demo" src="assets/demo_stage5.gif" width="600">
+</p>
+
 #### Output
 After clicking `Calculate alignment matrix`, Stage 5 generates `dapi_to_he_homography_level0.json`.  
 This file contains the final homography matrix mapping DAPI (level 0) coordinates to H&E (level 0) coordinates.
@@ -319,6 +336,11 @@ There are three buttons in the viewer:
 3. `Load Cell Data (cells.csv.gz)`  
    Loads cell data (for the Xenium platform) and overlays cell centroids on the H&E image for visualization.
 
+#### Demo
+<p align="center">
+  <img alt="Demo" src="assets/demo_stage6.gif" width="600">
+</p>
+
 #### Output
 
 After completing Stage 6, the following outputs will be generated:
@@ -331,7 +353,7 @@ After completing Stage 6, the following outputs will be generated:
 ## 🕹️  Parameters controls
 Parameter config file `parameters.json` controls key behaviors of the PHAROAH pipeline across stages 3–5, including tile sampling, nuclei extraction, patch generation, and final transformation estimation. ***Italic*** parameters are relatively important.
 
-###  🧩 Stage 3 — Tile Sampling
+####  🧩 Stage 3 — Tile Sampling
 Controls how image tiles are sampled for downstream processing.
 	
 - ***n_tiles***: Number of tiles sampled from the whole slide image.
@@ -342,7 +364,7 @@ Controls how image tiles are sampled for downstream processing.
 Helps ensure context coverage for cross-modality matching.
 
 
-###  🧬 Stage 4A — Nuclei Mask Extraction
+####  🧬 Stage 4A — Nuclei Mask Extraction
 
 Controls preprocessing and segmentation of nuclei masks from DAPI and H&E.
 
@@ -357,7 +379,7 @@ Controls preprocessing and segmentation of nuclei masks from DAPI and H&E.
 - **he_mask_upscale_factor**: Upscaling factor for H&E masks.
 
 
-###  🔍 Stage 4B — Tile Matching & Global Initialization
+####  🔍 Stage 4B — Tile Matching & Global Initialization
 
 Controls how corresponding tiles are selected and aligned.
 
@@ -386,13 +408,13 @@ Controls how corresponding tiles are selected and aligned.
 - **scale_range_frac, scale_step_frac**: Fine-scale search range and resolution.
 - **shift_range_frac, shift_step_frac**: Fine translation search parameters.
 
-###  🔬 Stage 4C — Patch Extraction
+####  🔬 Stage 4C — Patch Extraction
 
 Controls high-resolution local refinement patches.
 - ***dapi_patch_len***: Patch size (in pixels) for DAPI-centered regions.
 - **Other parameters (same as Stage 4A)**: Control mask extraction within patches.
 
-### 🧠 Stage 5 — Final Transformation Estimation
+#### 🧠 Stage 5 — Final Transformation Estimation
 
 Controls how the final global alignment is computed.
 	
