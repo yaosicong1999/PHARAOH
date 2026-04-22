@@ -1,0 +1,64 @@
+{
+  "stage3": {
+    "n_tiles": 120,
+    "tile_size": 400,
+    "min_dist_factor": 1.0,
+    "dapi_level_override": "None",
+    "he_level_override": "None",
+    "he_tile_margin_ratio": 0.2
+  },
+  "stage4a": {
+    "dapi_thr_offset": 0,
+    "dapi_mask_min_area_factor": 1e-4,
+    "dapi_mask_upscale_factor": 2,
+    "he_mask_n_smooth": 2,
+    "he_mask_intensity_threshold": 0.6,
+    "he_mask_upscale_factor": 2
+  },
+  "stage4b": {
+    "good_nuclei_min": 2,
+    "min_good_tiles": 20,
+    "fallback_score_thr": 0.40,
+    "min_fallback_tiles": 20,
+
+    "pair_top_k": 3,
+    "pairs_to_take_per_tile": 2,
+
+    "phase1": {
+      "n_tiles": 50,
+      "ds": 4,
+      "scale_min": 1.1,
+      "scale_max": 2.0,
+      "scale_step": 0.04,
+      "shift_frac": 0.10,
+      "shift_step_frac": 0.01
+    },
+
+    "phase2": {
+      "median_scale_frac": 0.15,
+      "scale_step": 0.02,
+      "shift_frac": 0.40,
+      "shift_step_frac": 0.05
+    },
+
+    "phase3": {
+      "scale_range_frac": 0.02,
+      "scale_step_frac": 0.005,
+      "shift_range_frac": 0.03,
+      "shift_step_frac": 0.01
+    }
+  },
+  "stage4c": {
+    "dapi_patch_len": 200,
+    "dapi_thr_offset": 0,
+    "dapi_mask_min_area_factor": 1e-4,
+    "dapi_mask_upscale_factor": 2,
+    "he_mask_n_smooth": 2,
+    "he_mask_intensity_threshold": 0.6,
+    "he_mask_upscale_factor": 2
+  },
+  "stage5": {
+    "transform_mode": "homography",
+    "balance_points_bool": false
+  }
+}
