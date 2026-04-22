@@ -1,4 +1,4 @@
-## PHARAOH (Beta version 3.1)
+## PHARAOH (Beta version 3.2)
 
 ### ⚠️ Now please only test on Xenium data. Refinement is needed for other platforms.
 
@@ -25,39 +25,16 @@ In order to achieve the best alignment performance, please consider using raw, u
 ## ⚙️ Setup
 
 First, clone the repository:
+
 ```bash
 git clone https://github.com/yaosicong1999/PHARAOH.git
-cd PHARAOH/version_3.1
+cd PHARAOH/version_3.2
 ```
-We recommend installing PHARAOH in a dedicated Conda environment. 
 
-To check the architecture of your Conda environment, run:
-```bash
-echo "conda platform:" && conda info | grep platform && \
-echo "python arch:" && python -c "import platform; print(platform.machine())"
-```
-####  Case 1: Apple Silicon (native ARM)
-```bash
-conda platform:
-platform : osx-arm64
-python arch:
-arm64
-```
+We recommend installing PHARAOH in a dedicated Conda environment.
 Install using:
 ```bash
-bash install_conda_env_arm.sh
-```
-####  Case 2: Intel (x86) or Apple Silicon using Rosetta
-```bash
-conda platform:
-platform : osx-64
-python arch:
-x86_64
-
-```
-Install using:
-```bash
-bash install_conda_env_x86.sh
+bash install_conda_env.sh
 ```
 
 Typical installation time is approximately 5 minutes on a standard desktop with internet access, depending on network speed and package resolution.
@@ -347,6 +324,13 @@ After completing Stage 6, the following outputs will be generated:
 
 - PNG images prefixed with `6_`
 - GIF images prefixed with `6_`
+
+We don't need a super-fine manual initial alignment to achieve pixel-accurate final alignment.
+<p align="center">
+  <img alt="Demo" src="assets/demo_result.gif" width="600">
+</p>
+
+
 
 ---
 
