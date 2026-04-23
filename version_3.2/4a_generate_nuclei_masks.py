@@ -127,11 +127,12 @@ def load_stage4a_effective_params(
 
     pilot_path = os.path.join(out_folder, "../pilot_tiles", "pilot_output_parameters.json")
     if not os.path.exists(pilot_path):
+        print(f"[WARN] {pilot_path}: not exists.", flush=True)
         return params
-
     try:
         with open(pilot_path, "r") as f:
             data = json.load(f)
+            print(f"[WARN] loading pilot parameters.", flush=True)
     except Exception as e:
         print(f"[WARN] Failed to read {pilot_path}: {e}. Use parameters.json/defaults.", flush=True)
         return params
