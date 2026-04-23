@@ -125,7 +125,7 @@ def load_initial_affine_and_compute_he_patch(
         f"       affine scale: sx={sx:.3f}, sy={sy:.3f}\n"
         f"       level correction: 2^({level_he}-{level_dapi}) = {scale_level:.3f}\n"
         f"       level0 scale: sx0={sx0:.3f}, sy0={sy0:.3f}\n"
-        f"       DAPI={dapi_patch_len} -> HE≈{he_patch_len} (margin={margin})",
+        f"       DAPI={dapi_patch_len} -> HE={he_patch_len} (margin={margin})",
         flush=True
     )
 
@@ -556,7 +556,7 @@ def prepare_image_context(run_dir, meta, dapi_patch_len=200):
     print(f"[INFO] DAPI_LEVEL={dapi_level}, HE_LEVEL={he_level}", flush=True)
     print(f"[INFO] DAPI_tile_level={dapi_tile_level} -> DAPI_patch_level={dapi_patch_level}", flush=True)
     print(f"[INFO] HE_tile_level={he_tile_level} -> HE_patch_level={he_patch_level}", flush=True)
-    print("[INFO] Loading full-res images. This could take about 1 min ⚠️", flush=True)
+    print("[INFO] Loading full-res images. This could take about 1 min!", flush=True)
 
     dapi_scale_to_level0 = 2 ** dapi_patch_level
     he_scale_to_level0 = 2 ** he_patch_level
