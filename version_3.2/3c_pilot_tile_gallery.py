@@ -228,10 +228,10 @@ def show_pilot_gallery(
     # -------------------------
     # Cutoff controls state
     # -------------------------
-    dapi_thr_var = tk.StringVar(value="30")  # THR_OFFSET, default 100
-    he_thr_var = tk.StringVar(value="0.70")  # intensity_threshold, default 0.8
+    dapi_thr_var = tk.StringVar(value="0")  # THR_OFFSET, default 100
+    he_thr_var = tk.StringVar(value="0.60")  # intensity_threshold, default 0.8
 
-    _last_good = {"dapi": "30", "he": "0.70"}
+    _last_good = {"dapi": "0", "he": "0.60"}
 
     # -------------------------
     # Persist parameters to pilot_output_parameters.json

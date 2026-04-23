@@ -72,26 +72,26 @@ def load_dapi_lut_threshold_from_images_info(run_dir: Path, default=1000) -> int
     print(f"[WARN] images_info.json has no DAPI LUT threshold key, fallback threshold={default}", flush=True)
     return int(default)
 
-def load_step3_params(script_path: Path):
+def load_stage3_params(script_path: Path):
     script_dir = script_path.resolve().parent
     params_path = script_dir / "parameters.json"
-    step3 = {}
+    stage3 = {}
     if params_path.exists():
         try:
             params = json.load(open(params_path, "r"))
-            if isinstance(params, dict) and isinstance(params.get("step3", {}), dict):
-                step3.update(params["step3"])
+            if isinstance(params, dict) and isinstance(params.get("stage3", {}), dict):
+                stage3.update(params["stage3"])
         except Exception as e:
             print(f"[WARN] failed to read parameters.json: {e}", flush=True)
     else:
         print(f"[INFO] parameters.json not found at {params_path}, using defaults", flush=True)
 
     # normalize
-    step3["number_of_tiles"] = int(step3.get("n_tiles", 120))
-    step3["tile_size"] = float(step3.get("tile_size", 600))
-    step3["min_dist_factor"] = float(step3.get("min_dist_factor", 1.5))
-    step3["pilot_k"] = int(step3.get("pilot_k", 10))
-    return step3
+    stage3["number_of_tiles"] = int(stage3.get("n_tiles", 120))
+    stage3["tile_size"] = float(stage3.get("tile_size", 600))
+    stage3["min_dist_factor"] = float(stage3.get("min_dist_factor", 1.5))
+    stage3["pilot_k"] = int(stage3.get("pilot_k", 10))
+    return stage3
 
 def ensure_dir(p: Path):
     p.mkdir(parents=True, exist_ok=True)
@@ -498,8 +498,8 @@ def main():
         print(f"[ERROR] RUN_DIR not found: {run_dir}")
         sys.exit(2)
 
-    step3 = load_step3_params(Path(__file__))
-    pilot_k = int(step3.get("pilot_k", 10))
+    stage3 = load_stage3_params(Path(__file__))
+    pilot_k = int(stage3.get("pilot_k", 10))
 
     info_path = run_dir / "images_info.json"
     sampled_path = run_dir / "sampled_points.json"
@@ -516,7 +516,7 @@ def main():
     points_xy = np.asarray(sampled["points_xy"], dtype=np.int32)
 
     # tile size conversion: parameters.json tile_size is in level=1 coords
-    tile_size_lvl1 = float(step3["tile_size"])
+    tile_size_lvl1 = float(stage3["tile_size"])
     TILE_SIZE = tile_size_lvl1 / (2 ** (DAPI_LEVEL - 1))  # in DAPI_LEVEL pixel space
 
     # pick k farthest points
@@ -550,22 +550,22 @@ def main():
 
     parameter_path = os.path.join(os.getcwd(), "parameters.json")
     parameters = json.load(open(parameter_path, "r"))
-    DAPI_TILE_LEVEL_OVERRIDE = parameters["step3"]["dapi_level_override"]
-    HE_TILE_LEVEL_OVERRIDE = parameters["step3"]["he_level_override"]
+    DAPI_TILE_LEVEL_OVERRIDE = parameters["stage3"]["dapi_level_override"]
+    HE_TILE_LEVEL_OVERRIDE = parameters["stage3"]["he_level_override"]
 
     if DAPI_TILE_LEVEL_OVERRIDE == "None":
         dapi16_lvl1, _ = read_image(DAPI_PATH, keep_16bit=True, level=1, channel="dapi")
     elif isinstance(DAPI_TILE_LEVEL_OVERRIDE, int):
         dapi16_lvl1, _ = read_image(DAPI_PATH, keep_16bit=True, level=DAPI_TILE_LEVEL_OVERRIDE, channel="dapi")
     else:
-        raise ValueError("DAPI_TILE_LEVEL_OVERRIDE in parameter.json['step3'] must be 'None' or int")
+        raise ValueError("DAPI_TILE_LEVEL_OVERRIDE in parameter.json['stage3'] must be 'None' or int")
     if dapi16_lvl1.ndim == 3:
         dapi16_lvl1 = dapi16_lvl1[..., 0]
 
     # LUT
     lut_path = Path(__file__).resolve().parent / "glasbey_inverted.lut"
     lut = np.fromfile(str(lut_path), dtype=np.uint8).reshape(256, 3)
-    dapi_lut_threshold = load_dapi_lut_threshold_from_images_info(run_dir,default=step3.get("dapi_lut_threshold", 1000))
+    dapi_lut_threshold = load_dapi_lut_threshold_from_images_info(run_dir,default=stage3.get("dapi_lut_threshold", 1000))
     print(f"[INFO] DAPI_LUT_threshold (from images_info.json) = {dapi_lut_threshold}", flush=True)
     dapi_rgb = dapi_to_lut_rgb(dapi16_lvl1, lut, threshold=int(dapi_lut_threshold))
 
