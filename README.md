@@ -1,7 +1,5 @@
 ## PHARAOH (Beta version 3.2)
 
-### ⚠️ Now please only test on Xenium data. Refinement is needed for other platforms.
-
 PHARAOH is a scalable and generalizable framework for multimodal tissue image alignment and spatial transcriptomics enhancement.
 
 It enables fast, robust, GUI-based, and GPU-free semi-automatic registration between DAPI imaging from multiplexed imaging platforms (Xenium, CosMx, Orion, CODEX, CycIF), and histology (H&E), supporting both same-section and adjacent-section alignment.
@@ -28,7 +26,7 @@ First, clone the repository:
 
 ```bash
 git clone https://github.com/yaosicong1999/PHARAOH.git
-cd PHARAOH/version_3.2
+cd PHARAOH/
 ```
 
 We recommend installing PHARAOH in a dedicated Conda environment.
@@ -36,13 +34,25 @@ Install using:
 ```bash
 bash install_conda_env.sh
 ```
-
-Typical installation time is approximately 5 minutes on a standard desktop with internet access, depending on network speed and package resolution.
+Typical installation time is approximately 2-5 minutes on a standard desktop with internet access, depending on network speed and package resolution.
 
 Then simply:
 ```bash
 conda activate PHARAOH
 ```
+
+Then enter the corresponding pipeline directory:
+- For DAPI/DNA-HE registration, do:
+    ```bash
+    cd version_3.2
+    ```
+
+- For H&E-H&E registration, do:
+    ```bash
+    cd version_he
+    ```
+
+
 ### Tested environments
 PHARAOH has been tested on MacOS 15.7.3 (Rosetta x86); MacOS 15.7.5 (Rosetta x86); MacOS 15.7.3 (Arm64).
 
