@@ -10,7 +10,7 @@ bash download_example_data.sh
 ```
 
 This script downloads a publicly available Xenium Human Colon Cancer P1 dataset from 10x Genomics and prepares the required H&E image, morphology image, and optional cell information for PHARAOH.
-## Additional datasets
+### Additional datasets
 
 Additional datasets used in this study can be obtained using the links and accession numbers provided in the Data Availability section of the manuscript.
 
