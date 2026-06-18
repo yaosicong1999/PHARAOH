@@ -54,7 +54,7 @@ Then enter the corresponding pipeline directory:
 
 
 ### Tested environments
-PHARAOH has been tested on MacOS 15.7.3 (Rosetta x86); MacOS 15.7.5 (Rosetta x86); MacOS 15.7.3 (Arm64).
+PHARAOH has been tested on Apple Silicon Macs (M1 Pro and M2 Pro), Windows 11, and Ubuntu Linux (ARM64), and supports both native ARM64 execution and Rosetta 2 x86 emulation on macOS.
 
 ---
 
