@@ -1,6 +1,6 @@
 # Example data
 
-This directory contains scripts for obtaining example datasets (Xenium Human Colon Cancer P1) used to demonstrate the PHARAOH workflow.
+This directory contains scripts for obtaining one example dataset (Xenium Human Colon Cancer P1) used to demonstrate the PHARAOH workflow.
 
 
 ### Download the example dataset
