@@ -32,6 +32,7 @@ scikit-image==0.25.2 \
 scikit-learn==1.7.2 \
 tqdm==4.67.1 \
 PyQt5==5.15.11 \
+zarr \
 
 echo "Verifying OpenCV import"
 python -c "import cv2; print('cv2 OK:', cv2.__version__)"
