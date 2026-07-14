@@ -58,7 +58,7 @@
     "he_mask_upscale_factor": 2
   },
   "stage5": {
-    "transform_mode": "perspective",
+    "transform_mode": "homography",
     "balance_points_bool": false
   }
 }
