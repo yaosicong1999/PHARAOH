@@ -1,4 +1,4 @@
-## PHARAOH (Beta version 3.2)
+## PHARAOH (Beta version 4.0)
 
 PHARAOH is a scalable and generalizable framework for multimodal tissue image alignment and spatial transcriptomics enhancement.
 
@@ -44,12 +44,12 @@ conda activate PHARAOH
 Then enter the corresponding pipeline directory:
 - For DAPI/DNA-HE registration, do:
     ```bash
-    cd version_3.2
+    cd version_4.0
     ```
 
 - For H&E-H&E registration, do:
     ```bash
-    cd version_he
+    cd version_4.0_he
     ```
 
 
