@@ -1,0 +1,14 @@
+# Pipeline outputs. Run dirs live under version_4.0_cli/ by default (or wherever
+# --run-dir points). Older runs may still sit inside the engine dirs.
+runs_*/
+engine_*/runs_*/
+*/runs_*/
+
+# The engines read the integrated ./parameters.json directly, but stray copies
+# should never be committed.
+engine_*/parameters.json
+
+# Python caches
+__pycache__/
+*.pyc
+*.pyo
