@@ -124,7 +124,7 @@ class PipelineWindow(QWidget):
         self.mode_label.setStyleSheet("font-weight: 600; color: #6d28d9;")
 
         # ---- stage buttons + statuses ----
-        self.btn_stage1 = QPushButton("Run Stage 1: Image Selection (DAPI / H&E-FG + H&E)")
+        self.btn_stage1 = QPushButton("Run Stage 1: Image Selection (DAPI / H&&E-FG + H&&E)")
         self.btn_stage2 = QPushButton("Run Stage 2: Manual Alignment (+ auto ORB)")
         self.btn_stage3 = QPushButton("Run Stage 3: Tile Extraction")
         self.btn_stage4 = QPushButton("Run Stage 4: Nuclei Patch Extraction")

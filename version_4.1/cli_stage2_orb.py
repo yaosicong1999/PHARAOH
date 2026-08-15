@@ -12,7 +12,9 @@
 # H_mat directly -- no gui-affine subtraction is needed.
 #
 # NOTE: moving (DAPI fluorescence or a 2nd H&E) and the fixed H&E can be
-# cross-modal; ORB may misalign. That is accepted for this CLI variant.
+# cross-modal; ORB may misalign. When the RANSAC inlier count falls below
+# --min-inliers the fit is treated as a failure: no alignment is written and
+# the stage exits non-zero, telling the user to fall back to the GUI.
 #
 # Usage:
 #   python cli_stage2_orb.py --engine <dir> --run-dir <dir> --mode {dapi,he}
@@ -100,6 +102,9 @@ def main():
     ap.add_argument("--engine", required=True)
     ap.add_argument("--run-dir", required=True)
     ap.add_argument("--mode", required=True, choices=["dapi", "he"])
+    ap.add_argument("--min-inliers", type=int, default=15,
+                    help="minimum RANSAC inliers for the ORB fit to be trusted; "
+                         "below this the alignment is treated as a failure")
     args = ap.parse_args()
 
     engine_dir = Path(args.engine).resolve()
@@ -125,6 +130,22 @@ def main():
 
     H_mat, n_inl = orb_homography(src_path, dst_path, invert_src=invert_src)
     print(f"[Stage2-CLI] ORB homography: {n_inl} inliers", flush=True)
+
+    # ---- quality gate: a low-inlier fit means ORB could not find a
+    #      trustworthy correspondence (common for cross-modal DAPI<->H&E).
+    #      Fail loudly instead of writing a garbage alignment. ----
+    if n_inl < args.min_inliers:
+        log_stage_event(run_dir, "stage2_events", "cli_stage2_orb_failed",
+                        inliers=int(n_inl), min_inliers=int(args.min_inliers))
+        gui = "run_pharaoh_gui.sh"
+        sys.stderr.write(
+            f"\n[Stage2-CLI] ERROR: ORB alignment failed -- only {n_inl} inliers "
+            f"(need >= {args.min_inliers}).\n"
+            f"  The automatic ORB registration is not reliable for this image pair "
+            f"(often the case for cross-modal DAPI<->H&E data).\n"
+            f"  Use the interactive GUI to set the initial alignment manually, e.g.:\n"
+            f"      ./{gui}\n\n")
+        raise SystemExit(2)
 
     sd = float(2 ** moving_level)
     sh = float(2 ** he_level)

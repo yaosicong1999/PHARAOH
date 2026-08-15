@@ -150,8 +150,135 @@ centroids. Outputs: `6_*` PNGs / GIF.
 - **Stage 5** is a headless transcription of the alignment computation.
 
 Final artifact: `<moving>_to_he_homography_level0.json` (+ `.csv`); Stage 6 also
-writes `6_overlay_*` previews. ORB on cross-modal DAPI/H&E pairs can misalign —
-accepted for the CLI; the recorded inlier count is the quality signal.
+writes `6_overlay_*` previews. ORB on cross-modal DAPI/H&E pairs can misalign, so
+Stage 2 applies a **quality gate**: if the RANSAC inlier count falls below
+`--min-inliers` (default **15**), the alignment is treated as a failure — **no**
+alignment is written, the stage exits non-zero, and the CLI tells you to switch
+to the GUI for manual initial alignment.
+
+---
+
+## 📘 CLI tutorial (worked examples)
+
+Ready-to-run example datasets in the repo-root `examples/` folder demonstrate the
+CLI in both modes: two **DAPI → H&E** runs (one where the automatic ORB initial
+alignment **succeeds**, one where it **fails**) and one **H&E-FG → H&E** run.
+
+### 1. Download the example data
+
+From `examples/`:
+
+```bash
+cd ../examples
+bash download_example_dapi_he_data.sh     # DAPI→H&E, Human Colon Cancer P1  (ORB succeeds)
+bash download_example_orb_fail_data.sh    # DAPI→H&E, Human Colon Cancer P5  (ORB fails)
+bash download_example_he_he_data.sh       # H&E-FG→H&E, Human Colon Cancer P2
+cd ../version_4.1
+```
+
+The DAPI scripts write a dataset folder with `he.ome.tif` (fixed H&E), the DAPI
+moving image, and `cells.csv.gz`. The H&E-FG script writes `he.ome.tif` (fixed
+Xenium H&E) and `hefg.btf` (moving Visium tissue image):
+
+```
+examples/xenium_human_CRC_P1/   # DAPI→H&E,  ORB-success example
+examples/xenium_human_CRC_P5/   # DAPI→H&E,  ORB-failure example
+examples/he_he_human_CRC_P2/    # H&E-FG→H&E example
+```
+
+> **DAPI moving image.** For Xenium, the DAPI (`--dapi`) input is the morphology
+> file, which is delivered as **either** `morphology_focus.ome.tif` **or**
+> `morphology_focus/morphology_focus_0000.ome.tif` — the exact name/layout varies
+> by Xenium platform version and release. Check which one your download produced
+> and point `--dapi=` at that path. The commands below assume
+> `morphology_focus.ome.tif`; substitute
+> `morphology_focus/morphology_focus_0000.ome.tif` if that is what you have.
+
+### 2. ORB **succeeds** — Colon Cancer P1
+
+```bash
+./run_pharaoh_cli.sh \
+  --dapi="../examples/xenium_human_CRC_P1/morphology_focus.ome.tif" \
+  --he="../examples/xenium_human_CRC_P1/he.ome.tif"
+```
+
+Stage 2 finds plenty of inliers and continues through Stages 3–6:
+
+```
+======================================================================
+STAGE 2 (headless ORB, mode=dapi)
+======================================================================
+[Stage2-CLI] ORB homography: 58 inliers
+[Stage2-CLI] wrote manual_initial_alignment.json
+### Stage 2 (ORB alignment): OK (.../manual_initial_alignment.json)
+```
+
+The run finishes with `dapi_to_he_homography_level0.json` (+ `.csv`) and
+`6_overlay_final_L*.png` previews in the new `runs_<timestamp>/` folder.
+
+### 3. ORB **fails** — Colon Cancer P5
+
+```bash
+./run_pharaoh_cli.sh \
+  --dapi="../examples/xenium_human_CRC_P5/morphology_focus.ome.tif" \
+  --he="../examples/xenium_human_CRC_P5/he.ome.tif"
+```
+
+Here ORB cannot find a reliable cross-modal correspondence, so the inlier count
+falls under the gate and the pipeline stops **before** writing a bad alignment:
+
+```
+======================================================================
+STAGE 2 (headless ORB, mode=dapi)
+======================================================================
+[Stage2-CLI] ORB homography: 5 inliers
+[Stage2-CLI] ERROR: ORB alignment failed -- only 5 inliers (need >= 15).
+  The automatic ORB registration is not reliable for this image pair
+  (often the case for cross-modal DAPI<->H&E data).
+  Use the interactive GUI to set the initial alignment manually, e.g.:
+      ./run_pharaoh_gui.sh
+```
+
+**What to do next:** run the GUI, do the Stage-2 manual alignment (or **Load H
+(.json)** a saved matrix — e.g. the `manual_initial_alignment.json` provided under
+`examples/alignment_examples/xenium_human_CRC_P5/`), then continue Stages 3–6.
+
+> Tune the threshold with `--min-inliers N` if your data needs a stricter or more
+> lenient gate, e.g. `./run_pharaoh_cli.sh --dapi=... --he=... --min-inliers=25`.
+
+### 4. H&E-FG → H&E — Colon Cancer P2
+
+Same-modality registration: a smaller foreground H&E (the Visium tissue image) is
+warped onto the larger fixed Xenium H&E.
+
+**Step 4a — convert the `.btf` to a pyramidal `.ome.tif` first.** The Visium
+moving image is a raw `.btf` (here ~10 GB / gigapixels) with no pyramid, so
+PHARAOH would have to decode the **full-resolution** image into memory on every
+read — which can exhaust RAM and fail. Run the converter once to produce a tiled,
+pyramidal OME-TIFF that every stage reads at a downsampled level:
+
+```bash
+python convert_btf_to_ome_tiff.py \
+  ../examples/he_he_human_CRC_P2/hefg.btf \
+  ../examples/he_he_human_CRC_P2/hefg.ome.tif
+```
+
+(One-time cost; options: `--levels`, `--tile`, `--compression zlib|lzw|jpeg|none`.)
+
+**Step 4b — run the pipeline** on the converted `.ome.tif`, using `--hefg`
+instead of `--dapi`:
+
+```bash
+./run_pharaoh_cli.sh \
+  --hefg="../examples/he_he_human_CRC_P2/hefg.ome.tif" \
+  --he="../examples/he_he_human_CRC_P2/he.ome.tif"
+```
+
+Because both images are brightfield H&E (same appearance), ORB matching is
+typically reliable here. The run finishes with `he0_to_he_homography_level0.json`
+(+ `.csv`) and `6_overlay_final_L*.png` previews in the new `runs_<timestamp>/`
+folder. If Stage 2 still trips the inlier gate, fall back to the GUI exactly as in
+the DAPI-failure case above.
 
 ---
 
@@ -217,6 +344,7 @@ version_4.1/
   run_pharaoh.py        # headless orchestrator (Stages 1-6), ORB Stage 2
   cli_common.py         # shared CLI helpers
   cli_stage{1,2_orb,3,5,6}.py   # headless stage runners (reuse the engines)
+  convert_btf_to_ome_tiff.py    # BigTIFF (.btf) -> tiled pyramidal .ome.tif
 
   parameters.json       # integrated params: {"dapi": {...}, "he0fg": {...}}
   my_utils.py  glasbey*.lut     # shared assets

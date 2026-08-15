@@ -294,20 +294,27 @@ def coarse_search_ds_parallel_cached(
     # ---- cache scaled B (clipped) ----
     B_cache = {float(s): warp(B, float(s), 0, 0, (Hds, Wds)) for s in scales}
 
-    def eval_one_cached(s, tx_ds, ty_ds):
+    # One joblib task per SCALE (tx/ty swept inside), instead of one tiny task
+    # per (scale, tx, ty) combination. This avoids ~len(scales)*len(shifts)^2
+    # loky dispatch/pickling overheads that dominated the actual pixel work.
+    def eval_one_scale(s):
         B_s = B_cache[float(s)]
-        B_st = warp(B_s, 1.0, tx_ds, ty_ds, (Hds, Wds))
-        score = dice_score(A, B_st)
-        return score, float(s), int(tx_ds), int(ty_ds)
+        best_score = -1.0
+        best_tx_ds = 0
+        best_ty_ds = 0
+        for tx_ds in shifts:
+            for ty_ds in shifts:
+                B_st = warp(B_s, 1.0, tx_ds, ty_ds, (Hds, Wds))
+                score = dice_score(A, B_st)
+                if score > best_score:
+                    best_score = score
+                    best_tx_ds = tx_ds
+                    best_ty_ds = ty_ds
+        return best_score, float(s), int(best_tx_ds), int(best_ty_ds)
 
-    tasks = (
-        delayed(eval_one_cached)(s, tx, ty)
-        for s in scales
-        for tx in shifts
-        for ty in shifts
+    results = Parallel(n_jobs=n_jobs, backend="loky")(
+        delayed(eval_one_scale)(s) for s in scales
     )
-
-    results = Parallel(n_jobs=n_jobs, backend="loky")(tasks)
     best_score, best_s, best_tx_ds, best_ty_ds = max(results, key=lambda x: x[0])
 
     return {
@@ -376,20 +383,26 @@ def refine_full(
     # -----------------------------
     B_scale_cache = {s: warp(maskB, s, 0, 0, (H, W)) for s in scales}
 
-    def refine_eval_one(s, tx, ty):
+    # One joblib task per SCALE (tx/ty swept inside) -> avoids per-combination
+    # loky dispatch overhead (same result, far fewer tasks).
+    def eval_one_scale(s):
         B_s = B_scale_cache[s]
-        B_st = warp(B_s, 1.0, tx, ty, (H, W))  # shift only
-        score = dice_score(maskA, B_st)
-        return score, s, int(tx), int(ty)
+        best_score = -1.0
+        best_tx = tx0
+        best_ty = ty0
+        for tx in shifts_x:
+            for ty in shifts_y:
+                B_st = warp(B_s, 1.0, tx, ty, (H, W))  # shift only
+                score = dice_score(maskA, B_st)
+                if score > best_score:
+                    best_score = score
+                    best_tx = tx
+                    best_ty = ty
+        return best_score, float(s), int(best_tx), int(best_ty)
 
-    tasks = (
-        delayed(refine_eval_one)(s, tx, ty)
-        for s in scales
-        for tx in shifts_x
-        for ty in shifts_y
+    results = Parallel(n_jobs=n_jobs, backend="loky", verbose=0)(
+        delayed(eval_one_scale)(s) for s in scales
     )
-
-    results = Parallel(n_jobs=n_jobs, backend="loky", verbose=0)(tasks)
     score, s, tx, ty = max(results, key=lambda x: x[0])
 
     return {
