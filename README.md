@@ -1,424 +1,362 @@
-## PHARAOH (Beta version 4.0)
+# PHARAOH — version 4.1 (unified pipeline, GUI + CLI)
 
-PHARAOH is a scalable and generalizable framework for multimodal tissue image alignment and spatial transcriptomics enhancement.
+PHARAOH is a scalable, generalizable framework for multimodal tissue-image
+alignment and spatial-transcriptomics enhancement. It performs fast, robust,
+GPU-free registration between a **moving** image and a fixed **H&E** image,
+supporting both same-section and adjacent-section alignment.
 
-It enables fast, robust, GUI-based, and GPU-free semi-automatic registration between DAPI imaging from multiplexed imaging platforms (Xenium, CosMx, Orion, CODEX, CycIF), and histology (H&E), supporting both same-section and adjacent-section alignment.
+**version_4.1 unifies the two earlier pipelines** (`version_4.0` DAPI→H&E and
+`version_4.0_he` H&E→H&E) into one project that handles **both** moving
+modalities and can run **two ways**:
 
+- **DAPI → H&E** — register DAPI/DNA from multiplexed imaging (Xenium, CosMx,
+  Orion, CODEX, CyCIF) to histology **H&E**.
+- **H&E-FG → H&E** — register a second (foreground) **H&E** to the fixed H&E.
+  In general the **H&E-FG is expected to be smaller** than (a sub-region of) the
+  fixed H&E — i.e. the foreground H&E is warped/placed onto the larger background
+  H&E.
 
+Both modes share the same `engine_dapi/` / `engine_he/` compute and the single
+integrated `parameters.json`.
 
-## 📂 Required Input Files
+---
 
-In order to run the PHARAOH platform, you will need the following files:
+## 📂 Required input files
 
-1. An image containing one DAPI/DNA channel (should be on the first channel if of multi-channels), in the format of `.ome.tif`, `.tif` or `.jpg`. 
+1. A **moving** image, one of:
+   - **DAPI/DNA** channel (on the first channel if multi-channel), `.ome.tif` /
+     `.tif` / `.jpg`. Xenium DAPI is usually `morphology_focus.ome.tif` or
+     `morphology_focus/morphology_focus_0000.ome.tif`.
+   - or a second **H&E** image (**H&E-FG**), `.ome.tif` / `.tif` / `.jpg`.
+2. A fixed **H&E** image (same or adjacent section), `.ome.tif` / `.tif` / `.jpg`.
+3. *(Optional, Xenium)* `cells.csv.gz` with cell centroids, for Stage-6
+   visualization.
 
-    The DAPI file from Xenium platfrom typically is in the format of either `morphology_focus.ome.tif` or `morphology_focus/morphology_focus_0000.ome.tif`
-2. An H&E image from the same slice or an adjacent slice in the format of `.ome.tif`, `.tif` or `.jpg`. 
-3. (Optional) A `cells.csv.gz` containing cell centroids information for visualization purpose for Xenium platform.
-
-In order to achieve the best alignment performance, please consider using raw, unscaled images.
+> For best alignment, use **raw, unscaled** images.
 
 ---
 
 ## ⚙️ Setup
 
-First, clone the repository:
+Install into the dedicated Conda environment (from the repo root), then enter
+this folder:
 
 ```bash
-git clone https://github.com/yaosicong1999/PHARAOH.git
-cd PHARAOH/
-```
-
-We recommend installing PHARAOH in a dedicated Conda environment.
-Install using:
-```bash
-bash install_conda_env.sh
-```
-Typical installation time is approximately 2-5 minutes on a standard desktop with internet access, depending on network speed and package resolution.
-
-Then simply:
-```bash
+bash install_conda_env.sh      # ~2–5 min first time
 conda activate PHARAOH
+cd version_4.1
 ```
 
-Then enter the corresponding pipeline directory:
-- For DAPI/DNA-HE registration, do:
-    ```bash
-    cd version_4.0
-    ```
-
-- For H&E-H&E registration, do:
-    ```bash
-    cd version_4.0_he
-    ```
-
-
-### Tested environments
-PHARAOH has been tested on Apple Silicon Macs (M1 Pro and M2 Pro), Windows 11, and Ubuntu Linux (ARM64), and supports both native ARM64 execution and Rosetta 2 x86 emulation on macOS.
+Tested on Apple Silicon (M1/M2 Pro), Windows 11, and Ubuntu (ARM64); supports
+native ARM64 and Rosetta 2 x86 on macOS.
 
 ---
 
+## 🚀 Two ways to run
 
-## 🚀 Usage
-
-For parameter controls, please see the later subsection. 
-### Overall control panel
-
-To launch the overall control panel, just:
+**1. GUI** — interactive; choose the moving modality in Stage 1:
 ```bash
-python 0_pipeline.py
+./run_pharaoh_gui.sh           # opens gui_pipeline.py
 ```
 
-In order to create a new run attempt, click the `New RUN_DIR` button on the top-right corner. This will create a run folder in the format of `/Current folder/runs_YYYYMMDDHHMMSS/`.
+**2. CLI** — fully automatic / headless; **ORB** replaces the manual Stage-2 overlay:
+```bash
+./run_pharaoh_cli.sh --dapi="dapi.ome.tif" --he="he.ome.tif"    # DAPI → H&E
+./run_pharaoh_cli.sh --hefg="hefg.ome.tif" --he="he.ome.tif"    # H&E-FG → H&E
+```
+Extra CLI flags: `--run-dir DIR`, `--force` (recompute), `--stop-after N`. Both
+`--flag=value` and `--flag value` work; `--he0` is accepted as an alias for
+`--hefg`. Use `PYTHON=/path/to/python ./run_pharaoh_*.sh` to pick an interpreter.
 
-If you want to load a previous existing run attempt, please click `Choose RUN_DIR` button. Please note that the run folder should be in the format of  `/runs_{some_integer_ID}/`.
-
-
-Please note that the following steps may need a long time (~1 to 2 mins) to load dependecies for the first time use after opening the control panel for the first time.
-
-### Stage 1: Select H&E image and DAPI image
-Simply click the `Stage 1` button in the control panel.
-
-Then, in the viewer:
-
-- Click `Select H&E Image`
-- Click `Select DAPI Image`
-
-Large `.tif` or `.jpg` files may take longer to load due to reading and downsampling. `.ome.tif` files typically load within a few seconds.
-
-#### Adjust Visualization
-
-After loading both images, use the two `threshold sliders` to adjust:
-  - The *H channel* visualization for the H&E image (displayed in the second row, visualization only)
-  - The *LUT-colored* DAPI image (displayed in the second row)
-
-For the DAPI image:
-
-> Ensure the LUT-colored image is clearly visible but not overly saturated or patchy.  
-> Proper visualization at this stage will make subsequent alignment steps easier and more reliable.
-
-#### ⚠️ Required: Match Orientation
-
-Before proceeding:
-
-- Use the `Rotate` and `Flip` buttons in the DAPI column  
-- Match the DAPI image orientation to the H&E image
-
-This step is mandatory.
-
-
-#### Save Image Paths and DAPI Orientation
-
-Once everything looks correct, click `Confirm & Save Orientation`.
-
-#### Demo
-<p align="center">
-  <img alt="Demo" src="assets/demo_stage1.gif" width="600">
-</p>
-
-#### Output
-
-After completing Stage 1, the following outputs will be generated:
-
-> - `images_info.json`
-> - PNG images prefixed with `1_`
+Run folders are created as `version_4.1/runs_YYYYMMDDHHMMSS/`. The GUI writes a
+`mode` field into `images_info.json`; the launcher then dispatches Stages 2–6 to
+`engine_dapi/` or `engine_he/` accordingly.
 
 ---
 
-### Stage 2: Get Initial Alignment
+## 🖥️ GUI usage
 
-Simply click the `Run Stage 2B: Manual Alignment` button in the control panel.  
-(`Run Stage 2A: Blob Matching` is currently suspended.)
+Launch `./run_pharaoh_gui.sh`. Click **New RUN_DIR** (top right) to start a run,
+or **Choose RUN_DIR** to resume an existing `runs_<id>/`. The first stage launch
+may take ~1–2 min to load dependencies.
 
+### Stage 1 — Select images
+One window, two columns:
+- **Left**: the fixed **H&E** — `Select H&E Image`, plus a **threshold** slider
+  (H-channel visualization only).
+- **Right (moving)**: two stacked buttons — **`Select DAPI Image`** /
+  **`Select H&E-FG Image`**. Pick one to set the mode:
+  - **DAPI** → shown LUT-colored, with a **DAPI LUT threshold** slider (keep it
+    clearly visible, not over-saturated/patchy).
+  - **H&E-FG** → a second brightfield H&E, with an **H&E-FG threshold** slider.
 
-#### Adjust View Size
-Press `Control` and `+` or `-` at the same time to adjust the view size.
+  Use the **Rotate / Flip** buttons to match the moving image's orientation to
+  the H&E. Then click **Confirm & Save**.
+  Outputs: `images_info.json` (+ a `mode` field) and `1_*` PNGs.
 
+### Stage 2 — Initial alignment
+An overlay of the moving image on the H&E:
+- **Auto-align (ORB)** computes a rough alignment automatically in the
+  background; click the button to apply it (it shows the inlier count).
+  > ⚠️ Auto ORB matching can **sometimes fail** (few/low-quality feature matches,
+  > or very different DAPI↔H&E appearance). If the applied result looks wrong (or
+  > the inlier count is low), just ignore it and align manually below, or re-run
+  > it. In the CLI this is unattended, so a bad ORB init can propagate — check the
+  > Stage-2 inlier count / the `2_manual_overlay_*` preview.
+- Manual refine: **Affine** mode — drag blue corners to scale (hold **Shift** for
+  proportional), drag to move, hold **Ctrl** to hide/reveal the overlay. Click
+  **Mode: Affine** to switch to **Perspective** (drag corners to warp).
+  `Ctrl` + `+`/`-` adjusts the view size.
+- **Load H (.json)** loads a previously saved matrix (must match the pyramid
+  level in `images_info.json`).
+- **Save Alignment** writes `manual_initial_alignment.json` (+ `2_*` PNGs).
 
+### Stage 3 — Extract tiles
+- **Sample Tile Centroids** — samples tiles per `parameters.json`; auto-reduces
+  the count if it would oversample.
+- **Tile Pilot Examination** *(optional; recommended for adjacent sections)* —
+  10 pilot tiles for tuning the DAPI offset / H&E intensity threshold.
+- **Extract Current Tiles** — extracts all sampled tiles.
+  Outputs: `sampled_points.json`, `tiles/`, (`pilot_tiles/`), `3_*` PNGs.
 
-#### Alignment Modes
+### Stage 4 — Extract nuclei patches
+- **Run Nuclei Masking** — nuclei masks for each moving + H&E tile.
+- **Run Standout Nuclei Detection** — aligns each mask pair to find anchor
+  nuclei (falls back to aligned tile centers when few standouts exist; ~3–5 min).
+- **Run Nuclei Patch Cropping** — paired patches from the anchors.
+  Output: `nuclei_patches/`.
 
-By default, the alignment mode is set to `Mode: Affine`
+### Stage 5 — Nuclei gallery + final alignment
+Inspect the paired patches. **Calculate alignment matrix** computes and saves the
+final homography (`<moving>_to_he_homography_level0.json`, i.e.
+`dapi_to_he_…` or `he0_to_he_…`). You can toggle auto centroids, switch DAPI
+LUT/Raw, drop a pair, or (test feature) click an enlarged image to add/delete
+refined keypoints.
 
-Under `Mode: Affine`, you can:
-
-- Drag any blue corner to scale the floating DAPI image.
-- Hold the `Shift` key while dragging a blue corner to scale the image proportionally (diagonal scaling).
-- Drag the floating DAPI image to move it.
-- Hold / release the `Control` key to hide or reveal the floating DAPI image.
-
-Once the approximate size and position are matched, click the  
-`Mode: Affine` button to switch to `Mode: Perspective`.
-
-Under `Perspective mode`, you can:
-
-- Drag any blue corner to stretch or distort the floating DAPI image.
-
-> ⚠️ Rotation has not been implemented as a standalone function yet.  
-> To simulate rotation, use `Perspective mode` adjustments.
-
-#### Loading Existing Alignment
-
-To load a previously saved manual alignment:
-
-1. Click `Load H (.json)`.
-2. Select the transformation matrix file.
-
-> ⚠️ The transformation must correspond to the same pyramid level specified in `images_info.json` from Stage 1.
-
-#### Saving Alignment
-
-Once alignment is satisfactory, click `Save Alignment` at the bottom of the viewer.
-
-#### Demo
-<p align="center">
-  <img alt="Demo" src="assets/demo_stage2.gif" width="600">
-</p>
-
-#### Output
-
-After completing Stage 2, the following outputs will be generated:
-
-> - `manual_initial_alignment.json`
-> - PNG images prefixed with `2_`
-
----
-
-###  Stage 3: Extract Tiles
-
-Simply click the `Stage 3` button in the control panel to open the tile gallery.
-
-#### Available Controls in the Step 3 Viewer
-There are three buttons in the Step 3 viewer:
-
-1. `Sample Tile Centroids`  
-   Samples tile centroids based on the parameters defined in `parameters.json`.  
-   If the requested number of tiles or tile size would result in oversampling of the image space, the algorithm will automatically reduce the number of sampled tiles to avoid excessive overlap.
-
-2. `Tile Pilot Examination`  
-   Extracts 10 pilot tiles from the sampled tiles for quick parameter tuning.
-
-   You can adjust:
-   - `DAPI masking offset`  
-     - Positive values → smaller nuclei regions  
-     - Negative values → larger nuclei regions  
-   - `H&E intensity threshold (range: 0–1)`  
-     - Higher values → larger nuclei regions  
-     - Lower values → smaller nuclei regions  
-
-   These parameters will be saved and applied in the main nuclei masking step.
-
-   ⚠️ This step is optional for in-sample Xenium registration, but strongly recommended for adjacent-section registration.  
-
-3.` Extract Current Tiles`  
-   Extracts all sampled tiles based on the sampled centroid locations.
-
-#### Demo
-<p align="center">
-  <img alt="Demo" src="assets/demo_stage3.gif" width="600">
-</p>
-
-#### Output
-
-After completing Stage 3, the following outputs will be generated:
-
-> - `sampled_points.json`
-> - `tiles/` directory
-> - `pilot_tiles/` directory (if pilot examination was performed)
-> - PNG images prefixed with `3_`
+### Stage 6 — View final alignment
+**Load Keypoints + Alignment Matrix** builds the overlay; **Toggle H&E /
+Overlay** compares; **Load Cell Data (`cells.csv.gz`)** overlays Xenium
+centroids. Outputs: `6_*` PNGs / GIF.
 
 ---
 
-### Stage 4: Extract Nuclei Patches
+## ⌨️ CLI details
 
-Simply click the `Stage 4` button in the control panel to open the tile gallery.
+`run_pharaoh_cli.sh` runs the same six stages headlessly:
+- **Stage 1** reads the images and builds masks (GUI defaults, identity orientation).
+- **Stage 2** uses **automatic ORB** registration instead of the manual overlay.
+- **Stages 3 & 6** reuse the engine GUI compute via reflection (no window).
+- **Stage 4** runs the engines' `4a/4b/4c` scripts.
+- **Stage 5** is a headless transcription of the alignment computation.
 
-#### Available Controls in the Step 4 Viewer
-There are six buttons in the Stage 4 viewer:
-
-1. `Previous / Next / Refresh`  
-   Navigate to the previous or next tile, or refresh the tiles and masks in the gallery.
-
-2. `Run Nuclei Masking`   
-   Generates nuclei masks for each DAPI tile and each H&E tile.
-
-3. `Run Standout Nuclei Detection`  
-   Aligns the DAPI nuclei mask and H&E nuclei mask for each tile pair (after masking is completed for all tiles).  
-
-   - For high-quality Xenium data, this step typically identifies multiple standout nuclei as anchor points.  
-   - For lower-quality Xenium data or adjacent tissue slices, it may not detect enough standout nuclei. In such cases, if the mask pair still yields a reasonable global alignment, the aligned tile centers will be used as anchor points instead.  
-
-   This step usually takes approximately 3–5 minutes.
-
-4. `Run Nuclei Patch Cropping`  
-   Extracts paired DAPI and H&E patches based on the detected standout nuclei or aligned centers.
-
-#### Demo
-For demonstration purposes, this example uses only 20 selected tiles, though the number of tiles can be easily adjusted. See the **Parameter Controls** section for details.
-
-<p align="center">
-  <img alt="Demo" src="assets/demo_stage4.gif" width="600">
-</p>
-
-#### Output
-
-Stage 4 generates an output folder `nuclei patches`.
+Final artifact: `<moving>_to_he_homography_level0.json` (+ `.csv`); Stage 6 also
+writes `6_overlay_*` previews. ORB on cross-modal DAPI/H&E pairs can misalign, so
+Stage 2 applies a **quality gate**: if the RANSAC inlier count falls below
+`--min-inliers` (default **15**), the alignment is treated as a failure — **no**
+alignment is written, the stage exits non-zero, and the CLI tells you to switch
+to the GUI for manual initial alignment.
 
 ---
 
-###  Stage 5: View Nuclei Patches and Get Final Alignment
-Click the `Stage 5` button in the control panel to open the nuclei patch gallery.
+## 📘 CLI tutorial (worked examples)
 
-This viewer displays the extracted nuclei patches (or patches centered at the aligned centroids) for both DAPI and H&E images, allowing visual inspection. 
+Ready-to-run example datasets in the repo-root `examples/` folder demonstrate the
+CLI in both modes: two **DAPI → H&E** runs (one where the automatic ORB initial
+alignment **succeeds**, one where it **fails**) and one **H&E-FG → H&E** run.
 
-You can click any image to enlarge either image.
-> ⚠️ **Note:** This feature is a test version.
-> 
-> 1. In the enlarged view, you can click on the image to propose refined keypoints. Press `Enter` to save the refined point.
-> 2. If refined keypoints are presented, press 'Delete' to drop the refined points.
-> 
+### 1. Download the example data
 
-#### Available Controls in the Step 5 Viewer
-There are five buttons in the viewer:
+From `examples/`:
 
-1. `Previous / Next`  
-Navigate between nuclei pairs.
-2. `Calculate alignment matrix`  
-Computes the final alignment matrix using the currently available keypoints (centroids).
-The result is saved as: `dapi_to_he_homography_level0.json`
-3. `Hide / Unhide auto centroids`   
-Toggle the visibility of automatically detected centroids in each image.
-4. `DAPI: LUT / Raw`
-Switch between LUT-colored DAPI visualization and DAPI intensity image.
-5.  `Drop patch pair`
-Drop the current nuclei patch pair from the candidate list.
+```bash
+cd ../examples
+bash download_example_dapi_he_data.sh     # DAPI→H&E, Human Colon Cancer P1  (ORB succeeds)
+bash download_example_orb_fail_data.sh    # DAPI→H&E, Human Colon Cancer P5  (ORB fails)
+bash download_example_he_he_data.sh       # H&E-FG→H&E, Human Colon Cancer P2
+cd ../version_4.1
+```
 
-#### Demo
-<p align="center">
-  <img alt="Demo" src="assets/demo_stage5.gif" width="600">
-</p>
+The DAPI scripts write a dataset folder with `he.ome.tif` (fixed H&E), the DAPI
+moving image, and `cells.csv.gz`. The H&E-FG script writes `he.ome.tif` (fixed
+Xenium H&E) and `hefg.btf` (moving Visium tissue image):
 
-#### Output
-After clicking `Calculate alignment matrix`, Stage 5 generates `dapi_to_he_homography_level0.json`.  
-This file contains the final homography matrix mapping DAPI (level 0) coordinates to H&E (level 0) coordinates.
+```
+examples/xenium_human_CRC_P1/   # DAPI→H&E,  ORB-success example
+examples/xenium_human_CRC_P5/   # DAPI→H&E,  ORB-failure example
+examples/he_he_human_CRC_P2/    # H&E-FG→H&E example
+```
+
+> **DAPI moving image.** For Xenium, the DAPI (`--dapi`) input is the morphology
+> file, which is delivered as **either** `morphology_focus.ome.tif` **or**
+> `morphology_focus/morphology_focus_0000.ome.tif` — the exact name/layout varies
+> by Xenium platform version and release. Check which one your download produced
+> and point `--dapi=` at that path. The commands below assume
+> `morphology_focus.ome.tif`; substitute
+> `morphology_focus/morphology_focus_0000.ome.tif` if that is what you have.
+
+### 2. ORB **succeeds** — Colon Cancer P1
+
+```bash
+./run_pharaoh_cli.sh \
+  --dapi="../examples/xenium_human_CRC_P1/morphology_focus.ome.tif" \
+  --he="../examples/xenium_human_CRC_P1/he.ome.tif"
+```
+
+Stage 2 finds plenty of inliers and continues through Stages 3–6:
+
+```
+======================================================================
+STAGE 2 (headless ORB, mode=dapi)
+======================================================================
+[Stage2-CLI] ORB homography: 58 inliers
+[Stage2-CLI] wrote manual_initial_alignment.json
+### Stage 2 (ORB alignment): OK (.../manual_initial_alignment.json)
+```
+
+The run finishes with `dapi_to_he_homography_level0.json` (+ `.csv`) and
+`6_overlay_final_L*.png` previews in the new `runs_<timestamp>/` folder.
+
+### 3. ORB **fails** — Colon Cancer P5
+
+```bash
+./run_pharaoh_cli.sh \
+  --dapi="../examples/xenium_human_CRC_P5/morphology_focus.ome.tif" \
+  --he="../examples/xenium_human_CRC_P5/he.ome.tif"
+```
+
+Here ORB cannot find a reliable cross-modal correspondence, so the inlier count
+falls under the gate and the pipeline stops **before** writing a bad alignment:
+
+```
+======================================================================
+STAGE 2 (headless ORB, mode=dapi)
+======================================================================
+[Stage2-CLI] ORB homography: 5 inliers
+[Stage2-CLI] ERROR: ORB alignment failed -- only 5 inliers (need >= 15).
+  The automatic ORB registration is not reliable for this image pair
+  (often the case for cross-modal DAPI<->H&E data).
+  Use the interactive GUI to set the initial alignment manually, e.g.:
+      ./run_pharaoh_gui.sh
+```
+
+**What to do next:** run the GUI, do the Stage-2 manual alignment (or **Load H
+(.json)** a saved matrix — e.g. the `manual_initial_alignment.json` provided under
+`examples/alignment_examples/xenium_human_CRC_P5/`), then continue Stages 3–6.
+
+> Tune the threshold with `--min-inliers N` if your data needs a stricter or more
+> lenient gate, e.g. `./run_pharaoh_cli.sh --dapi=... --he=... --min-inliers=25`.
+
+### 4. H&E-FG → H&E — Colon Cancer P2
+
+Same-modality registration: a smaller foreground H&E (the Visium tissue image) is
+warped onto the larger fixed Xenium H&E.
+
+**Step 4a — convert the `.btf` to a pyramidal `.ome.tif` first.** The Visium
+moving image is a raw `.btf` (here ~10 GB / gigapixels) with no pyramid, so
+PHARAOH would have to decode the **full-resolution** image into memory on every
+read — which can exhaust RAM and fail. Run the converter once to produce a tiled,
+pyramidal OME-TIFF that every stage reads at a downsampled level:
+
+```bash
+python convert_btf_to_ome_tiff.py \
+  ../examples/he_he_human_CRC_P2/hefg.btf \
+  ../examples/he_he_human_CRC_P2/hefg.ome.tif
+```
+
+(One-time cost; options: `--levels`, `--tile`, `--compression zlib|lzw|jpeg|none`.)
+
+**Step 4b — run the pipeline** on the converted `.ome.tif`, using `--hefg`
+instead of `--dapi`:
+
+```bash
+./run_pharaoh_cli.sh \
+  --hefg="../examples/he_he_human_CRC_P2/hefg.ome.tif" \
+  --he="../examples/he_he_human_CRC_P2/he.ome.tif"
+```
+
+Because both images are brightfield H&E (same appearance), ORB matching is
+typically reliable here. The run finishes with `he0_to_he_homography_level0.json`
+(+ `.csv`) and `6_overlay_final_L*.png` previews in the new `runs_<timestamp>/`
+folder. If Stage 2 still trips the inlier gate, fall back to the GUI exactly as in
+the DAPI-failure case above.
 
 ---
 
-### Stage 6: View Final Alignment
+## 🕹️ Parameter controls (`parameters.json`)
 
-Click the **Stage 6** button in the control panel to open the final alignment gallery.
+One integrated, **mode-nested** file at the top level:
 
-#### Available Controls in the Step 6 Viewer
+```json
+{ "dapi": { "stage3": {...}, "stage4a": {...}, ... },
+  "he0fg": { "stage3": {...}, "stage4a": {...}, ... } }
+```
 
-There are three buttons in the viewer:
+Edit the **`dapi`** block for DAPI runs and the **`he0fg`** block for H&E-FG
+runs. Every engine stage reads it directly via `my_utils.cli_params_block()`
+(which selects the block from its engine folder), so there is **no per-engine
+copy**. ***Italic*** parameters are the important ones. The moving-modality keys
+are `dapi_*` in the `dapi` block and `he0_*` in the `he0fg` block; the rest match.
 
-1. `Load Keypoints + Alignment Matrix`  
-   Loads the keypoints onto both the DAPI and H&E images and generates the overlay visualization.
+#### 🧩 Stage 3 — Tile sampling
+- ***n_tiles***: number of tiles sampled from the slide.
+- ***tile_size***: pixel size of each sampled tile.
+- **min_dist_factor**: larger → more spatial separation between tiles.
+- **dapi_level_override / he0_level_override / he_level_override**: pyramid-level
+  override for the moving / H&E image; `"None"` = auto-select.
+- **he_tile_margin_ratio**: extra margin (relative to tile size) for H&E tiles.
 
-2. `Toggle H&E / Overlay `   
-   Switches between:
-   - H&E image only  
-   - H&E image with DAPI overlay  
+#### 🧬 Stage 4A — Nuclei mask extraction
+- **DAPI** block: `dapi_thr_offset`, `dapi_mask_min_area_factor`,
+  `dapi_mask_upscale_factor`.
+- **H&E-FG** block: `he0_mask_n_smooth`, `he0_mask_intensity_threshold`,
+  `he0_mask_upscale_factor`.
+- **H&E (both)**: `he_mask_n_smooth`, `he_mask_intensity_threshold`,
+  `he_mask_upscale_factor`.
 
-3. `Load Cell Data (cells.csv.gz)`  
-   Loads cell data (for the Xenium platform) and overlays cell centroids on the H&E image for visualization.
+#### 🔍 Stage 4B — Tile matching & global initialization
+- **Filtering**: ***good_nuclei_min***, ***min_good_tiles***,
+  ***fallback_score_thr***, ***min_fallback_tiles***.
+- **Pair selection**: ***pair_top_k***, ***pairs_to_take_per_tile***.
+- **Alignment search** (`phase1` coarse / `phase2` refine / `phase3` fine):
+  `n_tiles`, `ds`, `scale_*`, `shift_*` ranges/steps.
 
-#### Demo
-<p align="center">
-  <img alt="Demo" src="assets/demo_stage6.gif" width="600">
-</p>
+#### 🔬 Stage 4C — Patch extraction
+- ***dapi_patch_len*** / ***he0_patch_len***: patch size (px) for the moving
+  modality. Other keys mirror Stage 4A.
 
-#### Output
-
-After completing Stage 6, the following outputs will be generated:
-
-- PNG images prefixed with `6_`
-- GIF images prefixed with `6_`
-
-We don't need a super-fine manual initial alignment to achieve pixel-accurate final alignment.
-<p align="center">
-  <img alt="Demo" src="assets/demo_result.gif" width="600">
-</p>
-
-
+#### 🧠 Stage 5 — Final transformation
+- ***transform_mode***: `"affine"`, `"homography"` (default), `"tps"`,
+  `"local_tps"`. *(CLI Stage 5 supports `affine`/`homography`.)*
+- ***balance_points_bool***: `false` = all nuclei pairs; `true` = grid-balanced
+  sampling to reduce spatial bias.
 
 ---
 
-## 🕹️  Parameters controls
-Parameter config file `parameters.json` controls key behaviors of the PHAROAH pipeline across stages 3–5, including tile sampling, nuclei extraction, patch generation, and final transformation estimation. ***Italic*** parameters are relatively important.
+## 🗂️ Layout
 
-####  🧩 Stage 3 — Tile Sampling
-Controls how image tiles are sampled for downstream processing.
-	
-- ***n_tiles***: Number of tiles sampled from the whole slide image.
-- ***tile_size***: Size (in pixels) of each sampled tile.
-- **min_dist_factor**: Controls spatial dispersion of tiles. Larger values enforce more separation between tiles.
-- **dapi_level_override / he_level_override**: Optional pyramid level override for DAPI / H&E images. Use "None" to automatically select levels.
-- **he_tile_margin_ratio**: Additional margin (relative to tile size) added when extracting H&E tiles.
-Helps ensure context coverage for cross-modality matching.
+```
+version_4.1/
+  run_pharaoh_gui.sh    # GUI launcher -> gui_pipeline.py
+  gui_pipeline.py       # unified GUI launcher (dispatches Stages 2-6 by mode)
+  gui_read_images.py    # unified GUI Stage 1 (H&E + DAPI/H&E-FG chooser)
 
+  run_pharaoh_cli.sh    # CLI launcher -> run_pharaoh.py
+  run_pharaoh.py        # headless orchestrator (Stages 1-6), ORB Stage 2
+  cli_common.py         # shared CLI helpers
+  cli_stage{1,2_orb,3,5,6}.py   # headless stage runners (reuse the engines)
+  convert_btf_to_ome_tiff.py    # BigTIFF (.btf) -> tiled pyramidal .ome.tif
 
-####  🧬 Stage 4A — Nuclei Mask Extraction
+  parameters.json       # integrated params: {"dapi": {...}, "he0fg": {...}}
+  my_utils.py  glasbey*.lut     # shared assets
+  engine_dapi/          # DAPI -> H&E stage scripts (2-6, 4a/4b/4c, …)
+  engine_he/            # H&E-FG -> H&E stage scripts (2-6, 4a/4b/4c, …)
+```
 
-Controls preprocessing and segmentation of nuclei masks from DAPI and H&E.
-
-**DAPI-related**
-- **dapi_thr_offset**: Intensity threshold offset applied during binarization.
-- **dapi_mask_min_area_factor**: Minimum nucleus area as a fraction of patch size.  Used to filter small noisy components.
-- **dapi_mask_upscale_factor**: Upscaling factor applied to DAPI masks for higher-resolution refinement.
-
-**H&E-related**
-- **he_mask_n_smooth**: Number of smoothing iterations applied before thresholding.
-- **he_mask_intensity_threshold**: Threshold used to segment nuclei-like regions from H&E.
-- **he_mask_upscale_factor**: Upscaling factor for H&E masks.
-
-
-####  🔍 Stage 4B — Tile Matching & Global Initialization
-
-Controls how corresponding tiles are selected and aligned.
-
-**Tile filtering**
-- ***good_nuclei_min***: Minimum number of nuclei required for a tile to be considered valid.
-- ***min_good_tiles***: Minimum number of valid tiles required to proceed.
-- ***fallback_score_thr***: Threshold used when fallback matching is triggered.
-- ***min_fallback_tiles***: Minimum number of tiles required in fallback mode.
-
-**Pair selection**
-- ***pair_top_k***: Number of best candidate matches per tile.
-- ***pairs_to_take_per_tile***: Number of pairs retained per tile for alignment.
-
-**Multi-stage alignment search - Phase 1 (coarse search)**
-- **n_tiles**: Number of tiles used in coarse alignment.
-- **ds**: Downsampling factor for speed.
-- **scale_min, scale_max, scale_step**: Range and step size for scale search.
-- **shift_frac, shift_step_frac**: Range and step size for translation search (relative to image size).
-
-**Multi-stage alignment search - Phase 2 (refinement)**
-- **median_scale_frac**: Scale refinement around median estimate.
-- **scale_step**: Step size for scale refinement.
-- **shift_frac, shift_step_frac**: Translation refinement parameters.
-
-**Multi-stage alignment search - Phase 3 (fine refinement)**
-- **scale_range_frac, scale_step_frac**: Fine-scale search range and resolution.
-- **shift_range_frac, shift_step_frac**: Fine translation search parameters.
-
-####  🔬 Stage 4C — Patch Extraction
-
-Controls high-resolution local refinement patches.
-- ***dapi_patch_len***: Patch size (in pixels) for DAPI-centered regions.
-- **Other parameters (same as Stage 4A)**: Control mask extraction within patches.
-
-#### 🧠 Stage 5 — Final Transformation Estimation
-
-Controls how the final global alignment is computed.
-	
-- ***transform_mode***:
-Type of transformation model.
-  - "affine" — linear transformation (rotation + translation + scaling)
-  - "homography" — projective transformation (default)
-  -  "tps" — thin-plate spline (nonlinear)
-  - "local_tps" — locally adaptive TPS (future/advanced use)
-
-- ***balance_points_bool***: Whether to apply spatially balanced sampling before fitting.
-   - false → use all nuclei pairs
-   - true → grid-based sampling to avoid spatial bias
+## Notes
+- Run dirs default to `version_4.1/runs_<timestamp>` and are independent of the
+  engine folders (params are resolved from the top-level file, not the run dir).
+- Stage 1 saves the chosen orientation as `*_gui_affine` / `*_orientation_case`.
+- The engines still contain their original single-modality launchers
+  (`engine_*/0_pipeline.py`, `1_read_*.py`); the unified launcher supersedes
+  them — only Stages 2–6 of each engine are used here.
+- Demo GIFs for each stage are in the repository-root `README.md`.
