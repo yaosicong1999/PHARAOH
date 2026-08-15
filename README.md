@@ -103,6 +103,10 @@ One window, two columns:
   > python convert_btf_to_ome_tiff.py IN.btf OUT.ome.tif
   > ```
 
+<p align="center">
+  <img alt="Demo — Stage 1" src="assets/demo_stage1.gif" width="600">
+</p>
+
 ### Stage 2 — Initial alignment
 An overlay of the moving image on the H&E:
 - **Auto-align (ORB)** computes a rough alignment automatically in the
@@ -120,6 +124,10 @@ An overlay of the moving image on the H&E:
   level in `images_info.json`).
 - **Save Alignment** writes `manual_initial_alignment.json` (+ `2_*` PNGs).
 
+<p align="center">
+  <img alt="Demo — Stage 2" src="assets/demo_stage2.gif" width="600">
+</p>
+
 ### Stage 3 — Extract tiles
 - **Sample Tile Centroids** — samples tiles per `parameters.json`; auto-reduces
   the count if it would oversample.
@@ -128,12 +136,20 @@ An overlay of the moving image on the H&E:
 - **Extract Current Tiles** — extracts all sampled tiles.
   Outputs: `sampled_points.json`, `tiles/`, (`pilot_tiles/`), `3_*` PNGs.
 
+<p align="center">
+  <img alt="Demo — Stage 3" src="assets/demo_stage3.gif" width="600">
+</p>
+
 ### Stage 4 — Extract nuclei patches
 - **Run Nuclei Masking** — nuclei masks for each moving + H&E tile.
 - **Run Standout Nuclei Detection** — aligns each mask pair to find anchor
   nuclei (falls back to aligned tile centers when few standouts exist; ~3–5 min).
 - **Run Nuclei Patch Cropping** — paired patches from the anchors.
   Output: `nuclei_patches/`.
+
+<p align="center">
+  <img alt="Demo — Stage 4" src="assets/demo_stage4.gif" width="600">
+</p>
 
 ### Stage 5 — Nuclei gallery + final alignment
 Inspect the paired patches. **Calculate alignment matrix** computes and saves the
@@ -142,10 +158,25 @@ final homography (`<moving>_to_he_homography_level0.json`, i.e.
 LUT/Raw, drop a pair, or (test feature) click an enlarged image to add/delete
 refined keypoints.
 
+<p align="center">
+  <img alt="Demo — Stage 5" src="assets/demo_stage5.gif" width="600">
+</p>
+
 ### Stage 6 — View final alignment
 **Load Keypoints + Alignment Matrix** builds the overlay; **Toggle H&E /
 Overlay** compares; **Load Cell Data (`cells.csv.gz`)** overlays Xenium
 centroids. Outputs: `6_*` PNGs / GIF.
+
+<p align="center">
+  <img alt="Demo — Stage 6" src="assets/demo_stage6.gif" width="600">
+</p>
+
+A super-fine manual initial alignment is **not** required to reach pixel-accurate
+final alignment:
+
+<p align="center">
+  <img alt="Demo — Result" src="assets/demo_result.gif" width="600">
+</p>
 
 ---
 
