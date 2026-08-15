@@ -94,6 +94,15 @@ One window, two columns:
   the H&E. Then click **Confirm & Save**.
   Outputs: `images_info.json` (+ a `mode` field) and `1_*` PNGs.
 
+  > ⚠️ **BigTIFF (`.btf`) inputs — convert first.** If any image you select is a
+  > raw `.btf` (e.g. a Visium `tissue_image.btf`, often ~10 GB / gigapixels), it
+  > has no pyramid, so PHARAOH must decode the **full-resolution** image into
+  > memory — which can exhaust RAM and fail. Convert it once to a tiled, pyramidal
+  > OME-TIFF and select that instead:
+  > ```bash
+  > python convert_btf_to_ome_tiff.py IN.btf OUT.ome.tif
+  > ```
+
 ### Stage 2 — Initial alignment
 An overlay of the moving image on the H&E:
 - **Auto-align (ORB)** computes a rough alignment automatically in the
