@@ -30,7 +30,7 @@ tables are Parquet.
 
 ```bash
 python scripts/post_process/warp_dapi_to_he.py \
-  --run_dir outputs/runs_<timestamp> \
+  --run_dir outputs/runs_YYYYMMDDHHMMSS \
   --output_img /path/to/dapi_in_he_space.ome.tif
 ```
 
@@ -44,17 +44,21 @@ because the image is warped block by block.
 
 ## Xenium transcripts, cells and boundaries
 
+Transcripts (`transcripts.parquet`, `.csv.gz`, `.csv` or the run's `transcripts.zarr.zip`):
+
 ```bash
-# transcripts: transcripts.parquet, .csv.gz, .csv or the run's transcripts.zarr.zip
 python scripts/post_process/xenium_align_transcripts.py \
-  --run_dir outputs/runs_<timestamp> \
+  --run_dir outputs/runs_YYYYMMDDHHMMSS \
   --input_path /path/to/transcripts.parquet \
   --output_path /path/to/transcripts_he.parquet
+```
 
-# cell centroids, cell boundaries and nucleus boundaries
+Cell centroids, cell boundaries and nucleus boundaries:
+
+```bash
 for table in cells cell_boundaries nucleus_boundaries; do
   python "scripts/post_process/xenium_align_${table}.py" \
-    --matrix outputs/runs_<timestamp>/dapi_to_he_homography_level0.json \
+    --matrix outputs/runs_YYYYMMDDHHMMSS/dapi_to_he_homography_level0.json \
     --input_path "/path/to/xenium_outs/${table}.parquet" \
     --output_path "/path/to/aligned/${table}_he.parquet"
 done
@@ -80,7 +84,7 @@ convention).
 
 ```bash
 python scripts/post_process/cosmx_align_cell_boundaries.py \
-  --run_dir outputs/runs_<timestamp> \
+  --run_dir outputs/runs_YYYYMMDDHHMMSS \
   --input_path /path/to/S0-polygons.csv \
   --metadata /path/to/S0_metadata_file.csv \
   --output_path /path/to/cell_boundaries_he.parquet
@@ -94,14 +98,18 @@ appended.
 
 ## Bin transcripts and plot genes
 
+Bin aligned transcripts (H&E level-0 pixels) into 8-µm bins:
+
 ```bash
-# bin aligned transcripts (H&E level-0 pixels) into 8-µm bins
 python scripts/post_process/xenium_bin_transcripts.py \
   --input_path /path/to/transcripts_he.parquet \
   --output_dir /path/to/bins_8um \
   --raw_mpp 0.2738 --target_mpp 0.5 --bin_size_um 8
+```
 
-# plot genes or total counts on the H&E image
+Plot genes, or the total counts, on the H&E image:
+
+```bash
 python scripts/post_process/xenium_plot_binned_gene.py \
   --input /path/to/bins_8um/cnts.parquet --genename EPCAM PTPRC \
   --he_img /path/to/he.ome.tif --output_dir /path/to/plots
@@ -122,7 +130,7 @@ python scripts/post_process/xenium_plot_binned_umi.py \
 python scripts/post_process/xenium_plot_nucleus_rois.py \
   --dapi /path/to/morphology_focus.ome.tif \
   --he /path/to/he.ome.tif \
-  --matrix outputs/runs_<timestamp>/dapi_to_he_homography_level0.json \
+  --matrix outputs/runs_YYYYMMDDHHMMSS/dapi_to_he_homography_level0.json \
   --nucleus-boundaries /path/to/nucleus_boundaries.parquet \
   --n-points 9 --tile-size-um 100 \
   --output-path /path/to/nucleus_roi_qc.png

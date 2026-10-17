@@ -104,13 +104,15 @@ launchers have been tested; the GUI and the manual fail-safe have not yet been r
 
 ## Register one image pair
 
-From the version directory:
+From the version directory, register a DAPI image onto an H&E image (the default pair):
 
 ```bash
-# DAPI onto H&E (the default pair)
 ./run_pharaoh_cli.sh --moving /path/to/dapi.ome.tif --fixed /path/to/he.ome.tif
+```
 
-# the other three pairs
+The other three pairs:
+
+```bash
 ./run_pharaoh_cli.sh --pair he-dapi   --moving /path/to/he.ome.tif   --fixed /path/to/dapi.ome.tif
 ./run_pharaoh_cli.sh --pair he-he     --moving /path/to/he_a.ome.tif --fixed /path/to/he_b.ome.tif
 ./run_pharaoh_cli.sh --pair dapi-dapi --moving /path/to/dapi_a.ome.tif --fixed /path/to/dapi_b.ome.tif
@@ -201,11 +203,15 @@ a JSON manifest, several at once, each in its own run directory with its own log
 `name` must be unique, `pair` defaults to `dapi-he`, and paths may be absolute or relative to
 the manifest. `pipeline_args` (for every dataset, or for one) are passed to `run_pharaoh.py`.
 
+Check the inputs without running anything, then run four pipelines at once:
+
 ```bash
-./run_pharaoh_parallel.sh my_datasets.json --dry-run            # check inputs, run nothing
-./run_pharaoh_parallel.sh my_datasets.json --jobs 4             # four pipelines at once
-./run_pharaoh_parallel.sh my_datasets.json --jobs 8 --threads-per-dataset 2
+./run_pharaoh_parallel.sh my_datasets.json --dry-run
+./run_pharaoh_parallel.sh my_datasets.json --jobs 4
 ```
+
+On a machine with many cores, `--threads-per-dataset` limits the threads each pipeline uses, for
+example `--jobs 8 --threads-per-dataset 2`.
 
 The batch writes `outputs/parallel_runs_<timestamp>/` (or `--output-root DIR`) with one
 `runs_<name>/` and one `<name>.log` per dataset, plus:
@@ -256,14 +262,15 @@ other pyramid levels: one round tries one level coarser and then one level finer
 In the window, first set the moving image's orientation (90° rotations and flips), then place
 it on the fixed image (see [Stage 2 in the GUI](#use-the-gui)) and click **Save Alignment**.
 Stages 3–8 then run as usual. An unattended batch should use `--failsafe-mode off`, and the
-queue can be worked through later:
+queue can be worked through later by passing the batch's output folder:
 
 ```bash
-./run_pharaoh_failsafe.sh outputs/parallel_runs_<timestamp>                 # the whole queue
-./run_pharaoh_failsafe.sh outputs/parallel_runs_<timestamp> --name sample_a # one dataset
-./run_pharaoh_failsafe.sh outputs/parallel_runs_<timestamp> --dry-run       # show the plan only
-./run_pharaoh_failsafe.sh --run-dir RUN_DIR --pair dapi-he --moving D --fixed H   # one run, no queue
+./run_pharaoh_failsafe.sh outputs/parallel_runs_YYYYMMDDHHMMSS
 ```
+
+Add `--name sample_a` to align one dataset only, or `--dry-run` to show the plan without
+changing anything. A single failed run, without a queue, is aligned with
+`./run_pharaoh_failsafe.sh --run-dir RUN_DIR --pair dapi-he --moving DAPI.ome.tif --fixed HE.ome.tif`.
 
 Every queued pair is aligned first; their pipelines then finish one at a time
 (`--resume-jobs N` for more). Results are summarized in
@@ -315,10 +322,12 @@ or to prepare inputs in advance, run the converter yourself; it writes the resul
 source:
 
 ```bash
-python scripts/pre_process/convert_image_to_ome_tif.py /path/to/slide.svs   # writes /path/to/slide.ome.tif
+python scripts/pre_process/convert_image_to_ome_tif.py /path/to/slide.svs
 python scripts/pre_process/convert_image_to_ome_tif.py /path/to/image.jpg --mpp 0.25
 python scripts/pre_process/convert_image_to_ome_tif.py /path/to/slide.czi --channel 0
 ```
+
+The first command writes `/path/to/slide.ome.tif`.
 
 The physical pixel size is copied from the source when it records one (NDPI/TIFF resolution
 tags, the SVS `MPP`, OME `PhysicalSizeX/Y`, the CZI scaling); `--mpp` supplies it otherwise.
@@ -332,12 +341,11 @@ and a multi-channel input needs `--channel`. Other options: `--tile` (default 51
 ## Quality-control images
 
 Diagnostic images are off by default; the final overlay `6_overlay_final_L*.png` is always
-written. Turn them on per run:
+written. Add `--qc-images` to a run for every group, `--qc-images stage6_overlays` (a
+comma-separated list) for selected groups, or `--no-qc-images` for none:
 
 ```bash
-./run_pharaoh_cli.sh --moving D --fixed H --qc-images                   # every group
-./run_pharaoh_cli.sh --moving D --fixed H --qc-images stage6_overlays   # selected groups
-./run_pharaoh_cli.sh --moving D --fixed H --no-qc-images                # none
+./run_pharaoh_cli.sh --moving /path/to/dapi.ome.tif --fixed /path/to/he.ome.tif --qc-images stage6_overlays
 ```
 
 Groups: `stage1_extras`, `stage3_debug`, `stage4b_overlays`, `stage4b_density`,
@@ -388,9 +396,12 @@ otherwise. A run records the parameters it used in `run_parameters.json`.
 
 ### DAPI → H&E: Xenium Human Colon Cancer P1
 
+From the repository root, download the dataset into `examples/xenium_human_CRC_P1/`
+(`morphology_focus.ome.tif`, `he.ome.tif` and `cells.csv.gz`) and run PHARAOH on it:
+
 ```bash
 cd examples
-bash download_example_dapi_he_data.sh    # -> xenium_human_CRC_P1/ (morphology_focus.ome.tif, he.ome.tif, cells.csv.gz)
+bash download_example_dapi_he_data.sh
 conda activate PHARAOH
 cd ../version_5.0_macos_linux
 ./run_pharaoh_cli.sh --moving ../examples/xenium_human_CRC_P1/morphology_focus.ome.tif \
@@ -404,16 +415,16 @@ Depending on the Xenium release, the DAPI image may be
 
 The adjacent-section registration of the manuscript: the H&E of the Visium HD section is
 registered onto the H&E of the adjacent Xenium section. The Visium HD tissue image is a BigTIFF
-(`.btf`, about 11 GB) without a pyramid; convert it once to a pyramidal OME-TIFF after
-downloading, then register it onto the Xenium H&E:
+(`.btf`, about 11 GB) without a pyramid. The download goes to `examples/he_he_human_CRC_P2/`
+(`hefg.btf` and `he.ome.tif`); convert `hefg.btf` once to a pyramidal OME-TIFF (the converter
+writes `hefg.ome.tif` next to it), then register it onto the Xenium H&E:
 
 ```bash
 cd examples
-bash download_example_he_he_data.sh      # -> he_he_human_CRC_P2/ (hefg.btf, he.ome.tif)
+bash download_example_he_he_data.sh
 conda activate PHARAOH
 cd ../version_5.0_macos_linux
 python scripts/pre_process/convert_image_to_ome_tif.py ../examples/he_he_human_CRC_P2/hefg.btf
-                                         # writes ../examples/he_he_human_CRC_P2/hefg.ome.tif
 ./run_pharaoh_cli.sh --pair he-he \
                      --moving ../examples/he_he_human_CRC_P2/hefg.ome.tif \
                      --fixed  ../examples/he_he_human_CRC_P2/he.ome.tif

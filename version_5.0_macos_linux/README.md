@@ -6,14 +6,22 @@ installation, all options and the input and output formats are described in the
 
 ## Quick start
 
+Install the environment once, from this directory:
+
 ```bash
-bash ../install_conda_env.sh        # once
+bash ../install_conda_env.sh
+```
+
+Then register a DAPI image onto an H&E image:
+
+```bash
 conda activate PHARAOH
-
-# register a DAPI image onto an H&E image
 ./run_pharaoh_cli.sh --moving /path/to/dapi.ome.tif --fixed /path/to/he.ome.tif
+```
 
-# other pairs: he-dapi, he-he, dapi-dapi
+For the other pairs, add `--pair he-dapi`, `--pair he-he` or `--pair dapi-dapi`, for example:
+
+```bash
 ./run_pharaoh_cli.sh --pair he-he --moving /path/to/he_a.ome.tif --fixed /path/to/he_b.ome.tif
 ```
 
