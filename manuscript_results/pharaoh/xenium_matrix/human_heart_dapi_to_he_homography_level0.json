@@ -1,0 +1,51 @@
+{
+  "from": "dapi_level0",
+  "to": "he_level0",
+  "method": "Stage8 cv2.findHomography(RANSAC) from Stage7 high-confidence pairs",
+  "transform_type": "homography",
+  "stage": 8,
+  "sampling": {
+    "type": "stage7_high_confidence_pairs",
+    "source": "/Volumes/X10 Pro/benchmark_new/runs/iter1/matrix/pharaoh/default/human_heart/dense_nucleus_pairs/high_confidence_pairs.csv.gz",
+    "num_points": 2597,
+    "num_train_points": 2045,
+    "num_holdout_points": 552
+  },
+  "ransacReprojThreshold": 4.0,
+  "maxIters": 20000,
+  "confidence": 0.999,
+  "num_points": 2597,
+  "num_inliers": 1930,
+  "inlier_median_reproj_error_px": 1.4363181578568356,
+  "inlier_mean_reproj_error_px": 1.6271642189023383,
+  "quality_gates": {
+    "minimum_pairs": true,
+    "minimum_spatial_grid_coverage": true,
+    "minimum_axis_span": true,
+    "homography_fit_succeeded": true,
+    "minimum_inliers": true,
+    "minimum_inlier_ratio": true,
+    "holdout_median_degradation_bounded": true,
+    "holdout_p95_degradation_bounded": true,
+    "bounded_transform_shift": true,
+    "holdout_median_degradation_px_bounded": true
+  },
+  "promoted_to_canonical": true,
+  "homography_3x3": [
+    [
+      0.002107014026774396,
+      -0.7763548936189918,
+      24807.174141988384
+    ],
+    [
+      0.7763637696490676,
+      0.0020430748871083874,
+      464.9020516714538
+    ],
+    [
+      -8.988524564573764e-09,
+      5.511881373653339e-09,
+      1.0
+    ]
+  ]
+}

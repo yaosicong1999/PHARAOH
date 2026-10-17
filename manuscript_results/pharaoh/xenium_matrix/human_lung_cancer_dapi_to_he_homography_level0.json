@@ -1,0 +1,51 @@
+{
+  "from": "dapi_level0",
+  "to": "he_level0",
+  "method": "Stage8 cv2.findHomography(RANSAC) from Stage7 high-confidence pairs",
+  "transform_type": "homography",
+  "stage": 8,
+  "sampling": {
+    "type": "stage7_high_confidence_pairs",
+    "source": "/Volumes/X10 Pro/benchmark_new/runs/iter1/matrix/pharaoh/default/human_lung_cancer/dense_nucleus_pairs/high_confidence_pairs.csv.gz",
+    "num_points": 5913,
+    "num_train_points": 4750,
+    "num_holdout_points": 1163
+  },
+  "ransacReprojThreshold": 4.0,
+  "maxIters": 20000,
+  "confidence": 0.999,
+  "num_points": 5913,
+  "num_inliers": 3622,
+  "inlier_median_reproj_error_px": 1.7342178542510216,
+  "inlier_mean_reproj_error_px": 1.8687851192968712,
+  "quality_gates": {
+    "minimum_pairs": true,
+    "minimum_spatial_grid_coverage": true,
+    "minimum_axis_span": true,
+    "homography_fit_succeeded": true,
+    "minimum_inliers": true,
+    "minimum_inlier_ratio": true,
+    "holdout_median_degradation_bounded": true,
+    "holdout_p95_degradation_bounded": true,
+    "bounded_transform_shift": true,
+    "holdout_median_degradation_px_bounded": true
+  },
+  "promoted_to_canonical": true,
+  "homography_3x3": [
+    [
+      0.006866548114893105,
+      -0.7754461899628525,
+      25019.491233709083
+    ],
+    [
+      0.7752549849728853,
+      0.006947455724083752,
+      1552.2382478401003
+    ],
+    [
+      -3.1065480123293723e-09,
+      -7.914924576722513e-10,
+      1.0
+    ]
+  ]
+}

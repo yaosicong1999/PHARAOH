@@ -1,0 +1,51 @@
+{
+  "from": "dapi_level0",
+  "to": "he_level0",
+  "method": "Stage8 cv2.findHomography(RANSAC) from Stage7 high-confidence pairs",
+  "transform_type": "homography",
+  "stage": 8,
+  "sampling": {
+    "type": "stage7_high_confidence_pairs",
+    "source": "/Volumes/X10 Pro/Orion/HTA7_919_6_2/pseudo_warp/seed_56789/version_4.14_stage4_100percent/dense_nucleus_pairs/high_confidence_pairs.csv.gz",
+    "num_points": 5172,
+    "num_train_points": 4178,
+    "num_holdout_points": 994
+  },
+  "ransacReprojThreshold": 3.3698461538461535,
+  "maxIters": 20000,
+  "confidence": 0.999,
+  "num_points": 5172,
+  "num_inliers": 2422,
+  "inlier_median_reproj_error_px": 1.792381590353771,
+  "inlier_mean_reproj_error_px": 1.8032837756142004,
+  "quality_gates": {
+    "minimum_pairs": true,
+    "minimum_spatial_grid_coverage": true,
+    "minimum_axis_span": true,
+    "homography_fit_succeeded": true,
+    "minimum_inliers": true,
+    "minimum_inlier_ratio": true,
+    "holdout_median_degradation_bounded": true,
+    "holdout_p95_degradation_bounded": true,
+    "bounded_transform_shift": true,
+    "holdout_median_degradation_px_bounded": true
+  },
+  "promoted_to_canonical": true,
+  "homography_3x3": [
+    [
+      0.9980256709556798,
+      0.0006437532816927802,
+      -2020.1748029967039
+    ],
+    [
+      0.009101878342336119,
+      1.0372602191734166,
+      4132.527692509677
+    ],
+    [
+      2.2956996323652139e-07,
+      4.467975388888467e-08,
+      1.0
+    ]
+  ]
+}

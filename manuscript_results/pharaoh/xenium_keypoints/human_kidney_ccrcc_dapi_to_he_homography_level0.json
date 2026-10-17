@@ -1,0 +1,51 @@
+{
+  "from": "dapi_level0",
+  "to": "he_level0",
+  "method": "Stage8 cv2.findHomography(RANSAC) from Stage7 high-confidence pairs",
+  "transform_type": "homography",
+  "stage": 8,
+  "sampling": {
+    "type": "stage7_high_confidence_pairs",
+    "source": "/Volumes/X10 Pro/benchmark_new/runs/iter1/keypoints/pharaoh/default/human_kidney_ccrcc/dense_nucleus_pairs/high_confidence_pairs.csv.gz",
+    "num_points": 18024,
+    "num_train_points": 14446,
+    "num_holdout_points": 3578
+  },
+  "ransacReprojThreshold": 8.001396318256345,
+  "maxIters": 20000,
+  "confidence": 0.999,
+  "num_points": 18024,
+  "num_inliers": 10168,
+  "inlier_median_reproj_error_px": 4.563036296699567,
+  "inlier_mean_reproj_error_px": 4.518509233186773,
+  "quality_gates": {
+    "minimum_pairs": true,
+    "minimum_spatial_grid_coverage": true,
+    "minimum_axis_span": true,
+    "homography_fit_succeeded": true,
+    "minimum_inliers": true,
+    "minimum_inlier_ratio": true,
+    "holdout_median_degradation_bounded": true,
+    "holdout_p95_degradation_bounded": true,
+    "bounded_transform_shift": true,
+    "holdout_median_degradation_px_bounded": true
+  },
+  "promoted_to_canonical": true,
+  "homography_3x3": [
+    [
+      0.006296381438286446,
+      -1.5520074466285734,
+      88207.21743086194
+    ],
+    [
+      1.5517807115546236,
+      0.006743573648407194,
+      1110.179411934466
+    ],
+    [
+      -5.886936396317821e-09,
+      2.9173711615826724e-10,
+      1.0
+    ]
+  ]
+}

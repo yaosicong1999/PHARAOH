@@ -1,0 +1,51 @@
+{
+  "from": "dapi_level0",
+  "to": "he_level0",
+  "method": "Stage8 cv2.findHomography(RANSAC) from Stage7 high-confidence pairs",
+  "transform_type": "homography",
+  "stage": 8,
+  "sampling": {
+    "type": "stage7_high_confidence_pairs",
+    "source": "/Volumes/X10 Pro/benchmark_new/runs/iter1/experimental/pharaoh/default/geo_brca_b14/dense_nucleus_pairs/high_confidence_pairs.csv.gz",
+    "num_points": 1396,
+    "num_train_points": 1089,
+    "num_holdout_points": 307
+  },
+  "ransacReprojThreshold": 12.697971014492754,
+  "maxIters": 20000,
+  "confidence": 0.999,
+  "num_points": 1396,
+  "num_inliers": 747,
+  "inlier_median_reproj_error_px": 5.711877426172342,
+  "inlier_mean_reproj_error_px": 6.053848807709546,
+  "quality_gates": {
+    "minimum_pairs": true,
+    "minimum_spatial_grid_coverage": true,
+    "minimum_axis_span": true,
+    "homography_fit_succeeded": true,
+    "minimum_inliers": true,
+    "minimum_inlier_ratio": true,
+    "holdout_median_degradation_bounded": true,
+    "holdout_p95_degradation_bounded": true,
+    "bounded_transform_shift": true,
+    "holdout_median_degradation_px_bounded": true
+  },
+  "promoted_to_canonical": true,
+  "homography_3x3": [
+    [
+      0.016979725365486163,
+      -2.4408225466628286,
+      40019.03136144396
+    ],
+    [
+      2.4417111158932903,
+      0.015505527009038367,
+      -4412.668667336382
+    ],
+    [
+      2.5230561108552287e-08,
+      -5.1775314020458955e-08,
+      1.0
+    ]
+  ]
+}

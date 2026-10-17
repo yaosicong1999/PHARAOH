@@ -1,0 +1,51 @@
+{
+  "from": "dapi_level0",
+  "to": "he_level0",
+  "method": "Stage8 cv2.findHomography(RANSAC) from Stage7 high-confidence pairs",
+  "transform_type": "homography",
+  "stage": 8,
+  "sampling": {
+    "type": "stage7_high_confidence_pairs",
+    "source": "/Volumes/X10 Pro/benchmark_new/runs/iter1/matrix/pharaoh/default/human_breast_cancer_s1r2/dense_nucleus_pairs/high_confidence_pairs.csv.gz",
+    "num_points": 5342,
+    "num_train_points": 4274,
+    "num_holdout_points": 1068
+  },
+  "ransacReprojThreshold": 3.0105446029005902,
+  "maxIters": 20000,
+  "confidence": 0.999,
+  "num_points": 5342,
+  "num_inliers": 2594,
+  "inlier_median_reproj_error_px": 1.7761343996610286,
+  "inlier_mean_reproj_error_px": 1.7686762684504058,
+  "quality_gates": {
+    "minimum_pairs": true,
+    "minimum_spatial_grid_coverage": true,
+    "minimum_axis_span": true,
+    "homography_fit_succeeded": true,
+    "minimum_inliers": true,
+    "minimum_inlier_ratio": true,
+    "holdout_median_degradation_bounded": true,
+    "holdout_p95_degradation_bounded": true,
+    "bounded_transform_shift": true,
+    "holdout_median_degradation_px_bounded": true
+  },
+  "promoted_to_canonical": true,
+  "homography_3x3": [
+    [
+      0.5836795340194065,
+      0.002348803875753084,
+      4685.376807185111
+    ],
+    [
+      -0.002852568656755285,
+      0.5831585702532648,
+      8565.684056082951
+    ],
+    [
+      1.0914741461265488e-09,
+      -5.142048002044668e-08,
+      1.0
+    ]
+  ]
+}

@@ -1,0 +1,132 @@
+{
+  "from": "hefg_level0",
+  "to": "hebg_level0",
+  "method": "cv2.findHomography(RANSAC)",
+  "transform_type": "homography",
+  "sampling": {
+    "type": "grid_balanced",
+    "order": "sorted by (tile_id, nucleus_id)",
+    "balance_points_bool": true,
+    "balance_grid": [
+      6,
+      6
+    ],
+    "balance_max_per_cell": 4,
+    "num_points_before_sampling": 60,
+    "num_points_after_sampling": 59,
+    "selected_indices_from_original": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18,
+      19,
+      20,
+      21,
+      22,
+      23,
+      24,
+      25,
+      26,
+      27,
+      28,
+      29,
+      30,
+      31,
+      32,
+      33,
+      34,
+      35,
+      36,
+      37,
+      38,
+      39,
+      40,
+      41,
+      42,
+      43,
+      44,
+      45,
+      46,
+      47,
+      48,
+      49,
+      50,
+      51,
+      52,
+      53,
+      54,
+      55,
+      56,
+      57,
+      58,
+      59
+    ]
+  },
+  "ransacReprojThreshold": 16.00279263651265,
+  "ransac_reproj_threshold_px_configured": 8.0,
+  "physical_scale": {
+    "mpp": {
+      "he": 0.136876109673651
+    },
+    "reference_mpp": {
+      "he": 0.2738
+    },
+    "factor": {
+      "he": 2.000349079564081
+    },
+    "roles": {
+      "moving": 2.000349079564081,
+      "fixed": 2.000349079564081
+    },
+    "mpp_by_role": {
+      "moving": 0.136876109673651,
+      "fixed": 0.136876109673651
+    },
+    "mpp_source": {
+      "he": "ome_header"
+    },
+    "mpp_source_by_role": {
+      "moving": "ome_header",
+      "fixed": "ome_header"
+    },
+    "mpp_estimate_by_role": {}
+  },
+  "maxIters": 10000,
+  "confidence": 0.995,
+  "random_seed": 43,
+  "num_points": 59,
+  "num_inliers": 59,
+  "inlier_median_reproj_error_px": 1.026691798872773,
+  "inlier_mean_reproj_error_px": 1.115243677368974,
+  "homography_3x3": [
+    [
+      0.9667147225848909,
+      -0.2586273864631202,
+      13121.341814172949
+    ],
+    [
+      0.2592230728293512,
+      0.9664016475891226,
+      7449.400759066441
+    ],
+    [
+      2.6773823808778688e-08,
+      1.871082964957193e-08,
+      1.0
+    ]
+  ]
+}

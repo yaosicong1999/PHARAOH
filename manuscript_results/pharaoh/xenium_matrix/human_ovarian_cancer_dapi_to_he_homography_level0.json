@@ -1,0 +1,51 @@
+{
+  "from": "dapi_level0",
+  "to": "he_level0",
+  "method": "Stage8 cv2.findHomography(RANSAC) from Stage7 high-confidence pairs",
+  "transform_type": "homography",
+  "stage": 8,
+  "sampling": {
+    "type": "stage7_high_confidence_pairs",
+    "source": "/Volumes/X10 Pro/benchmark_new/runs/iter1/matrix/pharaoh/default/human_ovarian_cancer/dense_nucleus_pairs/high_confidence_pairs.csv.gz",
+    "num_points": 3255,
+    "num_train_points": 2605,
+    "num_holdout_points": 650
+  },
+  "ransacReprojThreshold": 4.0,
+  "maxIters": 20000,
+  "confidence": 0.999,
+  "num_points": 3255,
+  "num_inliers": 2067,
+  "inlier_median_reproj_error_px": 1.5732389895799586,
+  "inlier_mean_reproj_error_px": 1.7400898563952023,
+  "quality_gates": {
+    "minimum_pairs": true,
+    "minimum_spatial_grid_coverage": true,
+    "minimum_axis_span": true,
+    "homography_fit_succeeded": true,
+    "minimum_inliers": true,
+    "minimum_inlier_ratio": true,
+    "holdout_median_degradation_bounded": true,
+    "holdout_p95_degradation_bounded": true,
+    "bounded_transform_shift": true,
+    "holdout_median_degradation_px_bounded": true
+  },
+  "promoted_to_canonical": true,
+  "homography_3x3": [
+    [
+      0.0065436380511305105,
+      -0.775468443788119,
+      29968.693019903658
+    ],
+    [
+      0.7753648009093899,
+      0.006715167224746201,
+      303.91179241558046
+    ],
+    [
+      9.036263697217332e-11,
+      -1.0080724193507898e-09,
+      1.0
+    ]
+  ]
+}

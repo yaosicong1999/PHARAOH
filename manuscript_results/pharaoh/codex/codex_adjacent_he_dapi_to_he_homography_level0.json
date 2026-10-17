@@ -1,0 +1,2531 @@
+{
+  "stage": 5,
+  "from": "dapi_level0",
+  "to": "he_level0",
+  "method": "Stage2 homography + compact-support density residual",
+  "transform_type": "local_residual",
+  "anchor_mode": "density",
+  "homography_3x3": [
+    [
+      2.309587285661443,
+      0.00650108995933652,
+      2488.13306677462
+    ],
+    [
+      -0.003782908501630701,
+      2.3010253359983346,
+      539.6416049941523
+    ],
+    [
+      1.1776783282160938e-07,
+      3.4915224829480066e-08,
+      1.0
+    ]
+  ],
+  "base_homography_3x3": [
+    [
+      2.309587285661443,
+      0.00650108995933652,
+      2488.13306677462
+    ],
+    [
+      -0.003782908501630701,
+      2.3010253359983346,
+      539.6416049941523
+    ],
+    [
+      1.1776783282160938e-07,
+      3.4915224829480066e-08,
+      1.0
+    ]
+  ],
+  "sampling": {
+    "type": "tile_aggregated_local",
+    "order": "sorted by (tile_id, nucleus_id)",
+    "balance_points_bool": false,
+    "num_points_before_sampling": 264,
+    "num_points_after_sampling": 264,
+    "selected_indices_from_original": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18,
+      19,
+      20,
+      21,
+      22,
+      23,
+      24,
+      25,
+      26,
+      27,
+      28,
+      29,
+      30,
+      31,
+      32,
+      33,
+      34,
+      35,
+      36,
+      37,
+      38,
+      39,
+      40,
+      41,
+      42,
+      43,
+      44,
+      45,
+      46,
+      47,
+      48,
+      49,
+      50,
+      51,
+      52,
+      53,
+      54,
+      55,
+      56,
+      57,
+      58,
+      59,
+      60,
+      61,
+      62,
+      63,
+      64,
+      65,
+      66,
+      67,
+      68,
+      69,
+      70,
+      71,
+      72,
+      73,
+      74,
+      75,
+      76,
+      77,
+      78,
+      79,
+      80,
+      81,
+      82,
+      83,
+      84,
+      85,
+      86,
+      87,
+      88,
+      89,
+      90,
+      91,
+      92,
+      93,
+      94,
+      95,
+      96,
+      97,
+      98,
+      99,
+      100,
+      101,
+      102,
+      103,
+      104,
+      105,
+      106,
+      107,
+      108,
+      109,
+      110,
+      111,
+      112,
+      113,
+      114,
+      115,
+      116,
+      117,
+      118,
+      119,
+      120,
+      121,
+      122,
+      123,
+      124,
+      125,
+      126,
+      127,
+      128,
+      129,
+      130,
+      131,
+      132,
+      133,
+      134,
+      135,
+      136,
+      137,
+      138,
+      139,
+      140,
+      141,
+      142,
+      143,
+      144,
+      145,
+      146,
+      147,
+      148,
+      149,
+      150,
+      151,
+      152,
+      153,
+      154,
+      155,
+      156,
+      157,
+      158,
+      159,
+      160,
+      161,
+      162,
+      163,
+      164,
+      165,
+      166,
+      167,
+      168,
+      169,
+      170,
+      171,
+      172,
+      173,
+      174,
+      175,
+      176,
+      177,
+      178,
+      179,
+      180,
+      181,
+      182,
+      183,
+      184,
+      185,
+      186,
+      187,
+      188,
+      189,
+      190,
+      191,
+      192,
+      193,
+      194,
+      195,
+      196,
+      197,
+      198,
+      199,
+      200,
+      201,
+      202,
+      203,
+      204,
+      205,
+      206,
+      207,
+      208,
+      209,
+      210,
+      211,
+      212,
+      213,
+      214,
+      215,
+      216,
+      217,
+      218,
+      219,
+      220,
+      221,
+      222,
+      223,
+      224,
+      225,
+      226,
+      227,
+      228,
+      229,
+      230,
+      231,
+      232,
+      233,
+      234,
+      235,
+      236,
+      237,
+      238,
+      239,
+      240,
+      241,
+      242,
+      243,
+      244,
+      245,
+      246,
+      247,
+      248,
+      249,
+      250,
+      251,
+      252,
+      253,
+      254,
+      255,
+      256,
+      257,
+      258,
+      259,
+      260,
+      261,
+      262,
+      263
+    ]
+  },
+  "ransacReprojThreshold": 9.915831405002734,
+  "ransac_reproj_threshold_px_configured": 8.0,
+  "physical_scale": {
+    "mpp": {
+      "dapi": 0.5080970005383941,
+      "he": 0.22089927818810026
+    },
+    "reference_mpp": {
+      "dapi": 0.2125,
+      "he": 0.2738
+    },
+    "factor": {
+      "dapi": 0.4182272278223034,
+      "he": 1.2394789256253418
+    },
+    "roles": {
+      "moving": 0.4182272278223034,
+      "fixed": 1.2394789256253418
+    },
+    "mpp_by_role": {
+      "moving": 0.5080970005383941,
+      "fixed": 0.22089927818810026
+    },
+    "mpp_source": {
+      "dapi": "ome_header",
+      "he": "stage2_homography_from_moving_ome"
+    },
+    "mpp_source_by_role": {
+      "moving": "ome_header",
+      "fixed": "stage2_homography_from_moving_ome"
+    },
+    "mpp_estimate_by_role": {
+      "fixed": {
+        "fixed_pixels_per_moving_pixel": 2.300129745583592,
+        "scale_p05": 2.29643509584909,
+        "scale_p95": 2.3038343129311754,
+        "scale_p95_over_p05": 1.0032220449406386,
+        "axis_ratio_p05": 0.9962454044178141,
+        "sample_count": 81,
+        "determinant_sign": 1,
+        "method": "median_level0_homography_jacobian_area_scale",
+        "moving_base_mpp": 0.5080970005383941,
+        "fixed_base_mpp": 0.22089927818810026,
+        "anchor_role": "moving",
+        "derived_role": "fixed",
+        "anchor_kind": "known_mpp"
+      }
+    }
+  },
+  "num_points": 264,
+  "num_inliers": 152,
+  "inlier_median_reproj_error_px": 4.444062698824872,
+  "inlier_mean_reproj_error_px": 4.740764950004194,
+  "density_local_fit": {
+    "promoted": true,
+    "accepted_tiles": [
+      {
+        "tile_id": "tile_005",
+        "anchor_count": 3,
+        "control_point_fixed_level0": [
+          17449.11419657734,
+          16603.374215518346
+        ],
+        "residual_vector_fixed_level0": [
+          -8.11419657733859,
+          -0.3742155183463183
+        ],
+        "residual_magnitude_px": 8.122821144766421,
+        "anchor_spread_px": 9.062200816460638
+      },
+      {
+        "tile_id": "tile_009",
+        "anchor_count": 3,
+        "control_point_fixed_level0": [
+          17877.703594261384,
+          2965.2968447368503
+        ],
+        "residual_vector_fixed_level0": [
+          1.2964057386161585,
+          0.7031552631497107
+        ],
+        "residual_magnitude_px": 1.4748203833728522,
+        "anchor_spread_px": 7.078323613545901
+      },
+      {
+        "tile_id": "tile_010",
+        "anchor_count": 3,
+        "control_point_fixed_level0": [
+          25371.132281995535,
+          17859.268810322756
+        ],
+        "residual_vector_fixed_level0": [
+          7.867718004465132,
+          47.7311896772444
+        ],
+        "residual_magnitude_px": 48.37527730776194,
+        "anchor_spread_px": 3.4826114397656056
+      },
+      {
+        "tile_id": "tile_011",
+        "anchor_count": 3,
+        "control_point_fixed_level0": [
+          20810.761198685304,
+          11270.675639886766
+        ],
+        "residual_vector_fixed_level0": [
+          -25.761198685304407,
+          5.520859267488049
+        ],
+        "residual_magnitude_px": 26.34614288193128,
+        "anchor_spread_px": 8.733306838619233
+      },
+      {
+        "tile_id": "tile_012",
+        "anchor_count": 3,
+        "control_point_fixed_level0": [
+          19380.37482505271,
+          17083.414403529954
+        ],
+        "residual_vector_fixed_level0": [
+          0.6251749472903612,
+          9.585596470045857
+        ],
+        "residual_magnitude_px": 9.605961867573445,
+        "anchor_spread_px": 2.6885107047912373
+      },
+      {
+        "tile_id": "tile_013",
+        "anchor_count": 3,
+        "control_point_fixed_level0": [
+          10030.212979625809,
+          3317.506328481997
+        ],
+        "residual_vector_fixed_level0": [
+          6.787020374191343,
+          -21.122612101471987
+        ],
+        "residual_magnitude_px": 22.18622066844507,
+        "anchor_spread_px": 23.288854968151302
+      },
+      {
+        "tile_id": "tile_014",
+        "anchor_count": 3,
+        "control_point_fixed_level0": [
+          26927.693423217916,
+          2707.8491677958227
+        ],
+        "residual_vector_fixed_level0": [
+          2.3065767820844485,
+          -13.849167795822723
+        ],
+        "residual_magnitude_px": 14.039933941742898,
+        "anchor_spread_px": 36.97516409776094
+      },
+      {
+        "tile_id": "tile_016",
+        "anchor_count": 3,
+        "control_point_fixed_level0": [
+          22540.65092138683,
+          12183.017074695183
+        ],
+        "residual_vector_fixed_level0": [
+          -25.650921386830305,
+          0.9829253048173996
+        ],
+        "residual_magnitude_px": 25.669746982551242,
+        "anchor_spread_px": 2.4180988841488014
+      },
+      {
+        "tile_id": "tile_018",
+        "anchor_count": 3,
+        "control_point_fixed_level0": [
+          18417.361868135413,
+          27204.691315187538
+        ],
+        "residual_vector_fixed_level0": [
+          5.638131864587194,
+          2.308684812462161
+        ],
+        "residual_magnitude_px": 6.092500019348947,
+        "anchor_spread_px": 8.114814156198358
+      },
+      {
+        "tile_id": "tile_020",
+        "anchor_count": 3,
+        "control_point_fixed_level0": [
+          47817.33975267815,
+          6496.685280319074
+        ],
+        "residual_vector_fixed_level0": [
+          -30.339752678148216,
+          0.3147196809259185
+        ],
+        "residual_magnitude_px": 30.34138495600957,
+        "anchor_spread_px": 5.976157016868248
+      },
+      {
+        "tile_id": "tile_021",
+        "anchor_count": 3,
+        "control_point_fixed_level0": [
+          26843.06005061069,
+          25826.62225304169
+        ],
+        "residual_vector_fixed_level0": [
+          66.93994938931064,
+          86.3880966398865
+        ],
+        "residual_magnitude_px": 109.28796852950391,
+        "anchor_spread_px": 5.117459316929302
+      },
+      {
+        "tile_id": "tile_022",
+        "anchor_count": 3,
+        "control_point_fixed_level0": [
+          11277.107142070052,
+          23657.10997261166
+        ],
+        "residual_vector_fixed_level0": [
+          -0.10714207005185017,
+          1.703883486075938
+        ],
+        "residual_magnitude_px": 1.7072487684275208,
+        "anchor_spread_px": 15.903043682997668
+      },
+      {
+        "tile_id": "tile_024",
+        "anchor_count": 3,
+        "control_point_fixed_level0": [
+          33785.48774043703,
+          17082.30811797947
+        ],
+        "residual_vector_fixed_level0": [
+          59.51225956297276,
+          38.69188202052828
+        ],
+        "residual_magnitude_px": 70.98429947939982,
+        "anchor_spread_px": 17.680443294913857
+      },
+      {
+        "tile_id": "tile_027",
+        "anchor_count": 3,
+        "control_point_fixed_level0": [
+          16136.98331194726,
+          7232.821768792687
+        ],
+        "residual_vector_fixed_level0": [
+          -15.983311947260518,
+          18.17823120731282
+        ],
+        "residual_magnitude_px": 24.205667737741972,
+        "anchor_spread_px": 35.821010378074654
+      },
+      {
+        "tile_id": "tile_029",
+        "anchor_count": 3,
+        "control_point_fixed_level0": [
+          37237.6801857473,
+          16426.215009341573
+        ],
+        "residual_vector_fixed_level0": [
+          74.31981425270351,
+          7.7849906584269775
+        ],
+        "residual_magnitude_px": 74.72644023441867,
+        "anchor_spread_px": 7.345860555116815
+      },
+      {
+        "tile_id": "tile_032",
+        "anchor_count": 3,
+        "control_point_fixed_level0": [
+          14959.317392715062,
+          4839.449732604714
+        ],
+        "residual_vector_fixed_level0": [
+          16.682607284938058,
+          -24.449732604713972
+        ],
+        "residual_magnitude_px": 29.598966371572534,
+        "anchor_spread_px": 34.315829378340915
+      },
+      {
+        "tile_id": "tile_033",
+        "anchor_count": 3,
+        "control_point_fixed_level0": [
+          4811.308501482732,
+          14063.699047882345
+        ],
+        "residual_vector_fixed_level0": [
+          -11.308501482732026,
+          -30.69904788234453
+        ],
+        "residual_magnitude_px": 32.715649873836135,
+        "anchor_spread_px": 10.26343664286861
+      },
+      {
+        "tile_id": "tile_034",
+        "anchor_count": 3,
+        "control_point_fixed_level0": [
+          20349.98345223451,
+          22319.493187971148
+        ],
+        "residual_vector_fixed_level0": [
+          -9.983452234511788,
+          98.50681202885244
+        ],
+        "residual_magnitude_px": 99.0114202231563,
+        "anchor_spread_px": 15.982700504876162
+      },
+      {
+        "tile_id": "tile_035",
+        "anchor_count": 3,
+        "control_point_fixed_level0": [
+          33571.774370232626,
+          14973.61976965198
+        ],
+        "residual_vector_fixed_level0": [
+          2.2256297673739027,
+          73.38023034802063
+        ],
+        "residual_magnitude_px": 73.41397437674921,
+        "anchor_spread_px": 30.943067727876386
+      },
+      {
+        "tile_id": "tile_038",
+        "anchor_count": 3,
+        "control_point_fixed_level0": [
+          35509.63754547415,
+          18108.231329354232
+        ],
+        "residual_vector_fixed_level0": [
+          60.3624545258499,
+          86.768670645768
+        ],
+        "residual_magnitude_px": 105.69970729391382,
+        "anchor_spread_px": 20.526751273256302
+      },
+      {
+        "tile_id": "tile_041",
+        "anchor_count": 3,
+        "control_point_fixed_level0": [
+          23513.018138274645,
+          2591.6394953849613
+        ],
+        "residual_vector_fixed_level0": [
+          -0.018138274645025376,
+          1.7453341894652112
+        ],
+        "residual_magnitude_px": 1.7454284373537874,
+        "anchor_spread_px": 1.1618115238871138
+      },
+      {
+        "tile_id": "tile_042",
+        "anchor_count": 3,
+        "control_point_fixed_level0": [
+          7644.909233305991,
+          18920.7824835748
+        ],
+        "residual_vector_fixed_level0": [
+          18.09076669400929,
+          -37.44573734903315
+        ],
+        "residual_magnitude_px": 41.58676574572555,
+        "anchor_spread_px": 2.5285345652380062
+      },
+      {
+        "tile_id": "tile_043",
+        "anchor_count": 3,
+        "control_point_fixed_level0": [
+          34443.46086617617,
+          6769.414312250152
+        ],
+        "residual_vector_fixed_level0": [
+          106.31147779386083,
+          -165.44099980265491
+        ],
+        "residual_magnitude_px": 196.65415003608905,
+        "anchor_spread_px": 16.396828408806567
+      },
+      {
+        "tile_id": "tile_044",
+        "anchor_count": 3,
+        "control_point_fixed_level0": [
+          23066.01812435684,
+          10362.053445645744
+        ],
+        "residual_vector_fixed_level0": [
+          -11.018124356840417,
+          42.94655435425557
+        ],
+        "residual_magnitude_px": 44.33740627557986,
+        "anchor_spread_px": 17.05886193333726
+      },
+      {
+        "tile_id": "tile_045",
+        "anchor_count": 3,
+        "control_point_fixed_level0": [
+          29360.91044155809,
+          3167.1892099843067
+        ],
+        "residual_vector_fixed_level0": [
+          -27.299489176060888,
+          0.8107900156933283
+        ],
+        "residual_magnitude_px": 27.311526682399386,
+        "anchor_spread_px": 3.6061528451695537
+      },
+      {
+        "tile_id": "tile_046",
+        "anchor_count": 3,
+        "control_point_fixed_level0": [
+          16275.86641883138,
+          33363.00446712945
+        ],
+        "residual_vector_fixed_level0": [
+          2.898010971934127,
+          -39.15580300841248
+        ],
+        "residual_magnitude_px": 39.26290076939112,
+        "anchor_spread_px": 42.61087241113422
+      },
+      {
+        "tile_id": "tile_048",
+        "anchor_count": 3,
+        "control_point_fixed_level0": [
+          19704.56171407519,
+          29593.547222901518
+        ],
+        "residual_vector_fixed_level0": [
+          35.43828592481077,
+          -30.54722290151767
+        ],
+        "residual_magnitude_px": 46.78680301413687,
+        "anchor_spread_px": 2.289981642226041
+      },
+      {
+        "tile_id": "tile_049",
+        "anchor_count": 3,
+        "control_point_fixed_level0": [
+          23105.5291430279,
+          18591.923729984883
+        ],
+        "residual_vector_fixed_level0": [
+          0.4708569721005915,
+          63.07627001511719
+        ],
+        "residual_magnitude_px": 63.078027436724334,
+        "anchor_spread_px": 34.082363370646696
+      },
+      {
+        "tile_id": "tile_055",
+        "anchor_count": 3,
+        "control_point_fixed_level0": [
+          25548.234434523594,
+          4095.594793845531
+        ],
+        "residual_vector_fixed_level0": [
+          15.149326985767402,
+          36.40520615446894
+        ],
+        "residual_magnitude_px": 39.43147401849294,
+        "anchor_spread_px": 16.377052002368732
+      },
+      {
+        "tile_id": "tile_057",
+        "anchor_count": 3,
+        "control_point_fixed_level0": [
+          47475.41054695102,
+          3478.876096749438
+        ],
+        "residual_vector_fixed_level0": [
+          1.58945304898225,
+          0.12390325056185247
+        ],
+        "residual_magnitude_px": 1.5942750736365303,
+        "anchor_spread_px": 22.470801866338558
+      },
+      {
+        "tile_id": "tile_063",
+        "anchor_count": 3,
+        "control_point_fixed_level0": [
+          21574.73456083561,
+          28338.983238093755
+        ],
+        "residual_vector_fixed_level0": [
+          -18.379955956086633,
+          20.806610874795297
+        ],
+        "residual_magnitude_px": 27.762165568320395,
+        "anchor_spread_px": 38.73235644223314
+      },
+      {
+        "tile_id": "tile_064",
+        "anchor_count": 3,
+        "control_point_fixed_level0": [
+          6742.554288426637,
+          11303.49698198282
+        ],
+        "residual_vector_fixed_level0": [
+          0.4457115733630417,
+          -9.507312545310924
+        ],
+        "residual_magnitude_px": 9.517754495723045,
+        "anchor_spread_px": 8.559883754717703
+      },
+      {
+        "tile_id": "tile_068",
+        "anchor_count": 3,
+        "control_point_fixed_level0": [
+          11377.025531660523,
+          14385.609470859406
+        ],
+        "residual_vector_fixed_level0": [
+          17.974468339476516,
+          17.39052914059357
+        ],
+        "residual_magnitude_px": 25.01023822111013,
+        "anchor_spread_px": 33.89031071346389
+      },
+      {
+        "tile_id": "tile_069",
+        "anchor_count": 3,
+        "control_point_fixed_level0": [
+          13525.780831233044,
+          14881.603916760236
+        ],
+        "residual_vector_fixed_level0": [
+          17.2191687669565,
+          -12.603916760235734
+        ],
+        "residual_magnitude_px": 21.33913050533881,
+        "anchor_spread_px": 31.574756583159612
+      },
+      {
+        "tile_id": "tile_070",
+        "anchor_count": 3,
+        "control_point_fixed_level0": [
+          26968.161582110937,
+          15662.495830711727
+        ],
+        "residual_vector_fixed_level0": [
+          0.8384178890628391,
+          0.43527549257851206
+        ],
+        "residual_magnitude_px": 0.9446741825307038,
+        "anchor_spread_px": 6.131075590574204
+      },
+      {
+        "tile_id": "tile_077",
+        "anchor_count": 3,
+        "control_point_fixed_level0": [
+          25260.309614487873,
+          16124.484741113296
+        ],
+        "residual_vector_fixed_level0": [
+          1.69038551212725,
+          35.51525888670403
+        ],
+        "residual_magnitude_px": 35.55546395378943,
+        "anchor_spread_px": 47.744391272519465
+      },
+      {
+        "tile_id": "tile_079",
+        "anchor_count": 3,
+        "control_point_fixed_level0": [
+          22222.527868834404,
+          17646.05195966993
+        ],
+        "residual_vector_fixed_level0": [
+          -8.527868834404217,
+          2.948040330069489
+        ],
+        "residual_magnitude_px": 9.023053177529153,
+        "anchor_spread_px": 19.77318170894432
+      },
+      {
+        "tile_id": "tile_080",
+        "anchor_count": 3,
+        "control_point_fixed_level0": [
+          22965.097030921985,
+          13961.196022407968
+        ],
+        "residual_vector_fixed_level0": [
+          -24.097030921984697,
+          45.38358322860222
+        ],
+        "residual_magnitude_px": 51.38420502374783,
+        "anchor_spread_px": 13.375542935568285
+      },
+      {
+        "tile_id": "tile_083",
+        "anchor_count": 3,
+        "control_point_fixed_level0": [
+          19386.350829468505,
+          6697.620567109267
+        ],
+        "residual_vector_fixed_level0": [
+          10.200400625744805,
+          1.3794328907333693
+        ],
+        "residual_magnitude_px": 10.293250605407994,
+        "anchor_spread_px": 18.760165934189878
+      },
+      {
+        "tile_id": "tile_084",
+        "anchor_count": 3,
+        "control_point_fixed_level0": [
+          33359.74238880864,
+          3263.8759736482843
+        ],
+        "residual_vector_fixed_level0": [
+          -1.0761460884168628,
+          23.124026351715656
+        ],
+        "residual_magnitude_px": 23.149053654921943,
+        "anchor_spread_px": 22.180857348185683
+      },
+      {
+        "tile_id": "tile_088",
+        "anchor_count": 3,
+        "control_point_fixed_level0": [
+          40246.13265879773,
+          9817.94952193711
+        ],
+        "residual_vector_fixed_level0": [
+          7.867341202269017,
+          10.206494937086973
+        ],
+        "residual_magnitude_px": 12.886721712433372,
+        "anchor_spread_px": 4.49415831185882
+      },
+      {
+        "tile_id": "tile_091",
+        "anchor_count": 3,
+        "control_point_fixed_level0": [
+          30512.04341949439,
+          23525.13251961448
+        ],
+        "residual_vector_fixed_level0": [
+          58.95658050561178,
+          45.40212220560716
+        ],
+        "residual_magnitude_px": 74.41257343814667,
+        "anchor_spread_px": 8.628587712539028
+      },
+      {
+        "tile_id": "tile_093",
+        "anchor_count": 3,
+        "control_point_fixed_level0": [
+          23850.30914569764,
+          29361.629670940307
+        ],
+        "residual_vector_fixed_level0": [
+          0.6908543023600942,
+          1.3703290596931765
+        ],
+        "residual_magnitude_px": 1.5346274462973213,
+        "anchor_spread_px": 2.643018501934421
+      },
+      {
+        "tile_id": "tile_094",
+        "anchor_count": 3,
+        "control_point_fixed_level0": [
+          27618.6468007138,
+          14834.669392712784
+        ],
+        "residual_vector_fixed_level0": [
+          17.353199286200834,
+          1.3306072872164805
+        ],
+        "residual_magnitude_px": 17.404138623310107,
+        "anchor_spread_px": 19.474883944236353
+      },
+      {
+        "tile_id": "tile_100",
+        "anchor_count": 3,
+        "control_point_fixed_level0": [
+          35021.467454897385,
+          8191.694734690617
+        ],
+        "residual_vector_fixed_level0": [
+          -29.467454897385323,
+          50.305265309382776
+        ],
+        "residual_magnitude_px": 58.30051986026221,
+        "anchor_spread_px": 27.020810610852372
+      },
+      {
+        "tile_id": "tile_101",
+        "anchor_count": 3,
+        "control_point_fixed_level0": [
+          14449.301411421038,
+          10022.663043015766
+        ],
+        "residual_vector_fixed_level0": [
+          -25.30141142103821,
+          1.336956984234348
+        ],
+        "residual_magnitude_px": 25.336710004938205,
+        "anchor_spread_px": 4.397533992364158
+      },
+      {
+        "tile_id": "tile_105",
+        "anchor_count": 3,
+        "control_point_fixed_level0": [
+          20754.542540911618,
+          2911.826360893247
+        ],
+        "residual_vector_fixed_level0": [
+          -5.542540911617834,
+          1.173639106752944
+        ],
+        "residual_magnitude_px": 5.6654380686631205,
+        "anchor_spread_px": 5.802613610358896
+      },
+      {
+        "tile_id": "tile_108",
+        "anchor_count": 3,
+        "control_point_fixed_level0": [
+          23434.979918964145,
+          4338.489634029653
+        ],
+        "residual_vector_fixed_level0": [
+          -13.979918964145327,
+          16.510365970347266
+        ],
+        "residual_magnitude_px": 21.63400838307296,
+        "anchor_spread_px": 14.210205959097866
+      },
+      {
+        "tile_id": "tile_109",
+        "anchor_count": 3,
+        "control_point_fixed_level0": [
+          29970.507726044078,
+          21583.185140119997
+        ],
+        "residual_vector_fixed_level0": [
+          19.49227395592243,
+          61.814859880003496
+        ],
+        "residual_magnitude_px": 64.8153195313978,
+        "anchor_spread_px": 20.89809754045143
+      },
+      {
+        "tile_id": "tile_112",
+        "anchor_count": 3,
+        "control_point_fixed_level0": [
+          23112.061553597978,
+          22766.58215578458
+        ],
+        "residual_vector_fixed_level0": [
+          1.9560446116447565,
+          26.436962073563336
+        ],
+        "residual_magnitude_px": 26.50922620903467,
+        "anchor_spread_px": 2.8788063951833465
+      },
+      {
+        "tile_id": "tile_113",
+        "anchor_count": 3,
+        "control_point_fixed_level0": [
+          20970.218415488824,
+          5263.550290267949
+        ],
+        "residual_vector_fixed_level0": [
+          -16.218415488823666,
+          0.4497097320509056
+        ],
+        "residual_magnitude_px": 16.224649142931156,
+        "anchor_spread_px": 32.79004165049264
+      },
+      {
+        "tile_id": "tile_114",
+        "anchor_count": 3,
+        "control_point_fixed_level0": [
+          9284.207045270829,
+          15090.12362358353
+        ],
+        "residual_vector_fixed_level0": [
+          -0.2070452708285302,
+          9.87637641647052
+        ],
+        "residual_magnitude_px": 9.878546394282285,
+        "anchor_spread_px": 5.612557241525855
+      },
+      {
+        "tile_id": "tile_116",
+        "anchor_count": 3,
+        "control_point_fixed_level0": [
+          41704.78584027677,
+          2427.1674696003433
+        ],
+        "residual_vector_fixed_level0": [
+          -17.16241482228361,
+          36.83253039965666
+        ],
+        "residual_magnitude_px": 40.634760712643214,
+        "anchor_spread_px": 35.20036774750042
+      },
+      {
+        "tile_id": "tile_117",
+        "anchor_count": 3,
+        "control_point_fixed_level0": [
+          31383.88709448235,
+          14237.70769992522
+        ],
+        "residual_vector_fixed_level0": [
+          -15.904336991574382,
+          47.29230007477963
+        ],
+        "residual_magnitude_px": 49.89498553466633,
+        "anchor_spread_px": 4.58991942995185
+      },
+      {
+        "tile_id": "tile_118",
+        "anchor_count": 3,
+        "control_point_fixed_level0": [
+          18071.44140155878,
+          14473.725036715197
+        ],
+        "residual_vector_fixed_level0": [
+          -17.441401558779035,
+          0.5564373676770629
+        ],
+        "residual_magnitude_px": 17.4502753811717,
+        "anchor_spread_px": 3.2538664379374445
+      },
+      {
+        "tile_id": "tile_120",
+        "anchor_count": 3,
+        "control_point_fixed_level0": [
+          20783.82756611293,
+          15230.17024904598
+        ],
+        "residual_vector_fixed_level0": [
+          -27.207555097975273,
+          1.8297509540207102
+        ],
+        "residual_magnitude_px": 27.269012504362898,
+        "anchor_spread_px": 12.381948833006682
+      },
+      {
+        "tile_id": "tile_121",
+        "anchor_count": 3,
+        "control_point_fixed_level0": [
+          36394.6317551843,
+          19770.387904158313
+        ],
+        "residual_vector_fixed_level0": [
+          67.36824481569784,
+          77.61209584168682
+        ],
+        "residual_magnitude_px": 102.77216466771038,
+        "anchor_spread_px": 12.837872779066492
+      },
+      {
+        "tile_id": "tile_126",
+        "anchor_count": 3,
+        "control_point_fixed_level0": [
+          23377.02101704839,
+          16811.405085799106
+        ],
+        "residual_vector_fixed_level0": [
+          -0.021017048391513526,
+          21.59491420089398
+        ],
+        "residual_magnitude_px": 21.594924428214508,
+        "anchor_spread_px": 20.572635455348056
+      },
+      {
+        "tile_id": "tile_130",
+        "anchor_count": 3,
+        "control_point_fixed_level0": [
+          18971.932702745922,
+          20537.3903233174
+        ],
+        "residual_vector_fixed_level0": [
+          -18.932702745922143,
+          -57.390323317398725
+        ],
+        "residual_magnitude_px": 60.43257766917615,
+        "anchor_spread_px": 29.27753920744845
+      },
+      {
+        "tile_id": "tile_131",
+        "anchor_count": 3,
+        "control_point_fixed_level0": [
+          9282.734363190226,
+          12823.026207225741
+        ],
+        "residual_vector_fixed_level0": [
+          1.2656368097741506,
+          -124.02620722574102
+        ],
+        "residual_magnitude_px": 124.03266471110224,
+        "anchor_spread_px": 16.70860896969985
+      },
+      {
+        "tile_id": "tile_136",
+        "anchor_count": 3,
+        "control_point_fixed_level0": [
+          14075.428845581655,
+          30215.581729636633
+        ],
+        "residual_vector_fixed_level0": [
+          -36.29755284211751,
+          1.4182703633669007
+        ],
+        "residual_magnitude_px": 36.32525062748938,
+        "anchor_spread_px": 0.8368137546240177
+      },
+      {
+        "tile_id": "tile_137",
+        "anchor_count": 3,
+        "control_point_fixed_level0": [
+          19012.775060940217,
+          33625.34620607567
+        ],
+        "residual_vector_fixed_level0": [
+          -28.984521646092617,
+          0.6537939243280562
+        ],
+        "residual_magnitude_px": 28.99189441116775,
+        "anchor_spread_px": 13.128179129103955
+      },
+      {
+        "tile_id": "tile_138",
+        "anchor_count": 3,
+        "control_point_fixed_level0": [
+          21546.13444545653,
+          7672.425116670722
+        ],
+        "residual_vector_fixed_level0": [
+          1.8655545434703527,
+          1.5748833292782365
+        ],
+        "residual_magnitude_px": 2.4414240220619967,
+        "anchor_spread_px": 25.124848548103113
+      },
+      {
+        "tile_id": "tile_139",
+        "anchor_count": 3,
+        "control_point_fixed_level0": [
+          26249.346408824018,
+          13659.41412787447
+        ],
+        "residual_vector_fixed_level0": [
+          -1.346408824017999,
+          0.5858721255299315
+        ],
+        "residual_magnitude_px": 1.4683537955365153,
+        "anchor_spread_px": 9.097672050608848
+      },
+      {
+        "tile_id": "tile_145",
+        "anchor_count": 3,
+        "control_point_fixed_level0": [
+          45718.26751460728,
+          4156.096583496199
+        ],
+        "residual_vector_fixed_level0": [
+          -20.267514607279736,
+          -41.096583496198946
+        ],
+        "residual_magnitude_px": 45.82249800497949,
+        "anchor_spread_px": 26.261751020625525
+      },
+      {
+        "tile_id": "tile_146",
+        "anchor_count": 3,
+        "control_point_fixed_level0": [
+          19550.716701827452,
+          31577.078331915498
+        ],
+        "residual_vector_fixed_level0": [
+          7.283298172547802,
+          2.9216680845020164
+        ],
+        "residual_magnitude_px": 7.847456700500859,
+        "anchor_spread_px": 11.768653016680002
+      },
+      {
+        "tile_id": "tile_148",
+        "anchor_count": 3,
+        "control_point_fixed_level0": [
+          24491.982564133363,
+          20056.23880367006
+        ],
+        "residual_vector_fixed_level0": [
+          -4.878490887327644,
+          33.89291115816013
+        ],
+        "residual_magnitude_px": 34.24221225494455,
+        "anchor_spread_px": 5.93005274469538
+      },
+      {
+        "tile_id": "tile_149",
+        "anchor_count": 3,
+        "control_point_fixed_level0": [
+          11899.08975220224,
+          5939.819902194274
+        ],
+        "residual_vector_fixed_level0": [
+          -1.089752202240561,
+          -78.81990219427371
+        ],
+        "residual_magnitude_px": 78.8274352099392,
+        "anchor_spread_px": 8.860852050276009
+      },
+      {
+        "tile_id": "tile_151",
+        "anchor_count": 3,
+        "control_point_fixed_level0": [
+          13346.878276244282,
+          33744.139512948124
+        ],
+        "residual_vector_fixed_level0": [
+          0.12172375571753946,
+          -4.13951294812432
+        ],
+        "residual_magnitude_px": 4.141302225193772,
+        "anchor_spread_px": 10.55500415201927
+      },
+      {
+        "tile_id": "tile_153",
+        "anchor_count": 3,
+        "control_point_fixed_level0": [
+          32632.8890593184,
+          8859.88324577211
+        ],
+        "residual_vector_fixed_level0": [
+          -18.88905931840054,
+          30.11675422789085
+        ],
+        "residual_magnitude_px": 35.55018209738504,
+        "anchor_spread_px": 22.37930477237751
+      },
+      {
+        "tile_id": "tile_154",
+        "anchor_count": 3,
+        "control_point_fixed_level0": [
+          11608.80834810092,
+          29862.63894521851
+        ],
+        "residual_vector_fixed_level0": [
+          -19.80834810091983,
+          -40.638945218510344
+        ],
+        "residual_magnitude_px": 45.20945169939909,
+        "anchor_spread_px": 22.329316750543512
+      },
+      {
+        "tile_id": "tile_155",
+        "anchor_count": 3,
+        "control_point_fixed_level0": [
+          8666.416337103517,
+          10159.279547280714
+        ],
+        "residual_vector_fixed_level0": [
+          42.583662896482565,
+          76.72045271928619
+        ],
+        "residual_magnitude_px": 87.7462034001101,
+        "anchor_spread_px": 8.75459087856506
+      },
+      {
+        "tile_id": "tile_162",
+        "anchor_count": 3,
+        "control_point_fixed_level0": [
+          16990.713679763387,
+          32598.436676926885
+        ],
+        "residual_vector_fixed_level0": [
+          14.971866560437775,
+          -3.9908998479004367
+        ],
+        "residual_magnitude_px": 15.494646491595946,
+        "anchor_spread_px": 10.067084792382957
+      },
+      {
+        "tile_id": "tile_164",
+        "anchor_count": 3,
+        "control_point_fixed_level0": [
+          11498.468361842797,
+          10845.310525495335
+        ],
+        "residual_vector_fixed_level0": [
+          33.531638157202906,
+          0.6894745046647586
+        ],
+        "residual_magnitude_px": 33.53872586426277,
+        "anchor_spread_px": 22.103919811173448
+      },
+      {
+        "tile_id": "tile_165",
+        "anchor_count": 3,
+        "control_point_fixed_level0": [
+          22642.377779506227,
+          21328.413017152037
+        ],
+        "residual_vector_fixed_level0": [
+          1.6222204937730567,
+          87.79221560669612
+        ],
+        "residual_magnitude_px": 87.80720198516198,
+        "anchor_spread_px": 15.431635286500043
+      },
+      {
+        "tile_id": "tile_169",
+        "anchor_count": 3,
+        "control_point_fixed_level0": [
+          20242.280111621203,
+          13409.182211078687
+        ],
+        "residual_vector_fixed_level0": [
+          -19.361054099303146,
+          -5.182211078687033
+        ],
+        "residual_magnitude_px": 20.042597823141833,
+        "anchor_spread_px": 11.243588752431302
+      },
+      {
+        "tile_id": "tile_176",
+        "anchor_count": 3,
+        "control_point_fixed_level0": [
+          12413.542170061193,
+          21639.837381002875
+        ],
+        "residual_vector_fixed_level0": [
+          -19.542170061193247,
+          -70.83738100287519
+        ],
+        "residual_magnitude_px": 73.48354208968904,
+        "anchor_spread_px": 22.276215440361547
+      },
+      {
+        "tile_id": "tile_178",
+        "anchor_count": 3,
+        "control_point_fixed_level0": [
+          16206.118176071222,
+          26606.302707712504
+        ],
+        "residual_vector_fixed_level0": [
+          22.88182392877752,
+          -25.302707712504343
+        ],
+        "residual_magnitude_px": 34.11458462141965,
+        "anchor_spread_px": 13.638517465231416
+      },
+      {
+        "tile_id": "tile_179",
+        "anchor_count": 3,
+        "control_point_fixed_level0": [
+          12966.464073190149,
+          8319.85358663743
+        ],
+        "residual_vector_fixed_level0": [
+          -16.464073190149065,
+          18.146413362570456
+        ],
+        "residual_magnitude_px": 24.502204470942218,
+        "anchor_spread_px": 17.28910832918806
+      },
+      {
+        "tile_id": "tile_181",
+        "anchor_count": 3,
+        "control_point_fixed_level0": [
+          19630.89409656517,
+          28108.365470743618
+        ],
+        "residual_vector_fixed_level0": [
+          0.5811555885375128,
+          1.6159297922786209
+        ],
+        "residual_magnitude_px": 1.7172567984032003,
+        "anchor_spread_px": 1.4999345344908803
+      },
+      {
+        "tile_id": "tile_182",
+        "anchor_count": 3,
+        "control_point_fixed_level0": [
+          21815.993053920087,
+          30850.869391170057
+        ],
+        "residual_vector_fixed_level0": [
+          -0.9930539200868225,
+          1.1306088299425028
+        ],
+        "residual_magnitude_px": 1.5048031148770793,
+        "anchor_spread_px": 19.513623503297755
+      },
+      {
+        "tile_id": "tile_184",
+        "anchor_count": 3,
+        "control_point_fixed_level0": [
+          31864.1673864549,
+          4295.269651101992
+        ],
+        "residual_vector_fixed_level0": [
+          -0.16738645490113413,
+          -11.269651101992167
+        ],
+        "residual_magnitude_px": 11.27089411652499,
+        "anchor_spread_px": 18.61813006520747
+      },
+      {
+        "tile_id": "tile_186",
+        "anchor_count": 3,
+        "control_point_fixed_level0": [
+          13133.934060283027,
+          2104.094797077206
+        ],
+        "residual_vector_fixed_level0": [
+          19.065939716972935,
+          -38.09479707720584
+        ],
+        "residual_magnitude_px": 42.59957302185946,
+        "anchor_spread_px": 10.757548058780912
+      },
+      {
+        "tile_id": "tile_190",
+        "anchor_count": 3,
+        "control_point_fixed_level0": [
+          6652.627137971187,
+          13623.466399610883
+        ],
+        "residual_vector_fixed_level0": [
+          -14.62713797118704,
+          -13.466399610882945
+        ],
+        "residual_magnitude_px": 19.882079461367464,
+        "anchor_spread_px": 30.030830001191134
+      },
+      {
+        "tile_id": "tile_193",
+        "anchor_count": 3,
+        "control_point_fixed_level0": [
+          29010.810193976093,
+          23413.75225055372
+        ],
+        "residual_vector_fixed_level0": [
+          30.278730186433677,
+          -4.752250553719932
+        ],
+        "residual_magnitude_px": 30.649394562179875,
+        "anchor_spread_px": 6.474597570632525
+      },
+      {
+        "tile_id": "tile_194",
+        "anchor_count": 3,
+        "control_point_fixed_level0": [
+          24234.104287793456,
+          12843.284712662751
+        ],
+        "residual_vector_fixed_level0": [
+          -21.104287793456024,
+          21.71528733724881
+        ],
+        "residual_magnitude_px": 30.281094224091298,
+        "anchor_spread_px": 20.47560881784101
+      },
+      {
+        "tile_id": "tile_196",
+        "anchor_count": 3,
+        "control_point_fixed_level0": [
+          10420.020386033311,
+          22015.997089884117
+        ],
+        "residual_vector_fixed_level0": [
+          4.979613966688703,
+          -81.99708988411658
+        ],
+        "residual_magnitude_px": 82.14815460326017,
+        "anchor_spread_px": 9.707103824862605
+      },
+      {
+        "tile_id": "tile_197",
+        "anchor_count": 3,
+        "control_point_fixed_level0": [
+          20338.83911131633,
+          19723.344883168676
+        ],
+        "residual_vector_fixed_level0": [
+          -48.83911131633067,
+          21.65511683132354
+        ],
+        "residual_magnitude_px": 53.42474032830867,
+        "anchor_spread_px": 40.87676665489147
+      }
+    ],
+    "rejected_tiles": [],
+    "num_unique_tiles_before_gates": 88,
+    "num_unique_tiles_used": 88,
+    "tile_size_level0_px": 354.0,
+    "baseline_anchor_error": {
+      "median_px": 27.20516148208175,
+      "p90_px": 82.08549364588735,
+      "max_px": 209.42337136446415
+    },
+    "local_anchor_error": {
+      "median_px": 8.54938432871304,
+      "p90_px": 22.31881912406293,
+      "max_px": 43.5622713112028
+    },
+    "quality_gates": {
+      "minimum_unique_tiles": true,
+      "improves_median": true,
+      "bounded_p90": true
+    },
+    "settings": {
+      "enabled": true,
+      "support_radius_tile_factor": 6.0,
+      "baseline_weight": 0.1,
+      "inverse_iterations": 3,
+      "min_tiles": 3,
+      "max_residual_tile_factor": 0.75,
+      "max_anchor_spread_tile_factor": 0.25,
+      "promotion_max_median_ratio": 0.95,
+      "promotion_max_p90_ratio": 1.0
+    }
+  },
+  "local_residual": {
+    "interpolator": "normalized_wendland_c2",
+    "coordinate_space": "fixed_level0_after_stage2",
+    "support_radius_level0_px": 2124.0,
+    "support_radius_tile_factor": 6.0,
+    "baseline_weight": 0.1,
+    "inverse_iterations": 3,
+    "control_points_fixed_level0": [
+      [
+        17449.11419657734,
+        16603.374215518346
+      ],
+      [
+        17877.703594261384,
+        2965.2968447368503
+      ],
+      [
+        25371.132281995535,
+        17859.268810322756
+      ],
+      [
+        20810.761198685304,
+        11270.675639886766
+      ],
+      [
+        19380.37482505271,
+        17083.414403529954
+      ],
+      [
+        10030.212979625809,
+        3317.506328481997
+      ],
+      [
+        26927.693423217916,
+        2707.8491677958227
+      ],
+      [
+        22540.65092138683,
+        12183.017074695183
+      ],
+      [
+        18417.361868135413,
+        27204.691315187538
+      ],
+      [
+        47817.33975267815,
+        6496.685280319074
+      ],
+      [
+        26843.06005061069,
+        25826.62225304169
+      ],
+      [
+        11277.107142070052,
+        23657.10997261166
+      ],
+      [
+        33785.48774043703,
+        17082.30811797947
+      ],
+      [
+        16136.98331194726,
+        7232.821768792687
+      ],
+      [
+        37237.6801857473,
+        16426.215009341573
+      ],
+      [
+        14959.317392715062,
+        4839.449732604714
+      ],
+      [
+        4811.308501482732,
+        14063.699047882345
+      ],
+      [
+        20349.98345223451,
+        22319.493187971148
+      ],
+      [
+        33571.774370232626,
+        14973.61976965198
+      ],
+      [
+        35509.63754547415,
+        18108.231329354232
+      ],
+      [
+        23513.018138274645,
+        2591.6394953849613
+      ],
+      [
+        7644.909233305991,
+        18920.7824835748
+      ],
+      [
+        34443.46086617617,
+        6769.414312250152
+      ],
+      [
+        23066.01812435684,
+        10362.053445645744
+      ],
+      [
+        29360.91044155809,
+        3167.1892099843067
+      ],
+      [
+        16275.86641883138,
+        33363.00446712945
+      ],
+      [
+        19704.56171407519,
+        29593.547222901518
+      ],
+      [
+        23105.5291430279,
+        18591.923729984883
+      ],
+      [
+        25548.234434523594,
+        4095.594793845531
+      ],
+      [
+        47475.41054695102,
+        3478.876096749438
+      ],
+      [
+        21574.73456083561,
+        28338.983238093755
+      ],
+      [
+        6742.554288426637,
+        11303.49698198282
+      ],
+      [
+        11377.025531660523,
+        14385.609470859406
+      ],
+      [
+        13525.780831233044,
+        14881.603916760236
+      ],
+      [
+        26968.161582110937,
+        15662.495830711727
+      ],
+      [
+        25260.309614487873,
+        16124.484741113296
+      ],
+      [
+        22222.527868834404,
+        17646.05195966993
+      ],
+      [
+        22965.097030921985,
+        13961.196022407968
+      ],
+      [
+        19386.350829468505,
+        6697.620567109267
+      ],
+      [
+        33359.74238880864,
+        3263.8759736482843
+      ],
+      [
+        40246.13265879773,
+        9817.94952193711
+      ],
+      [
+        30512.04341949439,
+        23525.13251961448
+      ],
+      [
+        23850.30914569764,
+        29361.629670940307
+      ],
+      [
+        27618.6468007138,
+        14834.669392712784
+      ],
+      [
+        35021.467454897385,
+        8191.694734690617
+      ],
+      [
+        14449.301411421038,
+        10022.663043015766
+      ],
+      [
+        20754.542540911618,
+        2911.826360893247
+      ],
+      [
+        23434.979918964145,
+        4338.489634029653
+      ],
+      [
+        29970.507726044078,
+        21583.185140119997
+      ],
+      [
+        23112.061553597978,
+        22766.58215578458
+      ],
+      [
+        20970.218415488824,
+        5263.550290267949
+      ],
+      [
+        9284.207045270829,
+        15090.12362358353
+      ],
+      [
+        41704.78584027677,
+        2427.1674696003433
+      ],
+      [
+        31383.88709448235,
+        14237.70769992522
+      ],
+      [
+        18071.44140155878,
+        14473.725036715197
+      ],
+      [
+        20783.82756611293,
+        15230.17024904598
+      ],
+      [
+        36394.6317551843,
+        19770.387904158313
+      ],
+      [
+        23377.02101704839,
+        16811.405085799106
+      ],
+      [
+        18971.932702745922,
+        20537.3903233174
+      ],
+      [
+        9282.734363190226,
+        12823.026207225741
+      ],
+      [
+        14075.428845581655,
+        30215.581729636633
+      ],
+      [
+        19012.775060940217,
+        33625.34620607567
+      ],
+      [
+        21546.13444545653,
+        7672.425116670722
+      ],
+      [
+        26249.346408824018,
+        13659.41412787447
+      ],
+      [
+        45718.26751460728,
+        4156.096583496199
+      ],
+      [
+        19550.716701827452,
+        31577.078331915498
+      ],
+      [
+        24491.982564133363,
+        20056.23880367006
+      ],
+      [
+        11899.08975220224,
+        5939.819902194274
+      ],
+      [
+        13346.878276244282,
+        33744.139512948124
+      ],
+      [
+        32632.8890593184,
+        8859.88324577211
+      ],
+      [
+        11608.80834810092,
+        29862.63894521851
+      ],
+      [
+        8666.416337103517,
+        10159.279547280714
+      ],
+      [
+        16990.713679763387,
+        32598.436676926885
+      ],
+      [
+        11498.468361842797,
+        10845.310525495335
+      ],
+      [
+        22642.377779506227,
+        21328.413017152037
+      ],
+      [
+        20242.280111621203,
+        13409.182211078687
+      ],
+      [
+        12413.542170061193,
+        21639.837381002875
+      ],
+      [
+        16206.118176071222,
+        26606.302707712504
+      ],
+      [
+        12966.464073190149,
+        8319.85358663743
+      ],
+      [
+        19630.89409656517,
+        28108.365470743618
+      ],
+      [
+        21815.993053920087,
+        30850.869391170057
+      ],
+      [
+        31864.1673864549,
+        4295.269651101992
+      ],
+      [
+        13133.934060283027,
+        2104.094797077206
+      ],
+      [
+        6652.627137971187,
+        13623.466399610883
+      ],
+      [
+        29010.810193976093,
+        23413.75225055372
+      ],
+      [
+        24234.104287793456,
+        12843.284712662751
+      ],
+      [
+        10420.020386033311,
+        22015.997089884117
+      ],
+      [
+        20338.83911131633,
+        19723.344883168676
+      ]
+    ],
+    "residual_vectors_fixed_level0": [
+      [
+        -8.11419657733859,
+        -0.3742155183463183
+      ],
+      [
+        1.2964057386161585,
+        0.7031552631497107
+      ],
+      [
+        7.867718004465132,
+        47.7311896772444
+      ],
+      [
+        -25.761198685304407,
+        5.520859267488049
+      ],
+      [
+        0.6251749472903612,
+        9.585596470045857
+      ],
+      [
+        6.787020374191343,
+        -21.122612101471987
+      ],
+      [
+        2.3065767820844485,
+        -13.849167795822723
+      ],
+      [
+        -25.650921386830305,
+        0.9829253048173996
+      ],
+      [
+        5.638131864587194,
+        2.308684812462161
+      ],
+      [
+        -30.339752678148216,
+        0.3147196809259185
+      ],
+      [
+        66.93994938931064,
+        86.3880966398865
+      ],
+      [
+        -0.10714207005185017,
+        1.703883486075938
+      ],
+      [
+        59.51225956297276,
+        38.69188202052828
+      ],
+      [
+        -15.983311947260518,
+        18.17823120731282
+      ],
+      [
+        74.31981425270351,
+        7.7849906584269775
+      ],
+      [
+        16.682607284938058,
+        -24.449732604713972
+      ],
+      [
+        -11.308501482732026,
+        -30.69904788234453
+      ],
+      [
+        -9.983452234511788,
+        98.50681202885244
+      ],
+      [
+        2.2256297673739027,
+        73.38023034802063
+      ],
+      [
+        60.3624545258499,
+        86.768670645768
+      ],
+      [
+        -0.018138274645025376,
+        1.7453341894652112
+      ],
+      [
+        18.09076669400929,
+        -37.44573734903315
+      ],
+      [
+        106.31147779386083,
+        -165.44099980265491
+      ],
+      [
+        -11.018124356840417,
+        42.94655435425557
+      ],
+      [
+        -27.299489176060888,
+        0.8107900156933283
+      ],
+      [
+        2.898010971934127,
+        -39.15580300841248
+      ],
+      [
+        35.43828592481077,
+        -30.54722290151767
+      ],
+      [
+        0.4708569721005915,
+        63.07627001511719
+      ],
+      [
+        15.149326985767402,
+        36.40520615446894
+      ],
+      [
+        1.58945304898225,
+        0.12390325056185247
+      ],
+      [
+        -18.379955956086633,
+        20.806610874795297
+      ],
+      [
+        0.4457115733630417,
+        -9.507312545310924
+      ],
+      [
+        17.974468339476516,
+        17.39052914059357
+      ],
+      [
+        17.2191687669565,
+        -12.603916760235734
+      ],
+      [
+        0.8384178890628391,
+        0.43527549257851206
+      ],
+      [
+        1.69038551212725,
+        35.51525888670403
+      ],
+      [
+        -8.527868834404217,
+        2.948040330069489
+      ],
+      [
+        -24.097030921984697,
+        45.38358322860222
+      ],
+      [
+        10.200400625744805,
+        1.3794328907333693
+      ],
+      [
+        -1.0761460884168628,
+        23.124026351715656
+      ],
+      [
+        7.867341202269017,
+        10.206494937086973
+      ],
+      [
+        58.95658050561178,
+        45.40212220560716
+      ],
+      [
+        0.6908543023600942,
+        1.3703290596931765
+      ],
+      [
+        17.353199286200834,
+        1.3306072872164805
+      ],
+      [
+        -29.467454897385323,
+        50.305265309382776
+      ],
+      [
+        -25.30141142103821,
+        1.336956984234348
+      ],
+      [
+        -5.542540911617834,
+        1.173639106752944
+      ],
+      [
+        -13.979918964145327,
+        16.510365970347266
+      ],
+      [
+        19.49227395592243,
+        61.814859880003496
+      ],
+      [
+        1.9560446116447565,
+        26.436962073563336
+      ],
+      [
+        -16.218415488823666,
+        0.4497097320509056
+      ],
+      [
+        -0.2070452708285302,
+        9.87637641647052
+      ],
+      [
+        -17.16241482228361,
+        36.83253039965666
+      ],
+      [
+        -15.904336991574382,
+        47.29230007477963
+      ],
+      [
+        -17.441401558779035,
+        0.5564373676770629
+      ],
+      [
+        -27.207555097975273,
+        1.8297509540207102
+      ],
+      [
+        67.36824481569784,
+        77.61209584168682
+      ],
+      [
+        -0.021017048391513526,
+        21.59491420089398
+      ],
+      [
+        -18.932702745922143,
+        -57.390323317398725
+      ],
+      [
+        1.2656368097741506,
+        -124.02620722574102
+      ],
+      [
+        -36.29755284211751,
+        1.4182703633669007
+      ],
+      [
+        -28.984521646092617,
+        0.6537939243280562
+      ],
+      [
+        1.8655545434703527,
+        1.5748833292782365
+      ],
+      [
+        -1.346408824017999,
+        0.5858721255299315
+      ],
+      [
+        -20.267514607279736,
+        -41.096583496198946
+      ],
+      [
+        7.283298172547802,
+        2.9216680845020164
+      ],
+      [
+        -4.878490887327644,
+        33.89291115816013
+      ],
+      [
+        -1.089752202240561,
+        -78.81990219427371
+      ],
+      [
+        0.12172375571753946,
+        -4.13951294812432
+      ],
+      [
+        -18.88905931840054,
+        30.11675422789085
+      ],
+      [
+        -19.80834810091983,
+        -40.638945218510344
+      ],
+      [
+        42.583662896482565,
+        76.72045271928619
+      ],
+      [
+        14.971866560437775,
+        -3.9908998479004367
+      ],
+      [
+        33.531638157202906,
+        0.6894745046647586
+      ],
+      [
+        1.6222204937730567,
+        87.79221560669612
+      ],
+      [
+        -19.361054099303146,
+        -5.182211078687033
+      ],
+      [
+        -19.542170061193247,
+        -70.83738100287519
+      ],
+      [
+        22.88182392877752,
+        -25.302707712504343
+      ],
+      [
+        -16.464073190149065,
+        18.146413362570456
+      ],
+      [
+        0.5811555885375128,
+        1.6159297922786209
+      ],
+      [
+        -0.9930539200868225,
+        1.1306088299425028
+      ],
+      [
+        -0.16738645490113413,
+        -11.269651101992167
+      ],
+      [
+        19.065939716972935,
+        -38.09479707720584
+      ],
+      [
+        -14.62713797118704,
+        -13.466399610882945
+      ],
+      [
+        30.278730186433677,
+        -4.752250553719932
+      ],
+      [
+        -21.104287793456024,
+        21.71528733724881
+      ],
+      [
+        4.979613966688703,
+        -81.99708988411658
+      ],
+      [
+        -48.83911131633067,
+        21.65511683132354
+      ]
+    ],
+    "tile_ids": [
+      "tile_005",
+      "tile_009",
+      "tile_010",
+      "tile_011",
+      "tile_012",
+      "tile_013",
+      "tile_014",
+      "tile_016",
+      "tile_018",
+      "tile_020",
+      "tile_021",
+      "tile_022",
+      "tile_024",
+      "tile_027",
+      "tile_029",
+      "tile_032",
+      "tile_033",
+      "tile_034",
+      "tile_035",
+      "tile_038",
+      "tile_041",
+      "tile_042",
+      "tile_043",
+      "tile_044",
+      "tile_045",
+      "tile_046",
+      "tile_048",
+      "tile_049",
+      "tile_055",
+      "tile_057",
+      "tile_063",
+      "tile_064",
+      "tile_068",
+      "tile_069",
+      "tile_070",
+      "tile_077",
+      "tile_079",
+      "tile_080",
+      "tile_083",
+      "tile_084",
+      "tile_088",
+      "tile_091",
+      "tile_093",
+      "tile_094",
+      "tile_100",
+      "tile_101",
+      "tile_105",
+      "tile_108",
+      "tile_109",
+      "tile_112",
+      "tile_113",
+      "tile_114",
+      "tile_116",
+      "tile_117",
+      "tile_118",
+      "tile_120",
+      "tile_121",
+      "tile_126",
+      "tile_130",
+      "tile_131",
+      "tile_136",
+      "tile_137",
+      "tile_138",
+      "tile_139",
+      "tile_145",
+      "tile_146",
+      "tile_148",
+      "tile_149",
+      "tile_151",
+      "tile_153",
+      "tile_154",
+      "tile_155",
+      "tile_162",
+      "tile_164",
+      "tile_165",
+      "tile_169",
+      "tile_176",
+      "tile_178",
+      "tile_179",
+      "tile_181",
+      "tile_182",
+      "tile_184",
+      "tile_186",
+      "tile_190",
+      "tile_193",
+      "tile_194",
+      "tile_196",
+      "tile_197"
+    ],
+    "anchor_counts": [
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3
+    ]
+  }
+}

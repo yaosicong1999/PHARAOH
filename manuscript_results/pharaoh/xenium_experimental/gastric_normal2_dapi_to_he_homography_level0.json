@@ -1,0 +1,51 @@
+{
+  "from": "dapi_level0",
+  "to": "he_level0",
+  "method": "Stage8 cv2.findHomography(RANSAC) from Stage7 high-confidence pairs",
+  "transform_type": "homography",
+  "stage": 8,
+  "sampling": {
+    "type": "stage7_high_confidence_pairs",
+    "source": "/Volumes/X10 Pro/benchmark_new/runs/iter1/experimental/pharaoh/default/gastric_normal2/dense_nucleus_pairs/high_confidence_pairs.csv.gz",
+    "num_points": 9568,
+    "num_train_points": 7731,
+    "num_holdout_points": 1837
+  },
+  "ransacReprojThreshold": 4.342585249801745,
+  "maxIters": 20000,
+  "confidence": 0.999,
+  "num_points": 9568,
+  "num_inliers": 4842,
+  "inlier_median_reproj_error_px": 2.197580529606439,
+  "inlier_mean_reproj_error_px": 2.256471135672728,
+  "quality_gates": {
+    "minimum_pairs": true,
+    "minimum_spatial_grid_coverage": true,
+    "minimum_axis_span": true,
+    "homography_fit_succeeded": true,
+    "minimum_inliers": true,
+    "minimum_inlier_ratio": true,
+    "holdout_median_degradation_bounded": true,
+    "holdout_p95_degradation_bounded": true,
+    "bounded_transform_shift": true,
+    "holdout_median_degradation_px_bounded": true
+  },
+  "promoted_to_canonical": true,
+  "homography_3x3": [
+    [
+      0.004077515309467251,
+      -0.8423699900774845,
+      65310.44961714614
+    ],
+    [
+      0.842659748201957,
+      0.003702642201293976,
+      128.7534102628954
+    ],
+    [
+      2.237777649922093e-09,
+      5.230193342779519e-10,
+      1.0
+    ]
+  ]
+}

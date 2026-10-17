@@ -1,0 +1,141 @@
+{
+  "from": "hefg_level0",
+  "to": "hebg_level0",
+  "method": "cv2.findHomography(RANSAC)",
+  "transform_type": "homography",
+  "sampling": {
+    "type": "grid_balanced",
+    "order": "sorted by (tile_id, nucleus_id)",
+    "balance_points_bool": true,
+    "balance_grid": [
+      6,
+      6
+    ],
+    "balance_max_per_cell": 4,
+    "num_points_before_sampling": 68,
+    "num_points_after_sampling": 68,
+    "selected_indices_from_original": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18,
+      19,
+      20,
+      21,
+      22,
+      23,
+      24,
+      25,
+      26,
+      27,
+      28,
+      29,
+      30,
+      31,
+      32,
+      33,
+      34,
+      35,
+      36,
+      37,
+      38,
+      39,
+      40,
+      41,
+      42,
+      43,
+      44,
+      45,
+      46,
+      47,
+      48,
+      49,
+      50,
+      51,
+      52,
+      53,
+      54,
+      55,
+      56,
+      57,
+      58,
+      59,
+      60,
+      61,
+      62,
+      63,
+      64,
+      65,
+      66,
+      67
+    ]
+  },
+  "ransacReprojThreshold": 3.9970547372538974,
+  "ransac_reproj_threshold_px_configured": 8.0,
+  "physical_scale": {
+    "mpp": {
+      "he": 0.548003503575954
+    },
+    "reference_mpp": {
+      "he": 0.2738
+    },
+    "factor": {
+      "he": 0.49963184215673717
+    },
+    "roles": {
+      "moving": 0.49963184215673717,
+      "fixed": 0.49963184215673717
+    },
+    "mpp_by_role": {
+      "moving": 0.548003503575954,
+      "fixed": 0.548003503575954
+    },
+    "mpp_source": {
+      "he": "ome_header"
+    },
+    "mpp_source_by_role": {
+      "moving": "ome_header",
+      "fixed": "ome_header"
+    },
+    "mpp_estimate_by_role": {}
+  },
+  "maxIters": 10000,
+  "confidence": 0.995,
+  "random_seed": 43,
+  "num_points": 68,
+  "num_inliers": 68,
+  "inlier_median_reproj_error_px": 0.4348198040920235,
+  "inlier_mean_reproj_error_px": 0.47477570416819376,
+  "homography_3x3": [
+    [
+      0.9661147053426549,
+      -0.25886902921859134,
+      3277.1526683266598
+    ],
+    [
+      0.2589719646552735,
+      0.9660354290154362,
+      1860.6231207818118
+    ],
+    [
+      2.9868553025593776e-08,
+      6.426543813509874e-09,
+      1.0
+    ]
+  ]
+}
