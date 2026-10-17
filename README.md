@@ -391,6 +391,7 @@ cd examples
 bash download_example_dapi_he_data.sh    # Xenium Human Colon Cancer P1 -> xenium_human_CRC_P1/
 bash download_example_orb_fail_data.sh   # Xenium Human Colon Cancer P5 -> xenium_human_CRC_P5/
 bash download_example_he_he_data.sh      # Visium and Xenium H&E of Colon Cancer P2 -> he_he_human_CRC_P2/
+conda activate PHARAOH
 cd ../version_5.0_macos_linux
 ./run_pharaoh_cli.sh --moving ../examples/xenium_human_CRC_P1/morphology_focus.ome.tif \
                      --fixed  ../examples/xenium_human_CRC_P1/he.ome.tif
