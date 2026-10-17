@@ -386,20 +386,41 @@ otherwise. A run records the parameters it used in `run_parameters.json`.
 
 ## Example data
 
+### DAPI → H&E: Xenium Human Colon Cancer P1
+
 ```bash
 cd examples
-bash download_example_dapi_he_data.sh    # Xenium Human Colon Cancer P1 -> xenium_human_CRC_P1/
-bash download_example_orb_fail_data.sh   # Xenium Human Colon Cancer P5 -> xenium_human_CRC_P5/
-bash download_example_he_he_data.sh      # Visium and Xenium H&E of Colon Cancer P2 -> he_he_human_CRC_P2/
+bash download_example_dapi_he_data.sh    # -> xenium_human_CRC_P1/ (morphology_focus.ome.tif, he.ome.tif, cells.csv.gz)
 conda activate PHARAOH
 cd ../version_5.0_macos_linux
 ./run_pharaoh_cli.sh --moving ../examples/xenium_human_CRC_P1/morphology_focus.ome.tif \
                      --fixed  ../examples/xenium_human_CRC_P1/he.ome.tif
 ```
 
-For the H&E pair, use `--pair he-he` with the Visium image as moving and the Xenium H&E as
-fixed; the Visium `.btf` is converted to OME-TIFF automatically. Other datasets can be
-downloaded from the sources listed in the manuscript's Data Availability section.
+Depending on the Xenium release, the DAPI image may be
+`morphology_focus/morphology_focus_0000.ome.tif` instead; use the file your download contains.
+
+### H&E → H&E: Visium HD and Xenium H&E of Colon Cancer P2
+
+The adjacent-section registration of the manuscript: the H&E of the Visium HD section is
+registered onto the H&E of the adjacent Xenium section. The Visium HD tissue image is a BigTIFF
+(`.btf`, about 11 GB) without a pyramid; convert it once to a pyramidal OME-TIFF after
+downloading, then register it onto the Xenium H&E:
+
+```bash
+cd examples
+bash download_example_he_he_data.sh      # -> he_he_human_CRC_P2/ (hefg.btf, he.ome.tif)
+conda activate PHARAOH
+cd ../version_5.0_macos_linux
+python scripts/pre_process/convert_image_to_ome_tif.py ../examples/he_he_human_CRC_P2/hefg.btf
+                                         # writes ../examples/he_he_human_CRC_P2/hefg.ome.tif
+./run_pharaoh_cli.sh --pair he-he \
+                     --moving ../examples/he_he_human_CRC_P2/hefg.ome.tif \
+                     --fixed  ../examples/he_he_human_CRC_P2/he.ome.tif
+```
+
+Other datasets can be downloaded from the sources listed in the manuscript's Data Availability
+section.
 
 ---
 
