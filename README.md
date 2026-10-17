@@ -398,11 +398,8 @@ cd ../version_5.0_macos_linux
 ```
 
 For the H&E pair, use `--pair he-he` with the Visium image as moving and the Xenium H&E as
-fixed; the Visium `.btf` is converted to OME-TIFF automatically. `examples/alignment_examples/`
-holds, for 16 Xenium datasets, an initial alignment (`manual_initial_alignment.json`; load it in
-Stage 2 of the GUI with **Load H (.json)**) and a final transformation
-(`dapi_to_he_homography_level0.json`). Other datasets can
-be downloaded from the sources listed in the manuscript's Data Availability section.
+fixed; the Visium `.btf` is converted to OME-TIFF automatically. Other datasets can be
+downloaded from the sources listed in the manuscript's Data Availability section.
 
 ---
 

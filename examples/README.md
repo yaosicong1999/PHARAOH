@@ -19,12 +19,3 @@ The `download_example_dapi_he_data.sh` script serves as an example for downloadi
 ### Running PHARAOH
 
 For installation instructions, software requirements, and workflow examples, please refer to the main repository README.
-
-### Provided alignment files
-
-In addition to the data-download script, this directory includes example alignment JSON files for reviewer testing.
-
-- Manual initial-alignment JSON files can be loaded directly during the manual-alignment step.
-- Final alignment-result JSON files are provided for the Xenium testing datasets used in the manuscript.
-
-These files allow users to reproduce or inspect downstream PHARAOH steps without repeating the full manual initialization procedure.

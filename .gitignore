@@ -29,3 +29,6 @@ __pycache__/
 # Run outputs inside a version directory.
 version_*/outputs/
 tools/figure_layout/
+
+# Example data downloaded by examples/download_example_*.sh
+examples/*/
