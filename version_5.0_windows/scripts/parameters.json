@@ -1,0 +1,636 @@
+{
+  "qc_images": {
+    "stage1_extras": false,
+    "stage3_debug": false,
+    "stage4b_overlays": false,
+    "stage4b_density": false,
+    "stage4c_patches": false,
+    "stage4c_overlays": false,
+    "stage6_overlays": false,
+    "stage7_anchors": false,
+    "stage7_tree": false
+  },
+  "_comment": "Integrated parameters for run_pharaoh. One block per pair, named the way --pair names it: 'dapi-he', 'he-he', 'dapi-dapi', and 'he-dapi'. Only for dapi-he, stage3.n_tiles is the number of sampled tiles and Stage 7 scans all of them; stage4b.n_tiles is only the spatially uniform subset used for standout-nucleus detection in Stages 4/5. Stage 2 tries each detector in 'methods' until a fit passes its quality gate. stage4b.anchor_mode names the ladder run_pharaoh climbs: auto = nuclei pairs on the selected tiles, then top the tile supply up and try pairs again, then density (nuclear-architecture anchors) on every tile; nuclei_pairs and density each run their own level with top-ups only. A modality pair does not imply same or serial sections. Old correspondence_mode values same_section / serial_section are read as nuclei_pairs / density.",
+  "dapi-he": {
+    "stage2": {
+      "random_seed": 43,
+      "methods": [
+        "orb",
+        "sift"
+      ],
+      "n_features": 8000,
+      "ratio": 0.75,
+      "ransac_thresh": 5.0,
+      "min_inliers": 20,
+      "min_inlier_ratio": 0.15,
+      "max_reproj_px": 3.0,
+      "sift": {
+        "min_inliers": 20
+      },
+      "min_axis_ratio": 0.8
+    },
+    "stage3": {
+      "target_tile_mpp": 0.425,
+      "assumed_base_mpp_40x": 0.25,
+      "nucleus_diameter_um": 6.0,
+      "tile_nuclei_across": 30,
+      "tissue_sample_fraction": 0.5,
+      "n_tiles_min": 100,
+      "n_tiles_max": 200,
+      "stage4_tile_fraction": 0.3,
+      "min_dist_factor": 1.0,
+      "he_tile_margin_ratio": 0.2,
+      "prune_out_of_he": true,
+      "min_he_overlap_ratio": 0.15,
+      "write_lut_tiles": false,
+      "read_workers": 8,
+      "random_seed": 43,
+      "fallback_n_tiles": 200,
+      "fallback_tile_size": 400,
+      "moving_level_override": null,
+      "fixed_level_override": null,
+      "low_signal_component_rescue": {
+        "enabled": true,
+        "min_component_tile_area_factor": 4.0,
+        "min_component_area_px": 256,
+        "support_close_ksize": 3,
+        "max_existing_dense_fraction": 0.02,
+        "local_low_percentile": 5.0,
+        "local_high_percentile": 99.5,
+        "min_local_contrast_8bit": 8.0,
+        "local_tissue_percentile": 45.0,
+        "local_dense_percentile": 25.0,
+        "blur_ksize": 13,
+        "tissue_close_ksize": 25,
+        "dense_close_ksize": 11,
+        "min_tissue_area_px": 256,
+        "min_tissue_component_fraction": 0.05,
+        "minimum_sampled_tiles_per_component": 1
+      }
+    },
+    "stage4a": {
+      "dapi_thr_offset": 0,
+      "dapi_mask_min_area_factor": 0.0001,
+      "dapi_mask_upscale_factor": 2,
+      "he_mask_n_smooth": 2,
+      "he_mask_intensity_threshold": 0.6,
+      "he_mask_upscale_factor": 2,
+      "he_mask_source": "macenko",
+      "he_pigment_correction": false,
+      "tile_screen_min_dapi_coverage": null,
+      "tile_screen_max_pigment": null,
+      "he_mask_stroma_recut": true,
+      "he_mask_stroma_trigger": 1.5,
+      "he_mask_stroma_k": 3.0,
+      "he_mask_stroma_floor": 0.25
+    },
+    "stage4b": {
+      "anchor_mode": "auto",
+      "density_sigma_um": 8.0,
+      "density_sigma_px": 8.0,
+      "density_min_foreground_fraction": 0.02,
+      "density_rich_tissue_quantile": 0.5,
+      "density_max_foreground_ratio": 4.0,
+      "density_min_largest_component_fraction": 0.03,
+      "architecture_grid_size": 3,
+      "architecture_max_anchors_per_tile": 3,
+      "architecture_min_region_mass_fraction": 0.04,
+      "architecture_min_region_ncc": 0.1,
+      "architecture_min_anchor_distance_fraction": 0.15,
+      "density_min_full_ncc": 0.05,
+      "density_min_anchors_per_tile": 2,
+      "density_min_anchor_median_ncc": 0.15,
+      "density_scale_range_frac": 0.05,
+      "density_shift_frac": 0.25,
+      "density_shift_step_frac": 0.025,
+      "density_max_shift_fraction": 0.24,
+      "good_nuclei_min": 2,
+      "min_good_tiles": 20,
+      "fallback_score_thr": 0.4,
+      "min_fallback_tiles": 20,
+      "pair_top_k": 3,
+      "pairs_to_take_per_tile": 2,
+      "phase1": {
+        "n_tiles_for_scale_estimation": 20,
+        "ds": 4,
+        "scale_step": 0.04,
+        "shift_frac": 0.1,
+        "shift_step_frac": 0.01,
+        "scale_centre_frac": 0.25
+      },
+      "phase2": {
+        "median_scale_frac": 0.15,
+        "scale_step": 0.02,
+        "shift_frac": 0.4,
+        "shift_step_frac": 0.05
+      },
+      "phase3": {
+        "scale_range_frac": 0.02,
+        "scale_step_frac": 0.005,
+        "shift_range_frac": 0.03,
+        "shift_step_frac": 0.01
+      }
+    },
+    "stage4c": {
+      "moving_patch_len": 200,
+      "patch_size_um": 40.0,
+      "patch_target_mpp": null,
+      "moving_patch_level_override": null,
+      "fixed_patch_level_override": null,
+      "fixed_patch_margin": 1.1,
+      "dapi_thr_offset": 0,
+      "dapi_mask_min_area_factor": 0.0001,
+      "dapi_mask_upscale_factor": 2,
+      "he_mask_n_smooth": 2,
+      "he_mask_intensity_threshold": 0.6,
+      "he_mask_upscale_factor": 2
+    },
+    "stage5": {
+      "random_seed": 43,
+      "transform_mode": "homography",
+      "balance_points_bool": false,
+      "balance_grid": [
+        6,
+        6
+      ],
+      "balance_max_per_cell": 4,
+      "ransac_reproj_threshold_px": 8.0,
+      "max_iters": 10000,
+      "confidence": 0.995,
+      "stable_model_selection": {
+        "enabled": true,
+        "candidate_modes": [
+          "affine",
+          "homography"
+        ],
+        "group_permutations": 32,
+        "cv_folds": 5,
+        "cv_group_permutations": 8,
+        "homography_min_cv_improvement_fraction": 0.05,
+        "stability_grid_size": 7,
+        "spatial_grid": [
+          6,
+          6
+        ],
+        "support_weight": 2.0,
+        "spatial_weight": 1.0,
+        "stability_weight": 1.0
+      },
+      "density_local_fit": {
+        "enabled": true,
+        "support_radius_tile_factor": 6.0,
+        "baseline_weight": 0.1,
+        "inverse_iterations": 3,
+        "min_tiles": 3,
+        "max_residual_tile_factor": 0.75,
+        "max_anchor_spread_tile_factor": 0.25,
+        "promotion_max_median_ratio": 0.95,
+        "promotion_max_p90_ratio": 1.0
+      }
+    },
+    "stage7_dense_pairs": {
+      "scan_mode": "stage3_tiles",
+      "reference_mpp_dapi": 0.2125,
+      "reference_mpp_he": 0.2738,
+      "max_stage3_tiles": 0,
+      "reuse_stage4a_detection_cache": true,
+      "max_output_pairs": 0,
+      "tile_dedup_radius_level0_px": 3.0,
+      "assignment_mode": "greedy_one_to_one",
+      "candidate_neighbors": 5,
+      "area_cost_weight": 0.15,
+      "dapi_threshold_offset": 0,
+      "dapi_min_contrast_fraction": 0.002,
+      "dapi_max_foreground_fraction": 0.65,
+      "dapi_min_area_level0_px": 20.0,
+      "dapi_max_area_level0_px": 5000.0,
+      "he_n_smooth": 2,
+      "he_intensity_threshold": 0.4,
+      "he_upsample_factor": 2,
+      "he_min_tissue_fraction": 0.002,
+      "he_min_area_level0_px": 30.0,
+      "he_max_area_level0_px": 5000.0,
+      "candidate_distance_level0_px": 80.0,
+      "max_pair_distance_level0_px": 50.0,
+      "high_confidence_distance_level0_px": 20.0,
+      "max_calibrated_area_ratio": 6.0,
+      "high_confidence_area_ratio": 3.0,
+      "calibrate_area_between_modalities": true,
+      "write_nearest_candidates": true
+    },
+    "stage8_refinement": {
+      "ransac_reproj_threshold_px": 4.0,
+      "max_iters": 20000,
+      "confidence": 0.999,
+      "holdout_fraction": 0.2,
+      "random_seed": 43,
+      "min_pairs": 100,
+      "min_inliers": 100,
+      "min_inlier_ratio": 0.3,
+      "coverage_grid_size": 8,
+      "min_occupied_grid_cells": 12,
+      "min_axis_span_level0_px": 5000.0,
+      "max_holdout_median_error_ratio": 1.05,
+      "max_holdout_p95_error_ratio": 1.05,
+      "max_holdout_median_degradation_px": 1.0,
+      "max_transform_shift_p95_px": 10.0,
+      "promote_to_canonical": true,
+      "refresh_stage6_overlay": true,
+      "transform_mode": "homography"
+    }
+  },
+  "dapi-dapi": {
+    "stage2": {
+      "random_seed": 43,
+      "methods": [
+        "orb",
+        "sift"
+      ],
+      "n_features": 8000,
+      "ratio": 0.75,
+      "ransac_thresh": 5.0,
+      "min_inliers": 20,
+      "min_inlier_ratio": 0.15,
+      "max_reproj_px": 3.0,
+      "min_axis_ratio": 0.8
+    },
+    "stage3": {
+      "target_tile_mpp": 0.425,
+      "assumed_base_mpp_40x": 0.25,
+      "nucleus_diameter_um": 6.0,
+      "tile_nuclei_across": 30,
+      "tissue_sample_fraction": 0.5,
+      "n_tiles_min": 100,
+      "n_tiles_max": 200,
+      "stage4_tile_fraction": 1.0,
+      "min_dist_factor": 1.0,
+      "he_tile_margin_ratio": 0.2,
+      "prune_out_of_he": true,
+      "min_he_overlap_ratio": 0.15,
+      "write_lut_tiles": false,
+      "read_workers": 8,
+      "random_seed": 43,
+      "fallback_n_tiles": 200,
+      "fallback_tile_size": 400,
+      "moving_level_override": null,
+      "fixed_level_override": null
+    },
+    "stage4a": {
+      "dapi_thr_offset": 0,
+      "dapi_mask_min_area_factor": 0.0001,
+      "dapi_mask_upscale_factor": 2
+    },
+    "stage4b": {
+      "anchor_mode": "auto",
+      "density_sigma_px": 8.0,
+      "density_min_foreground_fraction": 0.02,
+      "density_rich_tissue_quantile": 0.5,
+      "density_max_foreground_ratio": 4.0,
+      "density_min_largest_component_fraction": 0.03,
+      "architecture_grid_size": 3,
+      "architecture_max_anchors_per_tile": 3,
+      "architecture_min_region_mass_fraction": 0.04,
+      "architecture_min_region_ncc": 0.1,
+      "architecture_min_anchor_distance_fraction": 0.15,
+      "good_nuclei_min": 2,
+      "min_good_tiles": 20,
+      "fallback_score_thr": 0.4,
+      "min_fallback_tiles": 20,
+      "pair_top_k": 3,
+      "pairs_to_take_per_tile": 2,
+      "phase1": {
+        "n_tiles_for_scale_estimation": 20,
+        "ds": 4,
+        "scale_step": 0.04,
+        "shift_frac": 0.1,
+        "shift_step_frac": 0.01,
+        "scale_centre_frac": 0.25
+      },
+      "phase2": {
+        "median_scale_frac": 0.15,
+        "scale_step": 0.02,
+        "shift_frac": 0.4,
+        "shift_step_frac": 0.05
+      },
+      "phase3": {
+        "scale_range_frac": 0.02,
+        "scale_step_frac": 0.005,
+        "shift_range_frac": 0.03,
+        "shift_step_frac": 0.01
+      }
+    },
+    "stage4c": {
+      "moving_patch_len": 200,
+      "patch_size_um": 40.0,
+      "patch_target_mpp": null,
+      "moving_patch_level_override": null,
+      "fixed_patch_level_override": null,
+      "fixed_patch_margin": 1.1,
+      "dapi_thr_offset": 0,
+      "dapi_mask_min_area_factor": 0.0001,
+      "dapi_mask_upscale_factor": 2
+    },
+    "stage5": {
+      "random_seed": 43,
+      "transform_mode": "homography",
+      "balance_points_bool": false,
+      "balance_grid": [
+        6,
+        6
+      ],
+      "balance_max_per_cell": 4,
+      "ransac_reproj_threshold_px": 8.0,
+      "max_iters": 10000,
+      "confidence": 0.995
+    }
+  },
+  "he-dapi": {
+    "stage2": {
+      "random_seed": 43,
+      "methods": [
+        "orb",
+        "sift"
+      ],
+      "n_features": 8000,
+      "ratio": 0.75,
+      "ransac_thresh": 5,
+      "min_inliers": 20,
+      "min_inlier_ratio": 0.15,
+      "max_reproj_px": 3,
+      "sift": {
+        "min_inliers": 20
+      },
+      "min_axis_ratio": 0.8
+    },
+    "stage3": {
+      "target_tile_mpp": 0.425,
+      "assumed_base_mpp_40x": 0.25,
+      "nucleus_diameter_um": 6,
+      "tile_nuclei_across": 30,
+      "tissue_sample_fraction": 0.5,
+      "n_tiles_min": 100,
+      "n_tiles_max": 200,
+      "stage4_tile_fraction": 0.3,
+      "min_dist_factor": 1,
+      "he_tile_margin_ratio": 0.2,
+      "prune_out_of_he": true,
+      "min_he_overlap_ratio": 0.15,
+      "write_lut_tiles": false,
+      "read_workers": 8,
+      "random_seed": 43,
+      "fallback_n_tiles": 200,
+      "fallback_tile_size": 400,
+      "moving_level_override": null,
+      "fixed_level_override": null
+    },
+    "stage4a": {
+      "dapi_thr_offset": 0,
+      "dapi_mask_min_area_factor": 0.0001,
+      "dapi_mask_upscale_factor": 2,
+      "he_mask_n_smooth": 2,
+      "he_mask_intensity_threshold": 0.6,
+      "he_mask_upscale_factor": 2,
+      "he_mask_source": "macenko",
+      "he_pigment_correction": false,
+      "tile_screen_min_dapi_coverage": null,
+      "tile_screen_max_pigment": null,
+      "he_mask_stroma_recut": true,
+      "he_mask_stroma_trigger": 1.5,
+      "he_mask_stroma_k": 3,
+      "he_mask_stroma_floor": 0.25
+    },
+    "stage4b": {
+      "anchor_mode": "auto",
+      "density_sigma_px": 8,
+      "density_min_foreground_fraction": 0.02,
+      "density_rich_tissue_quantile": 0.5,
+      "density_max_foreground_ratio": 4.0,
+      "density_min_largest_component_fraction": 0.03,
+      "architecture_grid_size": 3,
+      "architecture_max_anchors_per_tile": 3,
+      "architecture_min_region_mass_fraction": 0.04,
+      "architecture_min_region_ncc": 0.1,
+      "architecture_min_anchor_distance_fraction": 0.15,
+      "good_nuclei_min": 2,
+      "min_good_tiles": 20,
+      "fallback_score_thr": 0.4,
+      "min_fallback_tiles": 20,
+      "pair_top_k": 3,
+      "pairs_to_take_per_tile": 2,
+      "phase1": {
+        "n_tiles_for_scale_estimation": 20,
+        "ds": 4,
+        "scale_step": 0.04,
+        "shift_frac": 0.1,
+        "shift_step_frac": 0.01,
+        "scale_centre_frac": 0.25
+      },
+      "phase2": {
+        "median_scale_frac": 0.15,
+        "scale_step": 0.02,
+        "shift_frac": 0.4,
+        "shift_step_frac": 0.05
+      },
+      "phase3": {
+        "scale_range_frac": 0.02,
+        "scale_step_frac": 0.005,
+        "shift_range_frac": 0.03,
+        "shift_step_frac": 0.01
+      }
+    },
+    "stage4c": {
+      "moving_patch_len": 200,
+      "patch_size_um": 40,
+      "patch_target_mpp": null,
+      "moving_patch_level_override": null,
+      "fixed_patch_level_override": null,
+      "fixed_patch_margin": 1.1,
+      "dapi_thr_offset": 0,
+      "dapi_mask_min_area_factor": 0.0001,
+      "dapi_mask_upscale_factor": 2,
+      "he_mask_n_smooth": 2,
+      "he_mask_intensity_threshold": 0.6,
+      "he_mask_upscale_factor": 2
+    },
+    "stage5": {
+      "random_seed": 43,
+      "transform_mode": "homography",
+      "balance_points_bool": false,
+      "balance_grid": [
+        6,
+        6
+      ],
+      "balance_max_per_cell": 4,
+      "ransac_reproj_threshold_px": 8.0,
+      "max_iters": 10000,
+      "confidence": 0.995
+    },
+    "stage7_dense_pairs": {
+      "scan_mode": "stage3_tiles",
+      "reference_mpp_dapi": 0.2125,
+      "reference_mpp_he": 0.2738,
+      "max_stage3_tiles": 0,
+      "reuse_stage4a_detection_cache": true,
+      "max_output_pairs": 0,
+      "tile_dedup_radius_level0_px": 3.0,
+      "assignment_mode": "greedy_one_to_one",
+      "candidate_neighbors": 5,
+      "area_cost_weight": 0.15,
+      "dapi_threshold_offset": 0,
+      "dapi_min_contrast_fraction": 0.002,
+      "dapi_max_foreground_fraction": 0.65,
+      "dapi_min_area_level0_px": 20.0,
+      "dapi_max_area_level0_px": 5000.0,
+      "he_n_smooth": 2,
+      "he_intensity_threshold": 0.4,
+      "he_upsample_factor": 2,
+      "he_min_tissue_fraction": 0.002,
+      "he_min_area_level0_px": 30.0,
+      "he_max_area_level0_px": 5000.0,
+      "candidate_distance_level0_px": 80.0,
+      "max_pair_distance_level0_px": 50.0,
+      "high_confidence_distance_level0_px": 20.0,
+      "max_calibrated_area_ratio": 6.0,
+      "high_confidence_area_ratio": 3.0,
+      "calibrate_area_between_modalities": true,
+      "write_nearest_candidates": true
+    },
+    "stage8_refinement": {
+      "ransac_reproj_threshold_px": 4.0,
+      "max_iters": 20000,
+      "confidence": 0.999,
+      "holdout_fraction": 0.2,
+      "random_seed": 43,
+      "min_pairs": 100,
+      "min_inliers": 100,
+      "min_inlier_ratio": 0.3,
+      "coverage_grid_size": 8,
+      "min_occupied_grid_cells": 12,
+      "min_axis_span_level0_px": 5000.0,
+      "max_holdout_median_error_ratio": 1.05,
+      "max_holdout_p95_error_ratio": 1.05,
+      "max_holdout_median_degradation_px": 1.0,
+      "max_transform_shift_p95_px": 10.0,
+      "promote_to_canonical": true,
+      "refresh_stage6_overlay": true,
+      "transform_mode": "homography"
+    }
+  },
+  "he-he": {
+    "stage2": {
+      "random_seed": 43,
+      "methods": [
+        "orb",
+        "sift"
+      ],
+      "n_features": 8000,
+      "ratio": 0.75,
+      "ransac_thresh": 5.0,
+      "min_inliers": 15,
+      "min_inlier_ratio": 0.15,
+      "max_reproj_px": 3.0,
+      "sift": {
+        "min_inliers": 25
+      },
+      "min_axis_ratio": 0.8
+    },
+    "stage3": {
+      "target_tile_mpp": 0.425,
+      "nucleus_diameter_um": 6.0,
+      "tile_nuclei_across": 30,
+      "tissue_sample_fraction": 0.5,
+      "n_tiles_min": 100,
+      "n_tiles_max": 200,
+      "stage4_tile_fraction": 1.0,
+      "min_dist_factor": 1.0,
+      "he_tile_margin_ratio": 0.2,
+      "prune_out_of_he": true,
+      "min_he_overlap_ratio": 0.15,
+      "write_lut_tiles": false,
+      "read_workers": 8,
+      "random_seed": 43,
+      "fallback_n_tiles": 120,
+      "fallback_tile_size": 500,
+      "moving_level_override": null,
+      "fixed_level_override": null
+    },
+    "stage4a": {
+      "he_mask_n_smooth": 2,
+      "he_mask_intensity_threshold": 0.6,
+      "he_mask_upscale_factor": 2
+    },
+    "stage4b": {
+      "anchor_mode": "auto",
+      "density_sigma_px": 8.0,
+      "density_min_foreground_fraction": 0.02,
+      "density_rich_tissue_quantile": 0.5,
+      "density_max_foreground_ratio": 4.0,
+      "density_min_largest_component_fraction": 0.03,
+      "architecture_grid_size": 3,
+      "architecture_max_anchors_per_tile": 3,
+      "architecture_min_region_mass_fraction": 0.04,
+      "architecture_min_region_ncc": 0.1,
+      "architecture_min_anchor_distance_fraction": 0.15,
+      "good_nuclei_min": 2,
+      "min_good_tiles": 20,
+      "fallback_score_thr": 0.4,
+      "min_fallback_tiles": 20,
+      "pair_top_k": 3,
+      "pairs_to_take_per_tile": 2,
+      "phase1": {
+        "n_tiles_for_scale_estimation": 20,
+        "ds": 4,
+        "scale_step": 0.04,
+        "shift_frac": 0.1,
+        "shift_step_frac": 0.01,
+        "scale_centre_frac": 0.25
+      },
+      "phase2": {
+        "median_scale_frac": 0.15,
+        "scale_step": 0.02,
+        "shift_frac": 0.4,
+        "shift_step_frac": 0.05
+      },
+      "phase3": {
+        "scale_range_frac": 0.02,
+        "scale_step_frac": 0.005,
+        "shift_range_frac": 0.03,
+        "shift_step_frac": 0.01
+      }
+    },
+    "stage4c": {
+      "patch_size_um": null,
+      "patch_target_mpp": null,
+      "moving_patch_level_override": null,
+      "fixed_patch_level_override": null,
+      "fixed_patch_margin": 1.1,
+      "he_mask_n_smooth": 2,
+      "he_mask_intensity_threshold": 0.6,
+      "he_mask_upscale_factor": 2
+    },
+    "stage5": {
+      "random_seed": 43,
+      "transform_mode": "homography",
+      "balance_points_bool": true,
+      "balance_grid": [
+        6,
+        6
+      ],
+      "balance_max_per_cell": 4,
+      "ransac_reproj_threshold_px": 8.0,
+      "max_iters": 10000,
+      "confidence": 0.995,
+      "density_local_fit": {
+        "enabled": true,
+        "support_radius_tile_factor": 6.0,
+        "baseline_weight": 0.1,
+        "inverse_iterations": 3,
+        "min_tiles": 3,
+        "max_residual_tile_factor": 0.75,
+        "max_anchor_spread_tile_factor": 0.25,
+        "promotion_max_median_ratio": 0.95,
+        "promotion_max_p90_ratio": 1.0
+      }
+    }
+  }
+}

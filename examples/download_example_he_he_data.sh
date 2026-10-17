@@ -8,8 +8,9 @@ set -euo pipefail
 #
 # The smaller foreground H&E (Visium tissue image) is warped/placed onto the
 # larger fixed Xenium H&E. Run with:
-#   ./run_pharaoh_cli.sh --hefg="../examples/he_he_human_CRC_P2/hefg.btf" \
-#                        --he="../examples/he_he_human_CRC_P2/he.ome.tif"
+#   ./run_pharaoh_cli.sh --pair he-he \
+#                        --moving "../examples/he_he_human_CRC_P2/hefg.btf" \
+#                        --fixed  "../examples/he_he_human_CRC_P2/he.ome.tif"
 #
 # Outputs:
 #   he_he_human_CRC_P2/hefg.btf     (moving H&E-FG, Visium)

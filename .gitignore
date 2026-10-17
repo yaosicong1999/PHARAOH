@@ -6,3 +6,26 @@ version_3.0/
 version_3.1/
 version_he/
 version_3.2/
+
+# Preview renders from revision/roi_keypoints/make_roi_previews.py: 125-330 MB per
+# dataset, regenerated from the slides and the 10x keypoint CSVs. The bare name
+# matches the results directory at whatever depth it sits.
+roi_keypoints/
+
+# Local only: manuscript analyses, development versions and editor/OS files.
+revision/
+revision_testing_windows.zip
+archived_version/
+version_4.15/
+version_4.15_stage4_100percent/
+version_4.15_windows/
+.claude/
+.codex_tmp/
+.idea/
+.tmp/
+.DS_Store
+__pycache__/
+
+# Run outputs inside a version directory.
+version_*/outputs/
+tools/figure_layout/
