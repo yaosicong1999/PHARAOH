@@ -672,20 +672,17 @@ def build_centroids_without_patches(run_dir, meta, dapi_patch_len=200, image_ctx
         he_info = he_tiles[tile_id]
 
         x_dapi_tile, y_dapi_tile = n["original"][tok("moving")]
-        x_dapi_patch = int(round(
-            (float(dapi_info["x0"]) + float(x_dapi_tile)) * dapi_tile_to_patch
-        ))
-        y_dapi_patch = int(round(
-            (float(dapi_info["y0"]) + float(y_dapi_tile)) * dapi_tile_to_patch
-        ))
+        x_dapi_patch = (float(dapi_info["x0"]) + float(x_dapi_tile)) * dapi_tile_to_patch
+        y_dapi_patch = (float(dapi_info["y0"]) + float(y_dapi_tile)) * dapi_tile_to_patch
 
         x_he_tile, y_he_tile = n["original"][tok("fixed")]
         x_he_image, y_he_image = he_point_tile_to_image_coords(
             he_info, x_he_tile, y_he_tile
         )
-        # Preserve the legacy CLI quantization even if display MPP/size changes.
-        x_he_patch = int(float(x_he_image) * he_tile_to_patch)
-        y_he_patch = int(float(y_he_image) * he_tile_to_patch)
+        # Keep sub-pixel centroids: only the patch crop needs integer pixels, and it
+        # floors its own origin (extract_patch_and_mark_point, local_centroid).
+        x_he_patch = float(x_he_image) * he_tile_to_patch
+        y_he_patch = float(y_he_image) * he_tile_to_patch
 
         records.append({
             "tile_id": tile_id,
@@ -834,8 +831,8 @@ def main(run_dir, centroids_only=False, patches_only=False):
                 raise ValueError("Saved patch levels differ from requested levels; "
                                  "rerun Stage 4c explicitly to change geometry.")
     else:
-        # Always keep the original headless coordinate quantization, independently
-        # of QC and requested display resolution; only local crop coordinates vary.
+        # Centroids are level-0 floats, independent of QC and requested display
+        # resolution; only local crop coordinates vary.
         records, context = build_centroids_without_patches(
             run_dir, meta, dapi_patch_len=context["dapi_patch_len"], image_ctx=context,
         )

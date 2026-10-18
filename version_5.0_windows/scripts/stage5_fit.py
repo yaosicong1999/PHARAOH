@@ -377,8 +377,8 @@ def balanced_grid_sample_pairs(src, dst, grid_shape=(6, 6), max_per_cell=4, pref
 
 def fit_transform(src, dst, transform_type, threshold, max_iters, confidence, random_seed):
     """RANSAC fit of `transform_type`; returns (3x3 matrix, inlier mask, method label)."""
-    src = np.asarray(src, dtype=np.float32)
-    dst = np.asarray(dst, dtype=np.float32)
+    src = np.asarray(src, dtype=np.float64)
+    dst = np.asarray(dst, dtype=np.float64)
     cv2.setRNGSeed(int(random_seed))
     if transform_type == "affine":
         A, inliers = cv2.estimateAffine2D(

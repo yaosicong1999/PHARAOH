@@ -94,8 +94,8 @@ def main():
 
     # The fit must not depend on the order Stage 4b happened to list the tiles in.
     nuclei_info, order_note = order_records(nuclei_info)
-    src_all = np.array([x[src_key] for x in nuclei_info], dtype=np.float32)
-    dst_all = np.array([x[dst_key] for x in nuclei_info], dtype=np.float32)
+    src_all = np.array([x[src_key] for x in nuclei_info], dtype=np.float64)
+    dst_all = np.array([x[dst_key] for x in nuclei_info], dtype=np.float64)
 
     # Density anchors in serial sections are local architecture observations. They
     # must not replace Stage 2's whole-slide homography with a model supported by a
@@ -281,7 +281,7 @@ def main():
             src, dst, transform_type, ransac_thr, maxIters, confidence, random_seed)
 
     # reprojection error
-    src_h = np.concatenate([src, np.ones((len(src), 1), dtype=np.float32)], axis=1)
+    src_h = np.concatenate([src, np.ones((len(src), 1), dtype=np.float64)], axis=1)
     proj = (H.astype(np.float64) @ src_h.T).T
     proj_xy = proj[:, :2] / np.clip(proj[:, 2:3], 1e-8, None)
     err = np.linalg.norm(proj_xy - dst, axis=1)
