@@ -133,6 +133,7 @@ Each run writes to a new `outputs/runs_<timestamp>/`, or to `--run-dir DIR`. Bot
 | `--stage1-moving-level N`, `--stage1-fixed-level N` | use this pyramid level for the global alignment |
 | `--moving-channel C`, `--fixed-channel C` | use this DAPI channel |
 | `--moving-threshold T`, `--fixed-threshold T` | Stage-1 mask threshold (default 240 for H&E, data-type aware for DAPI) |
+| `--stage4-tile-fraction F` | fraction of the Stage-3 tiles searched for nuclear anchors (default 0.3 for DAPI–H&E, 1 for DAPI–DAPI and H&E–H&E); `1` searches every tile, which helps when few tiles contain tissue, as with sparse fields of view |
 
 `python run_pharaoh.py --help` lists every option.
 

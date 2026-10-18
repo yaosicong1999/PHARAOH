@@ -1586,8 +1586,22 @@ def cli_params_block(engine=None):
                 data = json.load(f)
         except Exception:
             continue
-        return data.get(engine, {}) if isinstance(data, dict) else {}
+        block = data.get(engine, {}) if isinstance(data, dict) else {}
+        return _with_stage4_tile_fraction_override(block)
     return {}
+
+
+def _with_stage4_tile_fraction_override(block):
+    """Apply `run_pharaoh.py --stage4-tile-fraction`, which every stage process inherits
+    as STAGE4_TILE_FRACTION_ENV_VAR, to `stage3.stage4_tile_fraction` of the run's block."""
+    import os
+
+    value = os.environ.get(STAGE4_TILE_FRACTION_ENV_VAR, "").strip()
+    if not value or not isinstance(block, dict):
+        return block
+    block = dict(block)
+    block["stage3"] = {**block.get("stage3", {}), "stage4_tile_fraction": float(value)}
+    return block
 
 
 def percentile_stretch_to_u8(image, low_percentile=1.0, high_percentile=99.5):
@@ -1629,6 +1643,7 @@ QC_IMAGE_GROUPS = (
 )
 QC_IMAGES_ENV_VAR = "PHARAOH_QC_IMAGES"
 PAIR_ENV_VAR = "PHARAOH_PAIR"
+STAGE4_TILE_FRACTION_ENV_VAR = "PHARAOH_STAGE4_TILE_FRACTION"
 _QC_IMAGES_ALL = ("all", "1", "true", "on", "yes")
 _QC_IMAGES_NONE = ("none", "0", "false", "off", "no")
 

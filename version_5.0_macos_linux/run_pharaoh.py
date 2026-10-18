@@ -59,6 +59,7 @@ from my_utils import (
     PAIR_ENV_VAR,
     QC_IMAGE_GROUPS,
     QC_IMAGES_ENV_VAR,
+    STAGE4_TILE_FRACTION_ENV_VAR,
     cli_params_block,
     normalize_qc_images_setting,
     qc_images_enabled,
@@ -233,9 +234,13 @@ def _last_stage4b_level(run_dir: Path):
 RUN_PARAMETERS = "run_parameters.json"
 
 
-def parameter_block_with_cli_overrides(block: dict, stage4b_anchor_mode=None):
+def parameter_block_with_cli_overrides(block: dict, stage4b_anchor_mode=None,
+                                       stage4_tile_fraction=None):
     """The parameter block this run actually uses, without mutating the shared file."""
     effective = copy.deepcopy(block)
+    if stage4_tile_fraction is not None:
+        effective["stage3"] = {**effective.get("stage3", {}),
+                               "stage4_tile_fraction": float(stage4_tile_fraction)}
     if stage4b_anchor_mode is not None:
         stage4b = dict(effective.get("stage4b", {}))
         stage4b[stage4b_modes.PARAM_KEY] = stage4b_modes.normalize_mode(
@@ -872,6 +877,13 @@ def main(argv=None):
              "or density. The effective value is recorded in run_parameters.json",
     )
     ap.add_argument(
+        "--stage4-tile-fraction", type=float, default=None, metavar="FRACTION",
+        help="override <pair>.stage3.stage4_tile_fraction for this run: the fraction of "
+             "the Stage-3 tiles Stage 4 searches for nuclear anchors, 0 < FRACTION <= 1 "
+             "(1 = every tile). The effective value is recorded in run_parameters.json. "
+             "run_pharaoh_parallel.py does not pass it on; a batch uses parameters.json",
+    )
+    ap.add_argument(
         "--stage4b-tile-topup-max-attempts", type=int, default=2,
         help="when Stage 4b runs short of usable tiles, mask more of the tiles Stage 3 "
              "already extracted and score again, up to this many times (default: 2; "
@@ -1083,6 +1095,14 @@ def main(argv=None):
         ap.error("--fixed-threshold must be non-negative")
     if args.stage1_moving_threshold is not None and args.stage1_moving_threshold < 0:
         ap.error("--moving-threshold must be non-negative")
+    if args.stage4_tile_fraction is not None and not 0.0 < args.stage4_tile_fraction <= 1.0:
+        ap.error("--stage4-tile-fraction must be greater than 0 and at most 1")
+    if args.stage4_tile_fraction is None:
+        os.environ.pop(STAGE4_TILE_FRACTION_ENV_VAR, None)
+    else:
+        # Stages 3 and 4 are child processes and read the fraction through
+        # my_utils.cli_params_block, which applies this variable.
+        os.environ[STAGE4_TILE_FRACTION_ENV_VAR] = repr(float(args.stage4_tile_fraction))
     if args.stage4b_anchor_mode is None:
         os.environ.pop(stage4b_modes.ANCHOR_MODE_ENV_VAR, None)
     else:
@@ -1223,12 +1243,19 @@ def main(argv=None):
     )
     anchor_mode = args.stage4b_anchor_mode or configured_anchor_mode
     effective_block = parameter_block_with_cli_overrides(
-        all_params[block_key], args.stage4b_anchor_mode
+        all_params[block_key], args.stage4b_anchor_mode, args.stage4_tile_fraction
     )
     parameter_overrides = (
         {"stage4b.anchor_mode": anchor_mode}
         if args.stage4b_anchor_mode is not None else {}
     )
+    configured_fraction = all_params[block_key].get("stage3", {}).get("stage4_tile_fraction")
+    if args.stage4_tile_fraction is None:
+        print(f"[run_pharaoh] Stage 4 tile fraction: {configured_fraction} (parameters.json)")
+    else:
+        parameter_overrides["stage3.stage4_tile_fraction"] = float(args.stage4_tile_fraction)
+        print(f"[run_pharaoh] Stage 4 tile fraction: {float(args.stage4_tile_fraction):g} "
+              f"(--stage4-tile-fraction; parameters.json={configured_fraction})")
     if args.stage4b_anchor_mode is None:
         print(f"[run_pharaoh] Stage 4b anchor mode: {anchor_mode} (parameters.json)")
     else:
