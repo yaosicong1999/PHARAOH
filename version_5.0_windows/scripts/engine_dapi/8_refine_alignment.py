@@ -38,12 +38,18 @@ DEFAULTS = {
     "max_holdout_p95_error_ratio": 1.05,
     "max_holdout_median_degradation_px": 1.0,
     "max_transform_shift_p95_px": 10.0,
+    "stability_refits": 10,
+    "stability_drop_fraction": 0.10,
+    "stability_seed": 1000,
+    "stability_max_shift_p95_um": 1.0,
     "promote_to_canonical": True,
     "refresh_stage6_overlay": True,
 }
 
 
 VALID_TRANSFORM_MODES = ("homography", "affine")
+#: transform_mode value that fits the model Stage 5 selected for this run
+FOLLOW_STAGE5 = "stage5"
 
 
 def load_params(path: Path, pair: str = "dapi-he"):
@@ -60,14 +66,29 @@ def load_params(path: Path, pair: str = "dapi-he"):
                       dapi.get("stage5", {}).get("transform_mode", "homography"))
     params.update(configured)
     mode = str(params["transform_mode"]).lower().strip()
-    if mode not in VALID_TRANSFORM_MODES:
+    if mode not in VALID_TRANSFORM_MODES + (FOLLOW_STAGE5,):
         raise ValueError(
             f"stage8_refinement.transform_mode={params['transform_mode']!r} is not "
-            f"supported; expected one of {', '.join(VALID_TRANSFORM_MODES)}. Stage 8 "
-            f"replaces Stage 5's transform, so it fits the same models Stage 5 does -- "
+            f"supported; expected one of {', '.join(VALID_TRANSFORM_MODES + (FOLLOW_STAGE5,))}. "
+            f"Stage 8 replaces Stage 5's transform, so it fits the same models Stage 5 does -- "
             f"tps and local_tps are Stage-5-only and cannot be refined from pairs."
         )
     params["transform_mode"] = mode
+    return params
+
+
+def resolve_transform_mode(params, initial_transform):
+    """With transform_mode "stage5", fit the model Stage 5 selected for this run.
+
+    Stage 5 chooses between an affine model and a homography by tile-grouped
+    cross-validation. Refining an affine result with a homography adds perspective terms
+    that the dense pairs constrain poorly: the refit then changes with which pairs Stage 7
+    happened to keep. A Stage-5 local residual field refines its base homography.
+    """
+    params = dict(params)
+    if params["transform_mode"] == FOLLOW_STAGE5:
+        selected = str(initial_transform.get("transform_type", "homography")).lower()
+        params["transform_mode"] = "affine" if selected == "affine" else "homography"
     return params
 
 
@@ -132,8 +153,8 @@ def _fit_homography(src, dst, params):
 
     Stage 8 replaces Stage 5's transform, so fitting a different model than Stage 5 did
     would silently change the model on whichever datasets happen to be promoted -- half
-    of them, in practice. The mode is read from the same key Stage 5 uses and defaults
-    to following it.
+    of them, in practice. `resolve_transform_mode` sets the mode to the model Stage 5
+    selected for the run.
     """
     cv2.setRNGSeed(int(params["random_seed"]))
     src = np.asarray(src, dtype=np.float64)
@@ -166,9 +187,39 @@ def _fit_homography(src, dst, params):
     return matrix, inliers.ravel().astype(bool) if inliers is not None else None
 
 
-def refine_from_pairs(pairs, initial_matrix, params, stage5_anchors=None, tokens=("dapi", "he")):
+def subsampling_stability(src, dst, final_matrix, params, fixed_mpp):
+    """Refit on random subsets of the pairs and measure how far each refit moves them.
+
+    Which nuclei Stage 7 pairs depends on the Stage-5 transform, so a refined transform that
+    changes when a few pairs are left out reflects RANSAC's choice of inliers rather than
+    the tissue. Each of `stability_refits` refits leaves out `stability_drop_fraction` of
+    the pairs; the 95th-percentile shift of the pairs between that refit and the all-pair
+    fit must stay within `stability_max_shift_p95_um` in the fixed image for every refit.
+    """
+    bound_px = float(params["stability_max_shift_p95_um"]) / float(fixed_mpp)
+    drop = float(params["stability_drop_fraction"])
+    shifts = []
+    for k in range(int(params["stability_refits"])):
+        keep = np.random.default_rng(int(params["stability_seed"]) + k).random(len(src)) >= drop
+        matrix, _ = _fit_homography(src[keep], dst[keep], params)
+        if matrix is None:
+            return {"refits": k + 1, "failed_refit": k, "bound_um": float(params["stability_max_shift_p95_um"]),
+                    "bound_px": bound_px, "passed": False}
+        shift = np.linalg.norm(project_points(src, matrix) - project_points(src, final_matrix), axis=1)
+        shifts.append(float(np.percentile(shift, 95)))
+    worst = max(shifts) if shifts else 0.0
+    return {"refits": len(shifts), "drop_fraction": drop, "fixed_mpp": float(fixed_mpp),
+            "max_shift_p95_px": worst, "max_shift_p95_um": worst * float(fixed_mpp),
+            "bound_um": float(params["stability_max_shift_p95_um"]), "bound_px": bound_px,
+            "passed": bool(worst <= bound_px)}
+
+
+def refine_from_pairs(pairs, initial_matrix, params, stage5_anchors=None, tokens=("dapi", "he"),
+                      fixed_mpp=None):
     """Refine the moving->fixed transform from Stage 7's pairs; columns are named by
-    the run's tokens (`dapi`/`he` for dapi-he, `he`/`dapi` for he-dapi)."""
+    the run's tokens (`dapi`/`he` for dapi-he, `he`/`dapi` for he-dapi). `fixed_mpp`
+    (fixed-image um per level-0 pixel) is needed for the subsampling-stability gate,
+    which is skipped without it."""
     m, f = tokens
     required = {
         f"{m}_nucleus_id", f"{f}_nucleus_id", f"{m}_x_level0", f"{m}_y_level0",
@@ -263,6 +314,10 @@ def refine_from_pairs(pairs, initial_matrix, params, stage5_anchors=None, tokens
             <= float(params["max_holdout_median_degradation_px"])
         ),
     })
+    stability = None
+    if int(params.get("stability_refits", 0)) > 0 and fixed_mpp is not None:
+        stability = subsampling_stability(src, dst, final_matrix, params, fixed_mpp)
+        gates["stable_under_pair_subsampling"] = stability["passed"]
 
     # Stage-5 anchor residuals are recorded for diagnosis but do not gate promotion.
     #
@@ -314,6 +369,7 @@ def refine_from_pairs(pairs, initial_matrix, params, stage5_anchors=None, tokens
         "initial_holdout_errors": initial_holdout_metrics,
         "refined_holdout_errors": refined_holdout_metrics,
         "transform_shift": metric_summary(transform_shift),
+        "subsampling_stability": stability,
         "stage5_anchor_validation": anchor_metrics,
         "reason": "all quality gates passed" if accepted else "one or more quality gates failed",
     }
@@ -409,9 +465,17 @@ def main():
     if matrix_key not in initial_transform:
         raise ValueError("canonical transform has no homography_3x3")
     initial_matrix = np.asarray(initial_transform[matrix_key], dtype=np.float64)
+    params = resolve_transform_mode(params, initial_transform)
+    print(f"[Stage8] model: {_mode(params)} (transform_mode={configured['transform_mode']}, "
+          f"Stage 5 selected {initial_transform.get('transform_type', 'n/a')})", flush=True)
+    # um per fixed level-0 pixel for the stability gate: measured, else estimated, else the
+    # modality's reference pixel size (the same fallback the pixel gates use)
+    fixed_mpp = (scale.get("mpp_by_role") or {}).get("fixed") \
+        or (scale.get("reference_mpp") or {}).get(roles.fixed.modality)
     pairs = pd.read_csv(pair_path)
     anchors = load_stage5_anchors(run_dir, (m, f))
-    result = refine_from_pairs(pairs, initial_matrix, params, stage5_anchors=anchors, tokens=(m, f))
+    result = refine_from_pairs(pairs, initial_matrix, params, stage5_anchors=anchors, tokens=(m, f),
+                               fixed_mpp=fixed_mpp)
 
     scored_path = run_dir / "dense_nucleus_pairs" / "high_confidence_pairs_stage8_scored.csv.gz"
     result["pairs"].to_csv(scored_path, index=False, compression="gzip")

@@ -234,9 +234,13 @@
       "max_holdout_p95_error_ratio": 1.05,
       "max_holdout_median_degradation_px": 1.0,
       "max_transform_shift_p95_px": 10.0,
+      "stability_refits": 10,
+      "stability_drop_fraction": 0.1,
+      "stability_seed": 1000,
+      "stability_max_shift_p95_um": 1.0,
       "promote_to_canonical": true,
       "refresh_stage6_overlay": true,
-      "transform_mode": "homography"
+      "transform_mode": "stage5"
     }
   },
   "dapi-dapi": {
@@ -511,9 +515,13 @@
       "max_holdout_p95_error_ratio": 1.05,
       "max_holdout_median_degradation_px": 1.0,
       "max_transform_shift_p95_px": 10.0,
+      "stability_refits": 10,
+      "stability_drop_fraction": 0.1,
+      "stability_seed": 1000,
+      "stability_max_shift_p95_um": 1.0,
       "promote_to_canonical": true,
       "refresh_stage6_overlay": true,
-      "transform_mode": "homography"
+      "transform_mode": "stage5"
     }
   },
   "he-he": {
