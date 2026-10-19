@@ -474,7 +474,7 @@ def write_stage7_tree_qa_images(run_dir: Path, keys, dapi: np.ndarray, he: np.nd
         he_to_rect = np.linalg.inv(rect_to_fixed(hmeta, f))
 
         def to_tile(level0_xy):
-            return _perspective_xy(np.asarray(level0_xy, dtype=np.float64) / he_scale, he_to_rect)
+            return _perspective_xy((np.asarray(level0_xy, dtype=np.float64) + 0.5) / he_scale - 0.5, he_to_rect)
 
         def draw_point(fn, xy, *args):
             if np.isfinite(xy).all():
@@ -687,7 +687,7 @@ def load_stage4a_detection_cache(
                     np.column_stack(
                         [
                             xy_work[keep],
-                            xy_work[keep] * dapi_scale,
+                            (xy_work[keep] + 0.5) * dapi_scale - 0.5,
                             area_work[keep],
                             area0[keep],
                             np.full(int(keep.sum()), source_chunk, dtype=np.float64),
@@ -717,7 +717,7 @@ def load_stage4a_detection_cache(
                     np.column_stack(
                         [
                             xy_work[keep],
-                            xy_work[keep] * he_scale,
+                            (xy_work[keep] + 0.5) * he_scale - 0.5,
                             area_work[keep],
                             area0[keep],
                             np.full(int(keep.sum()), source_chunk, dtype=np.float64),
@@ -845,7 +845,7 @@ def scan_stage3_tiles(run_dir: Path, params: Dict, engine_dir: Path, sides: Side
                 )
                 if np.any(keep):
                     dapi_batches.append(np.column_stack([
-                        dxy_work[keep], dxy_work[keep] * dapi_scale,
+                        dxy_work[keep], (dxy_work[keep] + 0.5) * dapi_scale - 0.5,
                         dcomp[keep, 2], darea0[keep],
                         np.full(int(keep.sum()), number - 1, dtype=np.float64),
                     ]))
@@ -866,7 +866,7 @@ def scan_stage3_tiles(run_dir: Path, params: Dict, engine_dir: Path, sides: Side
                 )
                 if np.any(keep):
                     he_batches.append(np.column_stack([
-                        hxy_work[keep], hxy_work[keep] * he_scale,
+                        hxy_work[keep], (hxy_work[keep] + 0.5) * he_scale - 0.5,
                         hcomp[keep, 2], harea0[keep],
                         np.full(int(keep.sum()), number - 1, dtype=np.float64),
                     ]))

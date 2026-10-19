@@ -220,8 +220,8 @@ def segment_he_centroids(rgb, params, engine_dir=None):
         return np.empty((0, 3), dtype=np.float64)
     return np.column_stack(
         [
-            np.asarray(props["centroid-1"], dtype=np.float64) / upsample,
-            np.asarray(props["centroid-0"], dtype=np.float64) / upsample,
+            (np.asarray(props["centroid-1"], dtype=np.float64) + 0.5) / upsample - 0.5,
+            (np.asarray(props["centroid-0"], dtype=np.float64) + 0.5) / upsample - 0.5,
             np.asarray(props["area"], dtype=np.float64)
             / (upsample * upsample),
         ]

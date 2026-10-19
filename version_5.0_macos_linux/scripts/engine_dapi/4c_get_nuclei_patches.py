@@ -109,6 +109,14 @@ def tile_level_to_patch_level(tile_level: int) -> int:
     """
     return max(0, int(tile_level) - 1)
 
+def tile_level_to_level0(x, level):
+    """Level-0 coordinate of a coordinate at pyramid level ``level``. Each level halves
+    the one below, so pixel i of level L covers level-0 pixels i * 2**L to
+    (i + 1) * 2**L - 1, whose centre is (i + 0.5) * 2**L - 0.5."""
+    scale = float(2 ** int(level))
+    return float((float(x) + 0.5) * scale - 0.5)
+
+
 def he_point_tile_to_image_coords(he_info, x_tile, y_tile):
     """
     Return point coordinates in the same coordinate system as the loaded HE image
@@ -656,10 +664,6 @@ def build_centroids_without_patches(run_dir, meta, dapi_patch_len=200, image_ctx
     he_tile_level = _fixed_tile_level(sampled_info, images_info, dapi_tile_level)
     dapi_patch_level = tile_level_to_patch_level(dapi_tile_level)
     he_patch_level = tile_level_to_patch_level(he_tile_level)
-    dapi_tile_to_patch = float(2 ** (dapi_tile_level - dapi_patch_level))
-    he_tile_to_patch = float(2 ** (he_tile_level - he_patch_level))
-    dapi_patch_to_level0 = float(2 ** dapi_patch_level)
-    he_patch_to_level0 = float(2 ** he_patch_level)
 
     he_patch_len = (image_ctx["he_patch_len"] if image_ctx is not None else
                    load_initial_affine_and_compute_he_patch(
@@ -671,31 +675,30 @@ def build_centroids_without_patches(run_dir, meta, dapi_patch_len=200, image_ctx
         dapi_info = dapi_tiles[tile_id]
         he_info = he_tiles[tile_id]
 
+        # Sub-pixel centroids at each side's tile level (the moving tile is a crop at
+        # x0/y0; the fixed tile maps back through its rectification). Only the patch
+        # crops need integer pixels, and they floor their own origin.
         x_dapi_tile, y_dapi_tile = n["original"][tok("moving")]
-        x_dapi_patch = (float(dapi_info["x0"]) + float(x_dapi_tile)) * dapi_tile_to_patch
-        y_dapi_patch = (float(dapi_info["y0"]) + float(y_dapi_tile)) * dapi_tile_to_patch
+        x_dapi_image = float(dapi_info["x0"]) + float(x_dapi_tile)
+        y_dapi_image = float(dapi_info["y0"]) + float(y_dapi_tile)
 
         x_he_tile, y_he_tile = n["original"][tok("fixed")]
         x_he_image, y_he_image = he_point_tile_to_image_coords(
             he_info, x_he_tile, y_he_tile
         )
-        # Keep sub-pixel centroids: only the patch crop needs integer pixels, and it
-        # floors its own origin (extract_patch_and_mark_point, local_centroid).
-        x_he_patch = float(x_he_image) * he_tile_to_patch
-        y_he_patch = float(y_he_image) * he_tile_to_patch
 
         records.append({
             "tile_id": tile_id,
             "nucleus_id": nucleus_id,
             "mode": n.get("mode", "nuclei_pair"),
             f"{tok('moving')}_centroid_global": [
-                float(x_dapi_patch * dapi_patch_to_level0),
-                float(y_dapi_patch * dapi_patch_to_level0),
+                tile_level_to_level0(x_dapi_image, dapi_tile_level),
+                tile_level_to_level0(y_dapi_image, dapi_tile_level),
             ],
             f"{tok('moving')}_centroid_local": [int(dapi_patch_len // 2), int(dapi_patch_len // 2)],
             f"{tok('fixed')}_centroid_global": [
-                float(x_he_patch * he_patch_to_level0),
-                float(y_he_patch * he_patch_to_level0),
+                tile_level_to_level0(x_he_image, he_tile_level),
+                tile_level_to_level0(y_he_image, he_tile_level),
             ],
             f"{tok('fixed')}_centroid_local": [int(he_patch_len // 2), int(he_patch_len // 2)],
         })

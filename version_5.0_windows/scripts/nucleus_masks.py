@@ -169,7 +169,7 @@ def _dense_detector_background(rgb_tile, dense_params, upscale, engine_dir):
     if int(detector_upsample) != int(upscale):
         # The two paths have their own upsample factors; the file Stage 4b opens has
         # to keep the Macenko path's geometry whichever detector filled it.
-        nuclei = cv2.resize(nuclei, target, interpolation=cv2.INTER_NEAREST)
+        nuclei = cv2.resize(nuclei, target, interpolation=cv2.INTER_NEAREST_EXACT)
     return nuclei == 0
 
 

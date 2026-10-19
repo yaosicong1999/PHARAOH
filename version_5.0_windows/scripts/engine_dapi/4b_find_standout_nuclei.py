@@ -16,6 +16,7 @@
 #            [--anchor-mode nuclei_pairs|density] [--all-masked]
 #            [--all-tiles] [--skip-qa-images] [--write-centroids]
 # ============================================================
+from fractions import Fraction
 import argparse
 import cv2
 import numpy as np
@@ -338,10 +339,29 @@ def apply_orientation_to_tile(img, case_id):
 
     raise ValueError(f"Unknown orientation case: {case_id}")
 
+def mask_to_tile(x_mask, mask_scale):
+    """Tile coordinate of a mask coordinate. Stage 4a upsamples each tile by
+    ``mask_scale`` pixel-centre aligned, so mask pixel m covers tile (m + 0.5) / s - 0.5."""
+    return (float(x_mask) + 0.5) / float(mask_scale) - 0.5
+
+
+def nearest_resize_source(x_scaled, raw_len, base_scale):
+    """Source coordinate of a position in a mask that scale_and_pad resized.
+
+    cv2.resize with INTER_NEAREST shows source pixel floor(x * k), k = raw/resized.
+    With k = p/q in lowest terms, floor(x * k) lies on average (q - 1) / (2q)
+    below x * k, so a centroid measured in the resized mask maps back to
+    k * x - (q - 1) / (2q): 0 at k = 1, 0.25 at k = 1/2, nearly 0.5 for a general k.
+    """
+    new_len = int(round(raw_len * base_scale))       # the size scale_and_pad resized to
+    k = Fraction(int(raw_len), new_len)
+    return float(k) * x_scaled - (k.denominator - 1) / (2.0 * k.denominator)
+
+
 def aligned_to_he_mask_img(x_aligned, y_aligned,
                            final, H, W,
                            paste_x0, paste_y0,
-                           base_scale):
+                           base_scale, raw_shape):
     """
     x_aligned, y_aligned: in aligned canvas (same as maskA space)
     final: dict with {"scale","tx","ty"} applied to maskB (scaled+pad canvas) -> aligned
@@ -364,28 +384,32 @@ def aligned_to_he_mask_img(x_aligned, y_aligned,
     # 2) remove padding offset: canvas -> scaled HE mask coords
     x_scaled = x_canvas - paste_x0
     y_scaled = y_canvas - paste_y0
-    # 3) undo base scale: scaled HE mask -> original HE mask coords
-    x_raw = x_scaled / base_scale
-    y_raw = y_scaled / base_scale
+    # 3) undo base scale: scaled HE mask -> original HE mask coords, inverting the
+    # nearest-neighbour resize exactly per axis (raw_shape = original mask shape)
+    x_raw = nearest_resize_source(x_scaled, raw_shape[1], base_scale)
+    y_raw = nearest_resize_source(y_scaled, raw_shape[0], base_scale)
 
     return float(x_raw), float(y_raw)
 
 def dapi_aligned_to_original(xA_aligned, yA_aligned, H, W, case_id, dapi_mask_scale):
     # aligned(DAPI after apply_orientation) -> original DAPI mask coords
     xA_dapi, yA_dapi = inverse_orientation_point(xA_aligned, yA_aligned, H, W, case_id)
-    # original DAPI image coords (or “mask level0” coords) by dividing mask_scale
-    return float(xA_dapi / dapi_mask_scale), float(yA_dapi / dapi_mask_scale)
+    # original DAPI tile coords: the mask is the tile upsampled pixel-centre aligned
+    # (skimage rescale), so mask pixel m sits at tile coordinate (m + 0.5) / s - 0.5
+    return (float(mask_to_tile(xA_dapi, dapi_mask_scale)),
+            float(mask_to_tile(yA_dapi, dapi_mask_scale)))
 
-def he_aligned_to_original(xB_aligned, yB_aligned, final, H, W, paste_x0, paste_y0, base_scale, he_mask_scale):
+def he_aligned_to_original(xB_aligned, yB_aligned, final, H, W, paste_x0, paste_y0, base_scale, he_mask_scale,
+                           raw_shape):
     # aligned -> original HE mask coords
     xB_mask, yB_mask = aligned_to_he_mask_img(
         xB_aligned, yB_aligned,
         final, H, W,
         paste_x0, paste_y0,
-        base_scale
+        base_scale, raw_shape
     )
-    # original HE image coords by dividing he_mask_scale
-    return float(xB_mask / he_mask_scale), float(yB_mask / he_mask_scale)
+    # original HE tile coords, with the same pixel-centre convention as the DAPI side
+    return float(mask_to_tile(xB_mask, he_mask_scale)), float(mask_to_tile(yB_mask, he_mask_scale))
 
 # -----------------------------
 # Basic mask / warp / score helpers
@@ -1521,7 +1545,7 @@ def write_density_qc_image(base_dir, prefix, maskA, aligned_maskB, details, sele
 
 
 def map_architecture_anchors(anchors, final, H, W, case_id, paste_x0, paste_y0,
-                             base_scale, dapi_mask_scale, he_mask_scale):
+                             base_scale, dapi_mask_scale, he_mask_scale, raw_shape):
     """Architecture anchors in each side's original mask coordinates, keyed by token
     like the nucleus pairs so Stage 4c and Stage 5 read them the same way."""
     mapped = []
@@ -1532,7 +1556,7 @@ def map_architecture_anchors(anchors, final, H, W, case_id, paste_x0, paste_y0,
         )
         xB_img, yB_img = he_aligned_to_original(
             x_aligned, y_aligned, final, H, W,
-            paste_x0, paste_y0, base_scale, he_mask_scale
+            paste_x0, paste_y0, base_scale, he_mask_scale, raw_shape
         )
         mapped.append({
             "anchor_id": int(anchor_id),
@@ -2022,7 +2046,7 @@ def process_single_tile(
             )
     architecture_mapped = map_architecture_anchors(
         architecture_anchors, final, H, W, case_id, paste_x0, paste_y0,
-        base_scale, dapi_mask_scale, he_mask_scale,
+        base_scale, dapi_mask_scale, he_mask_scale, maskB_raw.shape,
     )
 
     # Isolated nuclei
@@ -2063,6 +2087,7 @@ def process_single_tile(
             paste_x0, paste_y0,
             base_scale,
             he_mask_scale,
+            maskB_raw.shape,
         )
 
         pairs_mapped.append({
