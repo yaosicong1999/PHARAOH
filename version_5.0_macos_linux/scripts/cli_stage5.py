@@ -8,10 +8,6 @@
 # nuclei_patches/nuclei_centroids_global.json and writing the same
 # <moving>_to_he_homography_level0.json (+ .csv).
 #
-# transform_type = "tps"/"local_tps" is not reproduced here (both
-# engines' parameters.json are configured for "homography"); set the
-# mode to homography/affine to use the CLI.
-#
 # Usage:
 #   python cli_stage5.py --engine <dir> --run-dir <dir> --pair {dapi-he,he-he}
 # ============================================================
@@ -64,13 +60,11 @@ def main():
     random_seed = params["random_seed"]
     stable_model_cfg = params["stable_model_selection"]
 
-    if transform_type in ("tps", "local_tps"):
-        raise NotImplementedError(
-            f"transform_mode='{transform_type}' is not supported by the CLI; "
+    if transform_type not in ("homography", "affine"):
+        raise ValueError(
+            f"invalid transform_mode: {transform_type}; "
             f"set parameters.json['stage5']['transform_mode'] to 'homography' or 'affine'."
         )
-    if transform_type not in ("homography", "affine"):
-        raise ValueError(f"invalid transform_mode: {transform_type}")
 
     # ---- load nuclei centroid pairs ----
     info_path = run_dir / "nuclei_patches" / "nuclei_centroids_global.json"

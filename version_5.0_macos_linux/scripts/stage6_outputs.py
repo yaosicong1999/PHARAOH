@@ -204,7 +204,6 @@ class AlignmentOutputs:
         self.he_pts0 = None
         self.selected_indices = None
         self.other_indices = None
-        self.tps_inv = None
         self.dapi_rgb = None
         self.dapi_overlay_base = None
         self.he_rgb = None
@@ -225,75 +224,11 @@ class AlignmentOutputs:
 
         This function:
         1. loads nuclei centroids in level-0 coordinates
-        2. loads either homography or TPS transform
+        2. loads the affine, homography or local-residual transform
         3. warps DAPI into H&E display space
         4. builds final overlay and manual-alignment overlay
         5. caches panel images for fast GUI refresh
         """
-
-        # ---- local TPS helpers ----
-        def load_tps(path: Path, direction="forward"):
-            """
-            direction:
-              - 'forward' : dapi -> he
-              - 'inverse' : he   -> dapi
-            """
-            data = _read_json(path)
-            print(f"[DEBUG] TPS json keys: {list(data.keys())}", flush=True)
-
-            if direction == "forward":
-                key = "forward_tps"
-            elif direction == "inverse":
-                key = "inverse_tps"
-            else:
-                raise ValueError("direction must be 'forward' or 'inverse'")
-
-            if key not in data:
-                raise ValueError(f"[ERROR] Missing {key} in json. Keys: {list(data.keys())}")
-
-            d = data[key]
-
-            ctrl = np.array(d["control_points_src"], dtype=np.float64)
-            w = np.array(d["weights"], dtype=np.float64)
-            A2x3 = np.array(d["affine_2x3"], dtype=np.float64)
-
-            if ctrl.ndim != 2 or ctrl.shape[1] != 2:
-                raise ValueError(f"[ERROR] ctrl shape invalid: {ctrl.shape}")
-            if w.shape[0] != ctrl.shape[0] or w.shape[1] != 2:
-                raise ValueError(f"[ERROR] weights shape invalid: {w.shape}, ctrl={ctrl.shape}")
-            if A2x3.shape != (2, 3):
-                raise ValueError(f"[ERROR] affine_2x3 invalid: {A2x3.shape}")
-
-            # internal TPS affine format: (3,2)
-            a = np.zeros((3, 2), dtype=np.float64)
-            a[0, :] = A2x3[:, 0]
-            a[1, :] = A2x3[:, 1]
-            a[2, :] = A2x3[:, 2]
-
-            return {
-                "ctrl": ctrl,
-                "w": w,
-                "a": a,
-            }
-
-        def _tps_kernel(r2: np.ndarray) -> np.ndarray:
-            out = np.zeros_like(r2, dtype=np.float64)
-            mask = r2 > 0
-            out[mask] = r2[mask] * np.log(r2[mask])
-            return out
-
-        def apply_tps(xy: np.ndarray, model: dict) -> np.ndarray:
-            xy = np.asarray(xy, dtype=np.float64)
-            ctrl = model["ctrl"]
-            w = model["w"]
-            a = model["a"]
-
-            diff = xy[:, None, :] - ctrl[None, :, :]
-            r2 = np.sum(diff * diff, axis=2)
-            K = _tps_kernel(r2)
-
-            P = np.concatenate([np.ones((xy.shape[0], 1)), xy], axis=1)  # (N,3)
-            return K @ w + P @ a
 
         def load_transform_mode(path: Path):
             data = _read_json(path)
@@ -306,54 +241,12 @@ class AlignmentOutputs:
                 return "homography"
             elif transform_type == local_residual.TRANSFORM_TYPE:
                 return local_residual.TRANSFORM_TYPE
-            elif transform_type in {"tps", "local_tps"}:
-                return "tps"
 
             # fallback for older files
-            if "inverse_tps" in data and "forward_tps" in data:
-                return "tps"
-            elif "homography_3x3" in data:
+            if "homography_3x3" in data:
                 return "homography"
-            elif "initial_homography_3x3" in data:
-                return "tps"
 
             raise ValueError(f"[ERROR] Unknown transform json format. Keys: {list(data.keys())}")
-
-        def build_tps_remap_for_display(tps_model, out_shape_hw, display_scale):
-            """
-            Build map_x, map_y in DISPLAY space for cv2.remap.
-
-            Parameters
-            ----------
-            tps_model : dict
-                inverse TPS model: HE(level0) -> DAPI(level0)
-            out_shape_hw : (H, W)
-                output display image shape, typically he_rgb.shape[:2]
-            display_scale : float
-                level0_px / display_px
-            """
-            H, W = out_shape_hw
-            s = float(display_scale)
-
-            gx, gy = np.meshgrid(
-                np.arange(W, dtype=np.float32),
-                np.arange(H, dtype=np.float32)
-            )
-            pts_disp = np.stack([gx.ravel(), gy.ravel()], axis=1).astype(np.float64)
-
-            # display HE px -> level0 HE px
-            pts_he_lvl0 = pts_disp * s
-
-            # inverse TPS: HE(level0) -> DAPI(level0)
-            pts_dapi_lvl0 = apply_tps(pts_he_lvl0, tps_model)
-
-            # level0 DAPI px -> display DAPI px
-            pts_dapi_disp = pts_dapi_lvl0 / s
-
-            map_x = pts_dapi_disp[:, 0].reshape(H, W).astype(np.float32)
-            map_y = pts_dapi_disp[:, 1].reshape(H, W).astype(np.float32)
-
-            return map_x, map_y
 
         # ---- load nuclei centroids (level 0) ----
         nuclei_path = self.run_dir / "nuclei_centroids_global_used_for_stage5.json"
@@ -429,33 +322,6 @@ class AlignmentOutputs:
                 (self.he_rgb.shape[1], self.he_rgb.shape[0]),
                 flags=cv2.INTER_LINEAR,
                 borderMode=cv2.BORDER_CONSTANT,
-            )
-
-        elif mode == "tps":
-            # TPS path: for image warp we must use inverse TPS (HE -> DAPI)
-            self.tps_inv = load_tps(tf_path, direction="inverse")
-
-            map_x, map_y = build_tps_remap_for_display(
-                self.tps_inv,
-                out_shape_hw=self.he_rgb.shape[:2],
-                display_scale=self.display_scale
-            )
-
-            tps_base = self.dapi_overlay_base
-            if self.overlay_src_level != self.display_level:
-                tps_base = cv2.resize(
-                    tps_base,
-                    (int(round(tps_base.shape[1] * self.overlay_src_scale
-                               / self.display_scale)),
-                     int(round(tps_base.shape[0] * self.overlay_src_scale
-                               / self.display_scale))),
-                    interpolation=cv2.INTER_AREA)
-            self.warped_dapi = cv2.remap(
-                tps_base,
-                map_x,
-                map_y,
-                interpolation=cv2.INTER_LINEAR,
-                borderMode=cv2.BORDER_CONSTANT
             )
 
         elif mode == local_residual.TRANSFORM_TYPE:

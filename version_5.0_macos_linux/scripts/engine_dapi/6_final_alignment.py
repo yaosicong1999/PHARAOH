@@ -2,8 +2,8 @@
 # 6_final_alignment.py - Stage 6: Final alignment viewer
 #
 # Displays DAPI, H&E, DAPI warped onto H&E, and transformed cell
-# centroids using the final registration result. Supports
-# homography- and TPS-based transforms; parameters are stored in
+# centroids using the final registration result. Supports affine,
+# homography and local-residual transforms; parameters are stored in
 # level-0 coordinates while the GUI renders at a downsampled level.
 # Usage: python 6_final_alignment.py <RUN_DIR>
 # ============================================================
@@ -204,59 +204,15 @@ def load_transform_mode(path: Path):
         return "homography"
     elif transform_type == local_residual.TRANSFORM_TYPE:
         return local_residual.TRANSFORM_TYPE
-    elif transform_type in {"tps", "local_tps"}:
-        return "tps"
 
     # backward compatibility
-    if "inverse_tps" in data and "forward_tps" in data:
-        return "tps"
-    elif "homography_3x3" in data:
+    if "homography_3x3" in data:
         return "homography"
     elif "affine_2x3" in data or "affine_3x3" in data:
         return "affine"
-    elif "initial_homography_3x3" in data:
-        return "tps"
 
     raise ValueError(f"Unknown transform json format. Keys: {list(data.keys())}")
 
-
-def load_tps(path: Path, direction="forward"):
-    data = json.load(open(path, "r"))
-    print(f"[DEBUG] TPS json keys: {list(data.keys())}", flush=True)
-
-    if direction == "forward":
-        key = "forward_tps"
-    elif direction == "inverse":
-        key = "inverse_tps"
-    else:
-        raise ValueError("direction must be 'forward' or 'inverse'")
-
-    if key not in data:
-        raise ValueError(f"[ERROR] Missing {key} in json. Keys: {list(data.keys())}")
-
-    d = data[key]
-
-    ctrl = np.array(d["control_points_src"], dtype=np.float64)
-    w = np.array(d["weights"], dtype=np.float64)
-    A2x3 = np.array(d["affine_2x3"], dtype=np.float64)
-
-    if ctrl.ndim != 2 or ctrl.shape[1] != 2:
-        raise ValueError(f"[ERROR] ctrl shape invalid: {ctrl.shape}")
-    if w.shape[0] != ctrl.shape[0] or w.shape[1] != 2:
-        raise ValueError(f"[ERROR] weights shape invalid: {w.shape}, ctrl={ctrl.shape}")
-    if A2x3.shape != (2, 3):
-        raise ValueError(f"[ERROR] affine_2x3 invalid: {A2x3.shape}")
-
-    a = np.zeros((3, 2), dtype=np.float64)
-    a[0, :] = A2x3[:, 0]
-    a[1, :] = A2x3[:, 1]
-    a[2, :] = A2x3[:, 2]
-
-    return {
-        "ctrl": ctrl,
-        "w": w,
-        "a": a,
-    }
 
 def transform_coordinates(coords_xy, homography_3x3):
     """
@@ -283,24 +239,6 @@ def transform_xy_perspective(xy: np.ndarray, H3x3: np.ndarray) -> np.ndarray:
     w = np.clip(proj[:, 2:3], 1e-8, None)
     return (proj[:, :2] / w).astype(np.float32)
 
-def _tps_kernel(r2: np.ndarray) -> np.ndarray:
-    out = np.zeros_like(r2, dtype=np.float64)
-    mask = r2 > 0
-    out[mask] = r2[mask] * np.log(r2[mask])
-    return out
-
-def apply_tps_points(xy: np.ndarray, model: dict) -> np.ndarray:
-    xy = np.asarray(xy, dtype=np.float64)
-    ctrl = model["ctrl"]
-    w = model["w"]
-    a = model["a"]
-
-    diff = xy[:, None, :] - ctrl[None, :, :]
-    r2 = np.sum(diff * diff, axis=2)
-    K = _tps_kernel(r2)
-    P = np.concatenate([np.ones((xy.shape[0], 1)), xy], axis=1)
-    return (K @ w + P @ a).astype(np.float32)
-
 def infer_scale_from_info(info: dict):
     """
     Try to infer micron->HE pixel scale from images_info.json.
@@ -323,7 +261,7 @@ def cells_to_he_pixels(cell_csv_gz: Path, transform_json: Path, dapi_ome_tif: Pa
     Supports:
       - affine
       - homography
-      - tps
+      - local residual
     """
     print(f"[INFO] reading cells: {cell_csv_gz}", flush=True)
     import pandas as pd
@@ -351,9 +289,6 @@ def cells_to_he_pixels(cell_csv_gz: Path, transform_json: Path, dapi_ome_tif: Pa
     elif mode == "homography":
         _, H3 = load_homography(transform_json)
         xy_he = transform_xy_perspective(xy_dapi, H3)
-    elif mode == "tps":
-        tps_fwd = load_tps(transform_json, direction="forward")
-        xy_he = apply_tps_points(xy_dapi, tps_fwd)
     elif mode == local_residual.TRANSFORM_TYPE:
         xy_he = local_residual.forward_points(
             xy_dapi, json.loads(Path(transform_json).read_text())

@@ -70,8 +70,7 @@ def load_params(path: Path, pair: str = "dapi-he"):
         raise ValueError(
             f"stage8_refinement.transform_mode={params['transform_mode']!r} is not "
             f"supported; expected one of {', '.join(VALID_TRANSFORM_MODES + (FOLLOW_STAGE5,))}. "
-            f"Stage 8 replaces Stage 5's transform, so it fits the same models Stage 5 does -- "
-            f"tps and local_tps are Stage-5-only and cannot be refined from pairs."
+            f"Stage 8 replaces Stage 5's transform, so it fits the same models Stage 5 does."
         )
     params["transform_mode"] = mode
     return params

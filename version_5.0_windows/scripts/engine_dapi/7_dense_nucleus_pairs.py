@@ -914,19 +914,6 @@ def load_transform(path: Path) -> Dict:
     if kind == local_residual.TRANSFORM_TYPE:
         # Keep the serialized model intact; the shared point transform validates it.
         return {"kind": local_residual.TRANSFORM_TYPE, "model": data}
-    if kind in {"tps", "local_tps"} or "forward_tps" in data:
-        tps = data.get("forward_tps")
-        if not isinstance(tps, dict):
-            raise ValueError("TPS transform has no forward_tps block")
-        affine = np.asarray(tps["affine_2x3"], dtype=np.float64)
-        if affine.shape != (2, 3):
-            raise ValueError(f"invalid TPS affine_2x3 shape {affine.shape}")
-        return {
-            "kind": "tps",
-            "ctrl": np.asarray(tps["control_points_src"], dtype=np.float64),
-            "weights": np.asarray(tps["weights"], dtype=np.float64),
-            "affine": affine,
-        }
     for key in ("homography_3x3", "affine_3x3", "H_mat", "H", "matrix_3x3"):
         if key in data:
             matrix = np.asarray(data[key], dtype=np.float64)
@@ -950,16 +937,6 @@ def transform_points(points: np.ndarray, transform: Dict, batch_size: int = 100_
             out[start:start + len(p)] = local_residual.forward_points(
                 p, transform["model"]
             )
-        elif transform["kind"] == "tps":
-            ctrl = transform["ctrl"]
-            diff = p[:, None, :] - ctrl[None, :, :]
-            r2 = np.sum(diff * diff, axis=2)
-            kernel = np.zeros_like(r2)
-            positive = r2 > 0
-            kernel[positive] = r2[positive] * np.log(r2[positive])
-            design = np.column_stack([np.ones(len(p)), p])
-            # Stored affine_2x3 transposes to the TPS [1, x, y] convention.
-            out[start:start + len(p)] = kernel @ transform["weights"] + design @ transform["affine"].T
         else:
             homogeneous = np.column_stack([p, np.ones(len(p))])
             projected = (transform["matrix"] @ homogeneous.T).T

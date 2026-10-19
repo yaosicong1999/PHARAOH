@@ -3,7 +3,7 @@
 #
 # Common helpers used across all stages: image / pyramid reading,
 # DAPI LUT coloring, H&E stain separation, nuclei mask operations,
-# TPS-free geometry, and overlay helpers.
+# geometry, and overlay helpers.
 # Usage: imported as a module (not run directly).
 # ============================================================
 import numpy as np

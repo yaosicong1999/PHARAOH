@@ -62,7 +62,7 @@ def log_event(run_dir, event_name, stage="stage5", **extra):
 
 def load_stage5_params(
     run_dir,
-    default_mode="tps",
+    default_mode="homography",
     default_balance_points_bool=False,
     default_random_seed=43,
     default_dapi_mask_upscale_factor=1,
@@ -88,7 +88,7 @@ def load_stage5_params(
     stage4c = data.get("stage4c", {})
 
     mode = str(stage5.get("transform_mode", params["transform_mode"])).strip().lower()
-    if mode in {"affine", "homography", "tps", "local_tps"}:
+    if mode in {"affine", "homography"}:
         params["transform_mode"] = mode
     else:
         print(
