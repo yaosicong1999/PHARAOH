@@ -1,0 +1,8 @@
+{
+  "method": "pharaoh",
+  "description": "Demo: the first 1 condition(s) of configs/methods/pharaoh.json, otherwise identical.",
+  "args": [],
+  "conditions": {
+    "default": []
+  }
+}

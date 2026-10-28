@@ -1,0 +1,17 @@
+{
+  "max_rss_gib": 28.0,
+  "sample_interval_seconds": 1.0,
+  "timeout_seconds": 5400,
+  "max_swap_gib": 30.0,
+  "min_local_free_gib": 0.0,
+  "resource_limit_action": "skip",
+  "recovery_timeout_seconds": 300,
+  "recovery_interval_seconds": 5,
+  "swap_settle": {
+    "enabled": true,
+    "tolerance_gib": 3.0,
+    "cap_gib": 5.0,
+    "timeout_seconds": 1800
+  },
+  "cooldown_seconds": 0
+}

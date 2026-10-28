@@ -1,0 +1,8 @@
+{
+  "method": "pharaoh",
+  "description": "PHARAOH 5.0 (released; frozen snapshot methods/pharaoh/version_5.0, commit 7c7abb587), one automatic run per dataset.",
+  "args": [],
+  "conditions": {
+    "default": []
+  }
+}

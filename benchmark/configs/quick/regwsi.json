@@ -1,0 +1,24 @@
+{
+  "method": "regwsi",
+  "description": "Demo: conditions initial_1k, nonrigid_1k of configs/methods/regwsi.json, otherwise identical.",
+  "args": [
+    "--device",
+    "auto",
+    "--loader-resample-ratio",
+    "1.0"
+  ],
+  "conditions": {
+    "initial_1k": [
+      "--preset",
+      "initial",
+      "--resolution",
+      "1k"
+    ],
+    "nonrigid_1k": [
+      "--preset",
+      "initial_nonrigid",
+      "--resolution",
+      "1k"
+    ]
+  }
+}

@@ -29,6 +29,9 @@ PHARAOH/
 ├── version_5.0_macos_linux/    # PHARAOH 5.0 with .sh launchers
 ├── version_5.0_windows/        # the same pipeline with Windows support and .ps1 launchers
 ├── examples/                   # example data downloads and example alignments
+├── benchmark/                  # the manuscript's DAPI–H&E benchmark against VoltRon, RegWSI and VALIS,
+│                               #   set up to run on one public test dataset (benchmark/README.md)
+├── manuscript_results/         # PHARAOH's final transformation of every registration in the manuscript
 └── assets/                     # figures and demo GIFs
 ```
 
@@ -433,6 +436,16 @@ python scripts/pre_process/convert_image_to_ome_tif.py ../examples/he_he_human_C
 
 Other datasets can be downloaded from the sources listed in the manuscript's Data Availability
 section.
+
+---
+
+## Benchmark against other methods
+
+[`benchmark/`](benchmark/README.md) holds the code of the manuscript's DAPI–H&E benchmark: the
+wrappers that run PHARAOH, VoltRon, RegWSI and VALIS on the same images, the runner that
+records time and memory, and the scoring at the 10x Genomics landmarks. It runs end to end on
+one public dataset (Xenium Human Colon Cancer P1), from download to figures. It also has a VALIS
+wrapper for mirrored image pairs.
 
 ---
 

@@ -1,0 +1,15 @@
+{
+  "method": "voltron",
+  "description": "Demo: the first 2 condition(s) of configs/methods/voltron.json, otherwise identical.",
+  "args": [],
+  "conditions": {
+    "1k": [
+      "--resolution",
+      "1k"
+    ],
+    "2k": [
+      "--resolution",
+      "2k"
+    ]
+  }
+}

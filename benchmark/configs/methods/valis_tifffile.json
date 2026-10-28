@@ -1,0 +1,64 @@
+{
+  "method": "valis_tifffile",
+  "description": "VALIS swept over its own caps (N x shipped; 1k is VALIS as shipped), with the DAPI decoded by tifffile (its own channel only, as every other method sees it) and handed to VALIS as a cached lossless re-encode. The H&E is read directly when VALIS reads it correctly, else from a cached lossless re-encode. The runner passes --dapi-reader from the method name.",
+  "args": [
+    "--device",
+    "auto"
+  ],
+  "conditions": {
+    "rigid_1k": [
+      "--stage",
+      "rigid",
+      "--caps-scale",
+      "1"
+    ],
+    "rigid_2k": [
+      "--stage",
+      "rigid",
+      "--caps-scale",
+      "2"
+    ],
+    "rigid_4k": [
+      "--stage",
+      "rigid",
+      "--caps-scale",
+      "4"
+    ],
+    "nonrigid_1k": [
+      "--stage",
+      "nonrigid",
+      "--caps-scale",
+      "1"
+    ],
+    "nonrigid_2k": [
+      "--stage",
+      "nonrigid",
+      "--caps-scale",
+      "2"
+    ],
+    "nonrigid_4k": [
+      "--stage",
+      "nonrigid",
+      "--caps-scale",
+      "4"
+    ],
+    "micro_1k": [
+      "--stage",
+      "micro",
+      "--caps-scale",
+      "1"
+    ],
+    "micro_2k": [
+      "--stage",
+      "micro",
+      "--caps-scale",
+      "2"
+    ],
+    "micro_4k": [
+      "--stage",
+      "micro",
+      "--caps-scale",
+      "4"
+    ]
+  }
+}

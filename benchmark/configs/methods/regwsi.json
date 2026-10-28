@@ -1,0 +1,102 @@
+{
+  "method": "regwsi",
+  "description": "RegWSI/DeeperHistReg: three shipped presets at every shared tier, loader resample 1.0.",
+  "args": [
+    "--device",
+    "auto",
+    "--loader-resample-ratio",
+    "1.0"
+  ],
+  "conditions": {
+    "initial_1k": [
+      "--preset",
+      "initial",
+      "--resolution",
+      "1k"
+    ],
+    "initial_2k": [
+      "--preset",
+      "initial",
+      "--resolution",
+      "2k"
+    ],
+    "initial_4k": [
+      "--preset",
+      "initial",
+      "--resolution",
+      "4k"
+    ],
+    "initial_8k": [
+      "--preset",
+      "initial",
+      "--resolution",
+      "8k"
+    ],
+    "initial_16k": [
+      "--preset",
+      "initial",
+      "--resolution",
+      "16k"
+    ],
+    "nonrigid_1k": [
+      "--preset",
+      "initial_nonrigid",
+      "--resolution",
+      "1k"
+    ],
+    "nonrigid_2k": [
+      "--preset",
+      "initial_nonrigid",
+      "--resolution",
+      "2k"
+    ],
+    "nonrigid_4k": [
+      "--preset",
+      "initial_nonrigid",
+      "--resolution",
+      "4k"
+    ],
+    "nonrigid_8k": [
+      "--preset",
+      "initial_nonrigid",
+      "--resolution",
+      "8k"
+    ],
+    "nonrigid_16k": [
+      "--preset",
+      "initial_nonrigid",
+      "--resolution",
+      "16k"
+    ],
+    "hires_1k": [
+      "--preset",
+      "initial_nonrigid_high_resolution",
+      "--resolution",
+      "1k"
+    ],
+    "hires_2k": [
+      "--preset",
+      "initial_nonrigid_high_resolution",
+      "--resolution",
+      "2k"
+    ],
+    "hires_4k": [
+      "--preset",
+      "initial_nonrigid_high_resolution",
+      "--resolution",
+      "4k"
+    ],
+    "hires_8k": [
+      "--preset",
+      "initial_nonrigid_high_resolution",
+      "--resolution",
+      "8k"
+    ],
+    "hires_16k": [
+      "--preset",
+      "initial_nonrigid_high_resolution",
+      "--resolution",
+      "16k"
+    ]
+  }
+}

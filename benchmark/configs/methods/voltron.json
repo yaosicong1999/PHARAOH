@@ -1,0 +1,27 @@
+{
+  "method": "voltron",
+  "description": "VoltRon (SIFT + FLANN, homography) at every shared tier.",
+  "args": [],
+  "conditions": {
+    "1k": [
+      "--resolution",
+      "1k"
+    ],
+    "2k": [
+      "--resolution",
+      "2k"
+    ],
+    "4k": [
+      "--resolution",
+      "4k"
+    ],
+    "8k": [
+      "--resolution",
+      "8k"
+    ],
+    "16k": [
+      "--resolution",
+      "16k"
+    ]
+  }
+}

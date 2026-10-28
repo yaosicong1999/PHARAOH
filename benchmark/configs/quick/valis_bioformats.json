@@ -1,0 +1,22 @@
+{
+  "method": "valis_bioformats",
+  "description": "Demo: conditions rigid_1k, nonrigid_1k of configs/methods/valis_bioformats.json, otherwise identical.",
+  "args": [
+    "--device",
+    "auto"
+  ],
+  "conditions": {
+    "rigid_1k": [
+      "--stage",
+      "rigid",
+      "--caps-scale",
+      "1"
+    ],
+    "nonrigid_1k": [
+      "--stage",
+      "nonrigid",
+      "--caps-scale",
+      "1"
+    ]
+  }
+}

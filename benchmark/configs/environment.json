@@ -1,0 +1,20 @@
+{
+  "runs_root": "runs",
+  "cache_root": "cache",
+  "results_root": "results",
+  "pharaoh_root": "../version_5.0_macos_linux",
+  "python": {
+    "runner": "~/miniconda3/envs/PHARAOH/bin/python",
+    "pharaoh": "~/miniconda3/envs/PHARAOH/bin/python",
+    "voltron": "~/miniconda3/envs/PHARAOH/bin/python",
+    "regwsi": "~/miniconda3/envs/regwsi/bin/python",
+    "valis": "~/miniconda3/envs/valis/bin/python"
+  },
+  "rscript": "~/miniconda3/envs/voltron/bin/Rscript",
+  "eval_python": {
+    "pharaoh": "~/miniconda3/envs/PHARAOH/bin/python",
+    "voltron": "~/miniconda3/envs/PHARAOH/bin/python",
+    "regwsi": "~/miniconda3/envs/valis/bin/python",
+    "valis": "~/miniconda3/envs/valis/bin/python"
+  }
+}

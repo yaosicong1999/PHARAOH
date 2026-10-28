@@ -1,0 +1,6 @@
+{
+  "matrix": {
+    "chunk_size": 5000000,
+    "note": "Every transcript is scored. chunk_size is how many transcripts are mapped at a time (memory, not results)."
+  }
+}
