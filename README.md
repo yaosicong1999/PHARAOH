@@ -79,9 +79,13 @@ current user first. The `.ps1` launchers find the environment's `python.exe` the
 `conda activate` is not needed; set `$env:PYTHON` to use another interpreter. On macOS and
 Linux, `PYTHON=/path/to/python ./run_pharaoh_cli.sh ...` does the same.
 
-PHARAOH 5.0 has been run on Apple M1 Pro and M2 Pro Macs (native arm64 and x86_64 under
-Rosetta 2) and on an Intel Core i7 PC with Windows 10. On Windows, the command-line and batch
-launchers have been tested; the GUI and the manual fail-safe have not yet been run there.
+PHARAOH 5.0 has been run on the 25 benchmark datasets on an Apple M1 Pro Mac (native arm64),
+an Apple M2 Pro Mac (native arm64, and x86_64 under Rosetta 2) and an Intel Core i7 PC with
+Windows 10. Every run finished, and each dataset's median error stayed within 0.4 µm of the
+benchmark run on every machine. On Windows, the command-line and batch launchers have been
+tested; the GUI and the manual fail-safe have not yet been run there. Linux has not been tested:
+`install_conda_env.sh` supports x86_64 Linux, but not arm64 Linux, where PyQt5 and aicspylibczi
+have no prebuilt packages.
 
 ---
 
