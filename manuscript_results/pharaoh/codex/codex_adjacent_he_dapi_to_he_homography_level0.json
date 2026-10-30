@@ -362,9 +362,9 @@
     }
   },
   "num_points": 264,
-  "num_inliers": 152,
-  "inlier_median_reproj_error_px": 4.444062698824872,
-  "inlier_mean_reproj_error_px": 4.740764950004194,
+  "num_inliers": 149,
+  "inlier_median_reproj_error_px": 4.199386790030646,
+  "inlier_mean_reproj_error_px": 4.626669033630883,
   "density_local_fit": {
     "promoted": true,
     "accepted_tiles": [
@@ -372,1233 +372,1233 @@
         "tile_id": "tile_005",
         "anchor_count": 3,
         "control_point_fixed_level0": [
-          17449.11419657734,
-          16603.374215518346
+          17448.1467089094,
+          16601.66248699433
         ],
         "residual_vector_fixed_level0": [
-          -8.11419657733859,
-          -0.3742155183463183
+          -7.123985613154218,
+          1.6731066863649176
         ],
-        "residual_magnitude_px": 8.122821144766421,
-        "anchor_spread_px": 9.062200816460638
+        "residual_magnitude_px": 7.3178177758391385,
+        "anchor_spread_px": 9.945935951780484
       },
       {
         "tile_id": "tile_009",
         "anchor_count": 3,
         "control_point_fixed_level0": [
-          17877.703594261384,
-          2965.2968447368503
+          17877.59943910291,
+          2964.728983155184
         ],
         "residual_vector_fixed_level0": [
-          1.2964057386161585,
-          0.7031552631497107
+          1.6609869609710586,
+          1.6900515526590425
         ],
-        "residual_magnitude_px": 1.4748203833728522,
-        "anchor_spread_px": 7.078323613545901
+        "residual_magnitude_px": 2.369631181251866,
+        "anchor_spread_px": 7.179144358646789
       },
       {
         "tile_id": "tile_010",
         "anchor_count": 3,
         "control_point_fixed_level0": [
-          25371.132281995535,
-          17859.268810322756
+          25369.554359789046,
+          17859.648380317292
         ],
         "residual_vector_fixed_level0": [
-          7.867718004465132,
-          47.7311896772444
+          9.294060821404855,
+          47.23289738696985
         ],
-        "residual_magnitude_px": 48.37527730776194,
-        "anchor_spread_px": 3.4826114397656056
+        "residual_magnitude_px": 48.13861404444457,
+        "anchor_spread_px": 3.507345956608333
       },
       {
         "tile_id": "tile_011",
         "anchor_count": 3,
         "control_point_fixed_level0": [
-          20810.761198685304,
-          11270.675639886766
+          20810.752916248293,
+          11271.065163958774
         ],
         "residual_vector_fixed_level0": [
-          -25.761198685304407,
-          5.520859267488049
+          -25.892379362732754,
+          6.7676092436504405
         ],
-        "residual_magnitude_px": 26.34614288193128,
-        "anchor_spread_px": 8.733306838619233
+        "residual_magnitude_px": 26.762209249955653,
+        "anchor_spread_px": 10.269798151439176
       },
       {
         "tile_id": "tile_012",
         "anchor_count": 3,
         "control_point_fixed_level0": [
-          19380.37482505271,
-          17083.414403529954
+          19379.967911306438,
+          17082.921783789927
         ],
         "residual_vector_fixed_level0": [
-          0.6251749472903612,
-          9.585596470045857
+          1.1227271148818545,
+          9.839309951752512
         ],
-        "residual_magnitude_px": 9.605961867573445,
-        "anchor_spread_px": 2.6885107047912373
+        "residual_magnitude_px": 9.90315790549393,
+        "anchor_spread_px": 2.8000021326236992
       },
       {
         "tile_id": "tile_013",
         "anchor_count": 3,
         "control_point_fixed_level0": [
-          10030.212979625809,
-          3317.506328481997
+          10028.49572115126,
+          3316.0589359339574
         ],
         "residual_vector_fixed_level0": [
-          6.787020374191343,
-          -21.122612101471987
+          8.219500639772377,
+          -20.297214287183124
         ],
-        "residual_magnitude_px": 22.18622066844507,
-        "anchor_spread_px": 23.288854968151302
+        "residual_magnitude_px": 21.898335520925997,
+        "anchor_spread_px": 21.585915471463412
       },
       {
         "tile_id": "tile_014",
         "anchor_count": 3,
         "control_point_fixed_level0": [
-          26927.693423217916,
-          2707.8491677958227
+          26927.805819558376,
+          2708.172177121456
         ],
         "residual_vector_fixed_level0": [
-          2.3065767820844485,
-          -13.849167795822723
+          1.8863707409873314,
+          -14.69524031198489
         ],
-        "residual_magnitude_px": 14.039933941742898,
-        "anchor_spread_px": 36.97516409776094
+        "residual_magnitude_px": 14.8158186543788,
+        "anchor_spread_px": 37.67072538673801
       },
       {
         "tile_id": "tile_016",
         "anchor_count": 3,
         "control_point_fixed_level0": [
-          22540.65092138683,
-          12183.017074695183
+          22540.119167277437,
+          12181.662796777044
         ],
         "residual_vector_fixed_level0": [
-          -25.650921386830305,
-          0.9829253048173996
+          -25.508933538021665,
+          1.8295965851430083
         ],
-        "residual_magnitude_px": 25.669746982551242,
-        "anchor_spread_px": 2.4180988841488014
+        "residual_magnitude_px": 25.574462143153145,
+        "anchor_spread_px": 1.1067126835702277
       },
       {
         "tile_id": "tile_018",
         "anchor_count": 3,
         "control_point_fixed_level0": [
-          18417.361868135413,
-          27204.691315187538
+          18415.760525854326,
+          27204.60737544362
         ],
         "residual_vector_fixed_level0": [
-          5.638131864587194,
-          2.308684812462161
+          7.551220128178102,
+          2.285389102093177
         ],
-        "residual_magnitude_px": 6.092500019348947,
-        "anchor_spread_px": 8.114814156198358
+        "residual_magnitude_px": 7.889482161217449,
+        "anchor_spread_px": 9.791865495247464
       },
       {
         "tile_id": "tile_020",
         "anchor_count": 3,
         "control_point_fixed_level0": [
-          47817.33975267815,
-          6496.685280319074
+          47816.81210830769,
+          6496.425370946704
         ],
         "residual_vector_fixed_level0": [
-          -30.339752678148216,
-          0.3147196809259185
+          -29.683236344862962,
+          0.9894603692537203
         ],
-        "residual_magnitude_px": 30.34138495600957,
-        "anchor_spread_px": 5.976157016868248
+        "residual_magnitude_px": 29.699723091761598,
+        "anchor_spread_px": 6.854228245680061
       },
       {
         "tile_id": "tile_021",
         "anchor_count": 3,
         "control_point_fixed_level0": [
-          26843.06005061069,
-          25826.62225304169
+          26842.409444842873,
+          25827.07487413631
         ],
         "residual_vector_fixed_level0": [
-          66.93994938931064,
-          86.3880966398865
+          68.03125164629455,
+          86.79324036016988
         ],
-        "residual_magnitude_px": 109.28796852950391,
-        "anchor_spread_px": 5.117459316929302
+        "residual_magnitude_px": 110.27836493519332,
+        "anchor_spread_px": 5.3019635759037405
       },
       {
         "tile_id": "tile_022",
         "anchor_count": 3,
         "control_point_fixed_level0": [
-          11277.107142070052,
-          23657.10997261166
+          11276.195285017739,
+          23655.87986328239
         ],
         "residual_vector_fixed_level0": [
-          -0.10714207005185017,
-          1.703883486075938
+          0.36314669388957554,
+          2.225597523371107
         ],
-        "residual_magnitude_px": 1.7072487684275208,
-        "anchor_spread_px": 15.903043682997668
+        "residual_magnitude_px": 2.255029901646214,
+        "anchor_spread_px": 16.110821418989097
       },
       {
         "tile_id": "tile_024",
         "anchor_count": 3,
         "control_point_fixed_level0": [
-          33785.48774043703,
-          17082.30811797947
+          33784.63071990403,
+          17081.094084080174
         ],
         "residual_vector_fixed_level0": [
-          59.51225956297276,
-          38.69188202052828
+          60.204342579287186,
+          39.962521034780366
         ],
-        "residual_magnitude_px": 70.98429947939982,
-        "anchor_spread_px": 17.680443294913857
+        "residual_magnitude_px": 72.26040376900363,
+        "anchor_spread_px": 19.005862764483027
       },
       {
         "tile_id": "tile_027",
         "anchor_count": 3,
         "control_point_fixed_level0": [
-          16136.98331194726,
-          7232.821768792687
+          16136.459615550715,
+          7233.010972275271
         ],
         "residual_vector_fixed_level0": [
-          -15.983311947260518,
-          18.17823120731282
+          -15.951201035013582,
+          18.278780934977476
         ],
-        "residual_magnitude_px": 24.205667737741972,
-        "anchor_spread_px": 35.821010378074654
+        "residual_magnitude_px": 24.26014523716448,
+        "anchor_spread_px": 34.19251238333127
       },
       {
         "tile_id": "tile_029",
         "anchor_count": 3,
         "control_point_fixed_level0": [
-          37237.6801857473,
-          16426.215009341573
+          37236.232813219685,
+          16425.30540811793
         ],
         "residual_vector_fixed_level0": [
-          74.31981425270351,
-          7.7849906584269775
+          76.17887166100263,
+          8.110535900999821
         ],
-        "residual_magnitude_px": 74.72644023441867,
-        "anchor_spread_px": 7.345860555116815
+        "residual_magnitude_px": 76.6094072561909,
+        "anchor_spread_px": 6.770583686271493
       },
       {
         "tile_id": "tile_032",
         "anchor_count": 3,
         "control_point_fixed_level0": [
-          14959.317392715062,
-          4839.449732604714
+          14958.001876007484,
+          4839.513558833165
         ],
         "residual_vector_fixed_level0": [
-          16.682607284938058,
-          -24.449732604713972
+          17.840598883014536,
+          -24.547639407897805
         ],
-        "residual_magnitude_px": 29.598966371572534,
-        "anchor_spread_px": 34.315829378340915
+        "residual_magnitude_px": 30.345898718027726,
+        "anchor_spread_px": 34.50274483215505
       },
       {
         "tile_id": "tile_033",
         "anchor_count": 3,
         "control_point_fixed_level0": [
-          4811.308501482732,
-          14063.699047882345
+          4809.599073388102,
+          14062.26391853174
         ],
         "residual_vector_fixed_level0": [
-          -11.308501482732026,
-          -30.69904788234453
+          -10.030978926206444,
+          -28.975798260698866
         ],
-        "residual_magnitude_px": 32.715649873836135,
-        "anchor_spread_px": 10.26343664286861
+        "residual_magnitude_px": 30.6629650076883,
+        "anchor_spread_px": 11.460700730871862
       },
       {
         "tile_id": "tile_034",
         "anchor_count": 3,
         "control_point_fixed_level0": [
-          20349.98345223451,
-          22319.493187971148
+          20349.755032593843,
+          22318.955949333787
         ],
         "residual_vector_fixed_level0": [
-          -9.983452234511788,
-          98.50681202885244
+          -9.801160099814297,
+          98.32734535754571
         ],
-        "residual_magnitude_px": 99.0114202231563,
-        "anchor_spread_px": 15.982700504876162
+        "residual_magnitude_px": 98.81462232060727,
+        "anchor_spread_px": 15.982583348082189
       },
       {
         "tile_id": "tile_035",
         "anchor_count": 3,
         "control_point_fixed_level0": [
-          33571.774370232626,
-          14973.61976965198
+          33570.42257274674,
+          14973.77199324939
         ],
         "residual_vector_fixed_level0": [
-          2.2256297673739027,
-          73.38023034802063
+          3.1257684650845476,
+          73.06574505386561
         ],
-        "residual_magnitude_px": 73.41397437674921,
-        "anchor_spread_px": 30.943067727876386
+        "residual_magnitude_px": 73.13257501807115,
+        "anchor_spread_px": 29.783905889122778
       },
       {
         "tile_id": "tile_038",
         "anchor_count": 3,
         "control_point_fixed_level0": [
-          35509.63754547415,
-          18108.231329354232
+          35508.3028045993,
+          18107.791083068514
         ],
         "residual_vector_fixed_level0": [
-          60.3624545258499,
-          86.768670645768
+          61.567332955717575,
+          86.42821736308179
         ],
-        "residual_magnitude_px": 105.69970729391382,
-        "anchor_spread_px": 20.526751273256302
+        "residual_magnitude_px": 106.11490585134729,
+        "anchor_spread_px": 20.43181893569771
       },
       {
         "tile_id": "tile_041",
         "anchor_count": 3,
         "control_point_fixed_level0": [
-          23513.018138274645,
-          2591.6394953849613
+          23512.287035641122,
+          2591.576361169166
         ],
         "residual_vector_fixed_level0": [
-          -0.018138274645025376,
-          1.7453341894652112
+          0.5542909670657536,
+          1.7371815759611309
         ],
-        "residual_magnitude_px": 1.7454284373537874,
-        "anchor_spread_px": 1.1618115238871138
+        "residual_magnitude_px": 1.8234687559784202,
+        "anchor_spread_px": 0.8929468477939579
       },
       {
         "tile_id": "tile_042",
         "anchor_count": 3,
         "control_point_fixed_level0": [
-          7644.909233305991,
-          18920.7824835748
+          7643.193017404446,
+          18921.146076964018
         ],
         "residual_vector_fixed_level0": [
-          18.09076669400929,
-          -37.44573734903315
+          19.63005613572477,
+          -35.78357878691895
         ],
-        "residual_magnitude_px": 41.58676574572555,
-        "anchor_spread_px": 2.5285345652380062
+        "residual_magnitude_px": 40.81425749283382,
+        "anchor_spread_px": 3.6643904713560227
       },
       {
         "tile_id": "tile_043",
         "anchor_count": 3,
         "control_point_fixed_level0": [
-          34443.46086617617,
-          6769.414312250152
+          34443.76520920322,
+          6769.987658230526
         ],
         "residual_vector_fixed_level0": [
-          106.31147779386083,
-          -165.44099980265491
+          105.86525736968179,
+          -165.39061782798672
         ],
-        "residual_magnitude_px": 196.65415003608905,
-        "anchor_spread_px": 16.396828408806567
+        "residual_magnitude_px": 196.370846062933,
+        "anchor_spread_px": 15.658153707599677
       },
       {
         "tile_id": "tile_044",
         "anchor_count": 3,
         "control_point_fixed_level0": [
-          23066.01812435684,
-          10362.053445645744
+          23064.398355819307,
+          10361.25088365679
         ],
         "residual_vector_fixed_level0": [
-          -11.018124356840417,
-          42.94655435425557
+          -9.2583314373951,
+          43.73044985598062
         ],
-        "residual_magnitude_px": 44.33740627557986,
-        "anchor_spread_px": 17.05886193333726
+        "residual_magnitude_px": 44.69976449167371,
+        "anchor_spread_px": 17.19467075265014
       },
       {
         "tile_id": "tile_045",
         "anchor_count": 3,
         "control_point_fixed_level0": [
-          29360.91044155809,
-          3167.1892099843067
+          29360.05658866583,
+          3165.87118776835
         ],
         "residual_vector_fixed_level0": [
-          -27.299489176060888,
-          0.8107900156933283
+          -27.125263402409473,
+          1.9144830470422676
         ],
-        "residual_magnitude_px": 27.311526682399386,
-        "anchor_spread_px": 3.6061528451695537
+        "residual_magnitude_px": 27.192740942897004,
+        "anchor_spread_px": 3.201520039389239
       },
       {
         "tile_id": "tile_046",
         "anchor_count": 3,
         "control_point_fixed_level0": [
-          16275.86641883138,
-          33363.00446712945
+          16276.392382665463,
+          33362.19890486822
         ],
         "residual_vector_fixed_level0": [
-          2.898010971934127,
-          -39.15580300841248
+          2.672117043968683,
+          -39.72399429817597
         ],
-        "residual_magnitude_px": 39.26290076939112,
-        "anchor_spread_px": 42.61087241113422
+        "residual_magnitude_px": 39.813765615653395,
+        "anchor_spread_px": 42.274495859415765
       },
       {
         "tile_id": "tile_048",
         "anchor_count": 3,
         "control_point_fixed_level0": [
-          19704.56171407519,
-          29593.547222901518
+          19705.037997300322,
+          29593.83805777045
         ],
         "residual_vector_fixed_level0": [
-          35.43828592481077,
-          -30.54722290151767
+          35.13196107322074,
+          -30.694341987105872
         ],
-        "residual_magnitude_px": 46.78680301413687,
-        "anchor_spread_px": 2.289981642226041
+        "residual_magnitude_px": 46.65187369090021,
+        "anchor_spread_px": 3.3019023491890724
       },
       {
         "tile_id": "tile_049",
         "anchor_count": 3,
         "control_point_fixed_level0": [
-          23105.5291430279,
-          18591.923729984883
+          23104.379516198827,
+          18591.300420550837
         ],
         "residual_vector_fixed_level0": [
-          0.4708569721005915,
-          63.07627001511719
+          1.5726211751825758,
+          63.46581095502188
         ],
-        "residual_magnitude_px": 63.078027436724334,
-        "anchor_spread_px": 34.082363370646696
+        "residual_magnitude_px": 63.48529197805747,
+        "anchor_spread_px": 35.303817613020726
       },
       {
         "tile_id": "tile_055",
         "anchor_count": 3,
         "control_point_fixed_level0": [
-          25548.234434523594,
-          4095.594793845531
+          25547.726631903482,
+          4094.8939553782066
         ],
         "residual_vector_fixed_level0": [
-          15.149326985767402,
-          36.40520615446894
+          16.536336076143925,
+          36.15338966811851
         ],
-        "residual_magnitude_px": 39.43147401849294,
-        "anchor_spread_px": 16.377052002368732
+        "residual_magnitude_px": 39.75572908799431,
+        "anchor_spread_px": 15.716592211132525
       },
       {
         "tile_id": "tile_057",
         "anchor_count": 3,
         "control_point_fixed_level0": [
-          47475.41054695102,
-          3478.876096749438
+          47475.336668206735,
+          3478.922344869679
         ],
         "residual_vector_fixed_level0": [
-          1.58945304898225,
-          0.12390325056185247
+          1.732811083937122,
+          -0.197051708887102
         ],
-        "residual_magnitude_px": 1.5942750736365303,
-        "anchor_spread_px": 22.470801866338558
+        "residual_magnitude_px": 1.743979251192706,
+        "anchor_spread_px": 23.79222099695481
       },
       {
         "tile_id": "tile_063",
         "anchor_count": 3,
         "control_point_fixed_level0": [
-          21574.73456083561,
-          28338.983238093755
+          21574.304265841147,
+          28338.75540912346
         ],
         "residual_vector_fixed_level0": [
-          -18.379955956086633,
-          20.806610874795297
+          -17.957435263924708,
+          20.465309088154754
         ],
-        "residual_magnitude_px": 27.762165568320395,
-        "anchor_spread_px": 38.73235644223314
+        "residual_magnitude_px": 27.22679484132784,
+        "anchor_spread_px": 39.17838710782715
       },
       {
         "tile_id": "tile_064",
         "anchor_count": 3,
         "control_point_fixed_level0": [
-          6742.554288426637,
-          11303.49698198282
+          6742.326442828823,
+          11303.162142309926
         ],
         "residual_vector_fixed_level0": [
-          0.4457115733630417,
-          -9.507312545310924
+          0.9191243795376067,
+          -9.204378271917449
         ],
-        "residual_magnitude_px": 9.517754495723045,
-        "anchor_spread_px": 8.559883754717703
+        "residual_magnitude_px": 9.250155079651716,
+        "anchor_spread_px": 9.043299888494403
       },
       {
         "tile_id": "tile_068",
         "anchor_count": 3,
         "control_point_fixed_level0": [
-          11377.025531660523,
-          14385.609470859406
+          11377.436004897767,
+          14383.904449509007
         ],
         "residual_vector_fixed_level0": [
-          17.974468339476516,
-          17.39052914059357
+          17.25476937356325,
+          19.052154810018692
         ],
-        "residual_magnitude_px": 25.01023822111013,
-        "anchor_spread_px": 33.89031071346389
+        "residual_magnitude_px": 25.704312265450223,
+        "anchor_spread_px": 35.58761946791886
       },
       {
         "tile_id": "tile_069",
         "anchor_count": 3,
         "control_point_fixed_level0": [
-          13525.780831233044,
-          14881.603916760236
+          13524.628279096645,
+          14881.099501648041
         ],
         "residual_vector_fixed_level0": [
-          17.2191687669565,
-          -12.603916760235734
+          18.00388877875048,
+          -12.397812052926383
         ],
-        "residual_magnitude_px": 21.33913050533881,
-        "anchor_spread_px": 31.574756583159612
+        "residual_magnitude_px": 21.859683320151372,
+        "anchor_spread_px": 32.615660590051974
       },
       {
         "tile_id": "tile_070",
         "anchor_count": 3,
         "control_point_fixed_level0": [
-          26968.161582110937,
-          15662.495830711727
+          26967.827570927002,
+          15662.608324405746
         ],
         "residual_vector_fixed_level0": [
-          0.8384178890628391,
-          0.43527549257851206
+          0.8809469772349985,
+          1.7659907687902887
         ],
-        "residual_magnitude_px": 0.9446741825307038,
-        "anchor_spread_px": 6.131075590574204
+        "residual_magnitude_px": 1.9735224782484733,
+        "anchor_spread_px": 6.1511643352506
       },
       {
         "tile_id": "tile_077",
         "anchor_count": 3,
         "control_point_fixed_level0": [
-          25260.309614487873,
-          16124.484741113296
+          25260.5529918145,
+          16123.633496542503
         ],
         "residual_vector_fixed_level0": [
-          1.69038551212725,
-          35.51525888670403
+          1.228530842516193,
+          35.59618184545252
         ],
-        "residual_magnitude_px": 35.55546395378943,
-        "anchor_spread_px": 47.744391272519465
+        "residual_magnitude_px": 35.61737567544157,
+        "anchor_spread_px": 46.17301094763932
       },
       {
         "tile_id": "tile_079",
         "anchor_count": 3,
         "control_point_fixed_level0": [
-          22222.527868834404,
-          17646.05195966993
+          22220.91315603443,
+          17645.86394144147
         ],
         "residual_vector_fixed_level0": [
-          -8.527868834404217,
-          2.948040330069489
+          -6.459944551097578,
+          2.3904173594164604
         ],
-        "residual_magnitude_px": 9.023053177529153,
-        "anchor_spread_px": 19.77318170894432
+        "residual_magnitude_px": 6.88803155883122,
+        "anchor_spread_px": 18.800034539515764
       },
       {
         "tile_id": "tile_080",
         "anchor_count": 3,
         "control_point_fixed_level0": [
-          22965.097030921985,
-          13961.196022407968
+          22965.19345737657,
+          13959.80123852263
         ],
         "residual_vector_fixed_level0": [
-          -24.097030921984697,
-          45.38358322860222
+          -24.207345065449772,
+          45.822519940689745
         ],
-        "residual_magnitude_px": 51.38420502374783,
-        "anchor_spread_px": 13.375542935568285
+        "residual_magnitude_px": 51.8237290131911,
+        "anchor_spread_px": 12.867189779398666
       },
       {
         "tile_id": "tile_083",
         "anchor_count": 3,
         "control_point_fixed_level0": [
-          19386.350829468505,
-          6697.620567109267
+          19386.024154738145,
+          6697.047153577495
         ],
         "residual_vector_fixed_level0": [
-          10.200400625744805,
-          1.3794328907333693
+          11.02544028756165,
+          1.5344890126043538
         ],
-        "residual_magnitude_px": 10.293250605407994,
-        "anchor_spread_px": 18.760165934189878
+        "residual_magnitude_px": 11.131711012436094,
+        "anchor_spread_px": 19.44278648748562
       },
       {
         "tile_id": "tile_084",
         "anchor_count": 3,
         "control_point_fixed_level0": [
-          33359.74238880864,
-          3263.8759736482843
+          33359.75127691502,
+          3263.4299937422356
         ],
         "residual_vector_fixed_level0": [
-          -1.0761460884168628,
-          23.124026351715656
+          0.24651667509169783,
+          23.275324219058348
         ],
-        "residual_magnitude_px": 23.149053654921943,
-        "anchor_spread_px": 22.180857348185683
+        "residual_magnitude_px": 23.276629652365532,
+        "anchor_spread_px": 23.04505059163057
       },
       {
         "tile_id": "tile_088",
         "anchor_count": 3,
         "control_point_fixed_level0": [
-          40246.13265879773,
-          9817.94952193711
+          40246.62791413838,
+          9816.935253095266
         ],
         "residual_vector_fixed_level0": [
-          7.867341202269017,
-          10.206494937086973
+          7.332966571659199,
+          10.131057399234123
         ],
-        "residual_magnitude_px": 12.886721712433372,
-        "anchor_spread_px": 4.49415831185882
+        "residual_magnitude_px": 12.50642725831993,
+        "anchor_spread_px": 5.466685993482961
       },
       {
         "tile_id": "tile_091",
         "anchor_count": 3,
         "control_point_fixed_level0": [
-          30512.04341949439,
-          23525.13251961448
+          30510.43846024748,
+          23524.031668835152
         ],
         "residual_vector_fixed_level0": [
-          58.95658050561178,
-          45.40212220560716
+          60.66770826123684,
+          45.44098568660047
         ],
-        "residual_magnitude_px": 74.41257343814667,
-        "anchor_spread_px": 8.628587712539028
+        "residual_magnitude_px": 75.79877311566707,
+        "anchor_spread_px": 9.961544330559263
       },
       {
         "tile_id": "tile_093",
         "anchor_count": 3,
         "control_point_fixed_level0": [
-          23850.30914569764,
-          29361.629670940307
+          23848.61057231033,
+          29361.2305039067
         ],
         "residual_vector_fixed_level0": [
-          0.6908543023600942,
-          1.3703290596931765
+          2.8640311742965423,
+          1.6097837130982953
         ],
-        "residual_magnitude_px": 1.5346274462973213,
-        "anchor_spread_px": 2.643018501934421
+        "residual_magnitude_px": 3.2854342437947173,
+        "anchor_spread_px": 2.025170843462547
       },
       {
         "tile_id": "tile_094",
         "anchor_count": 3,
         "control_point_fixed_level0": [
-          27618.6468007138,
-          14834.669392712784
+          27618.92537402079,
+          14833.605946815607
         ],
         "residual_vector_fixed_level0": [
-          17.353199286200834,
-          1.3306072872164805
+          17.43853019244125,
+          1.754109350782528
         ],
-        "residual_magnitude_px": 17.404138623310107,
-        "anchor_spread_px": 19.474883944236353
+        "residual_magnitude_px": 17.52652945928508,
+        "anchor_spread_px": 19.252816284715664
       },
       {
         "tile_id": "tile_100",
         "anchor_count": 3,
         "control_point_fixed_level0": [
-          35021.467454897385,
-          8191.694734690617
+          35021.892656374985,
+          8190.601028325873
         ],
         "residual_vector_fixed_level0": [
-          -29.467454897385323,
-          50.305265309382776
+          -29.739402775725466,
+          50.59765035372584
         ],
-        "residual_magnitude_px": 58.30051986026221,
-        "anchor_spread_px": 27.020810610852372
+        "residual_magnitude_px": 58.690325427405156,
+        "anchor_spread_px": 28.520589370105245
       },
       {
         "tile_id": "tile_101",
         "anchor_count": 3,
         "control_point_fixed_level0": [
-          14449.301411421038,
-          10022.663043015766
+          14449.695132679137,
+          10022.551656616793
         ],
         "residual_vector_fixed_level0": [
-          -25.30141142103821,
-          1.336956984234348
+          -25.637222948915223,
+          1.7197384636147035
         ],
-        "residual_magnitude_px": 25.336710004938205,
-        "anchor_spread_px": 4.397533992364158
+        "residual_magnitude_px": 25.694838020809183,
+        "anchor_spread_px": 5.245005224961741
       },
       {
         "tile_id": "tile_105",
         "anchor_count": 3,
         "control_point_fixed_level0": [
-          20754.542540911618,
-          2911.826360893247
+          20753.735012321747,
+          2911.028164919715
         ],
         "residual_vector_fixed_level0": [
-          -5.542540911617834,
-          1.173639106752944
+          -4.694800956003746,
+          1.9207129031988188
         ],
-        "residual_magnitude_px": 5.6654380686631205,
-        "anchor_spread_px": 5.802613610358896
+        "residual_magnitude_px": 5.072503728239943,
+        "anchor_spread_px": 7.01546088054346
       },
       {
         "tile_id": "tile_108",
         "anchor_count": 3,
         "control_point_fixed_level0": [
-          23434.979918964145,
-          4338.489634029653
+          23435.46868570733,
+          4339.006905620369
         ],
         "residual_vector_fixed_level0": [
-          -13.979918964145327,
-          16.510365970347266
+          -14.955340809741756,
+          16.239098323169856
         ],
-        "residual_magnitude_px": 21.63400838307296,
-        "anchor_spread_px": 14.210205959097866
+        "residual_magnitude_px": 22.076470122850374,
+        "anchor_spread_px": 15.330834504415012
       },
       {
         "tile_id": "tile_109",
         "anchor_count": 3,
         "control_point_fixed_level0": [
-          29970.507726044078,
-          21583.185140119997
+          29970.282916391578,
+          21583.60135751231
         ],
         "residual_vector_fixed_level0": [
-          19.49227395592243,
-          61.814859880003496
+          19.653887529137137,
+          61.5181883465375
         ],
-        "residual_magnitude_px": 64.8153195313978,
-        "anchor_spread_px": 20.89809754045143
+        "residual_magnitude_px": 64.58144309666697,
+        "anchor_spread_px": 21.843766444209106
       },
       {
         "tile_id": "tile_112",
         "anchor_count": 3,
         "control_point_fixed_level0": [
-          23112.061553597978,
-          22766.58215578458
+          23112.036863135716,
+          22765.222676599893
         ],
         "residual_vector_fixed_level0": [
-          1.9560446116447565,
-          26.436962073563336
+          3.0474262596653716,
+          26.0465905345809
         ],
-        "residual_magnitude_px": 26.50922620903467,
-        "anchor_spread_px": 2.8788063951833465
+        "residual_magnitude_px": 26.224257573556155,
+        "anchor_spread_px": 3.838510003393722
       },
       {
         "tile_id": "tile_113",
         "anchor_count": 3,
         "control_point_fixed_level0": [
-          20970.218415488824,
-          5263.550290267949
+          20969.376446273192,
+          5261.861461275341
         ],
         "residual_vector_fixed_level0": [
-          -16.218415488823666,
-          0.4497097320509056
+          -15.12299739825903,
+          2.313091934091972
         ],
-        "residual_magnitude_px": 16.224649142931156,
-        "anchor_spread_px": 32.79004165049264
+        "residual_magnitude_px": 15.298870696992989,
+        "anchor_spread_px": 31.769160383402777
       },
       {
         "tile_id": "tile_114",
         "anchor_count": 3,
         "control_point_fixed_level0": [
-          9284.207045270829,
-          15090.12362358353
+          9283.230899401942,
+          15090.213207512681
         ],
         "residual_vector_fixed_level0": [
-          -0.2070452708285302,
-          9.87637641647052
+          1.0811070690506313,
+          10.052857205891996
         ],
-        "residual_magnitude_px": 9.878546394282285,
-        "anchor_spread_px": 5.612557241525855
+        "residual_magnitude_px": 10.1108224441341,
+        "anchor_spread_px": 4.403877708671258
       },
       {
         "tile_id": "tile_116",
         "anchor_count": 3,
         "control_point_fixed_level0": [
-          41704.78584027677,
-          2427.1674696003433
+          41703.59517148822,
+          2427.366530063422
         ],
         "residual_vector_fixed_level0": [
-          -17.16241482228361,
-          36.83253039965666
+          -16.314960645133397,
+          35.821462007188074
         ],
-        "residual_magnitude_px": 40.634760712643214,
-        "anchor_spread_px": 35.20036774750042
+        "residual_magnitude_px": 39.36184804077001,
+        "anchor_spread_px": 34.65342409883306
       },
       {
         "tile_id": "tile_117",
         "anchor_count": 3,
         "control_point_fixed_level0": [
-          31383.88709448235,
-          14237.70769992522
+          31384.054771384082,
+          14236.213644516045
         ],
         "residual_vector_fixed_level0": [
-          -15.904336991574382,
-          47.29230007477963
+          -14.74080906954623,
+          48.365907067889566
         ],
-        "residual_magnitude_px": 49.89498553466633,
-        "anchor_spread_px": 4.58991942995185
+        "residual_magnitude_px": 50.562361678669106,
+        "anchor_spread_px": 5.139166332489062
       },
       {
         "tile_id": "tile_118",
         "anchor_count": 3,
         "control_point_fixed_level0": [
-          18071.44140155878,
-          14473.725036715197
+          18071.22311640793,
+          14472.492366305
         ],
         "residual_vector_fixed_level0": [
-          -17.441401558779035,
-          0.5564373676770629
+          -17.230895764740126,
+          1.8988715717150626
         ],
-        "residual_magnitude_px": 17.4502753811717,
-        "anchor_spread_px": 3.2538664379374445
+        "residual_magnitude_px": 17.335209318067285,
+        "anchor_spread_px": 2.9968262325779067
       },
       {
         "tile_id": "tile_120",
         "anchor_count": 3,
         "control_point_fixed_level0": [
-          20783.82756611293,
-          15230.17024904598
+          20784.100835821817,
+          15230.46394551135
         ],
         "residual_vector_fixed_level0": [
-          -27.207555097975273,
-          1.8297509540207102
+          -27.239902953657293,
+          1.6364481406344566
         ],
-        "residual_magnitude_px": 27.269012504362898,
-        "anchor_spread_px": 12.381948833006682
+        "residual_magnitude_px": 27.289013823178976,
+        "anchor_spread_px": 11.568553782577794
       },
       {
         "tile_id": "tile_121",
         "anchor_count": 3,
         "control_point_fixed_level0": [
-          36394.6317551843,
-          19770.387904158313
+          36393.44794818912,
+          19769.957238002335
         ],
         "residual_vector_fixed_level0": [
-          67.36824481569784,
-          77.61209584168682
+          68.73858283153095,
+          77.4931190862626
         ],
-        "residual_magnitude_px": 102.77216466771038,
-        "anchor_spread_px": 12.837872779066492
+        "residual_magnitude_px": 103.5865641644944,
+        "anchor_spread_px": 11.504396124646469
       },
       {
         "tile_id": "tile_126",
         "anchor_count": 3,
         "control_point_fixed_level0": [
-          23377.02101704839,
-          16811.405085799106
+          23376.061998559482,
+          16810.84998966737
         ],
         "residual_vector_fixed_level0": [
-          -0.021017048391513526,
-          21.59491420089398
+          0.7043994917912642,
+          21.792247578545357
         ],
-        "residual_magnitude_px": 21.594924428214508,
-        "anchor_spread_px": 20.572635455348056
+        "residual_magnitude_px": 21.80362889907668,
+        "anchor_spread_px": 21.325466483135262
       },
       {
         "tile_id": "tile_130",
         "anchor_count": 3,
         "control_point_fixed_level0": [
-          18971.932702745922,
-          20537.3903233174
+          18970.472972444968,
+          20537.219788083585
         ],
         "residual_vector_fixed_level0": [
-          -18.932702745922143,
-          -57.390323317398725
+          -17.224305608131544,
+          -57.08531935553401
         ],
-        "residual_magnitude_px": 60.43257766917615,
-        "anchor_spread_px": 29.27753920744845
+        "residual_magnitude_px": 59.62726213407436,
+        "anchor_spread_px": 31.628224368838524
       },
       {
         "tile_id": "tile_131",
         "anchor_count": 3,
         "control_point_fixed_level0": [
-          9282.734363190226,
-          12823.026207225741
+          9282.5782089973,
+          12821.820394686258
         ],
         "residual_vector_fixed_level0": [
-          1.2656368097741506,
-          -124.02620722574102
+          1.467530742422241,
+          -122.57073631339517
         ],
-        "residual_magnitude_px": 124.03266471110224,
-        "anchor_spread_px": 16.70860896969985
+        "residual_magnitude_px": 122.57952131937783,
+        "anchor_spread_px": 16.796774084853233
       },
       {
         "tile_id": "tile_136",
         "anchor_count": 3,
         "control_point_fixed_level0": [
-          14075.428845581655,
-          30215.581729636633
+          14074.299080272925,
+          30215.433854089453
         ],
         "residual_vector_fixed_level0": [
-          -36.29755284211751,
-          1.4182703633669007
+          -35.37801412949375,
+          1.859541138073837
         ],
-        "residual_magnitude_px": 36.32525062748938,
-        "anchor_spread_px": 0.8368137546240177
+        "residual_magnitude_px": 35.42685107359739,
+        "anchor_spread_px": 1.685691918439474
       },
       {
         "tile_id": "tile_137",
         "anchor_count": 3,
         "control_point_fixed_level0": [
-          19012.775060940217,
-          33625.34620607567
+          19011.14912417577,
+          33624.09692654706
         ],
         "residual_vector_fixed_level0": [
-          -28.984521646092617,
-          0.6537939243280562
+          -27.754510782651778,
+          1.6880093678992125
         ],
-        "residual_magnitude_px": 28.99189441116775,
-        "anchor_spread_px": 13.128179129103955
+        "residual_magnitude_px": 27.805795158751515,
+        "anchor_spread_px": 12.689418965968933
       },
       {
         "tile_id": "tile_138",
         "anchor_count": 3,
         "control_point_fixed_level0": [
-          21546.13444545653,
-          7672.425116670722
+          21546.637566375273,
+          7672.08543477073
         ],
         "residual_vector_fixed_level0": [
-          1.8655545434703527,
-          1.5748833292782365
+          1.8400245091543184,
+          1.3540204759756307
         ],
-        "residual_magnitude_px": 2.4414240220619967,
-        "anchor_spread_px": 25.124848548103113
+        "residual_magnitude_px": 2.2845265688211778,
+        "anchor_spread_px": 23.859763076987594
       },
       {
         "tile_id": "tile_139",
         "anchor_count": 3,
         "control_point_fixed_level0": [
-          26249.346408824018,
-          13659.41412787447
+          26247.735752436667,
+          13657.921734914791
         ],
         "residual_vector_fixed_level0": [
-          -1.346408824017999,
-          0.5858721255299315
+          0.39267301217478234,
+          1.8241867916258343
         ],
-        "residual_magnitude_px": 1.4683537955365153,
-        "anchor_spread_px": 9.097672050608848
+        "residual_magnitude_px": 1.8659714749246763,
+        "anchor_spread_px": 6.710114142868642
       },
       {
         "tile_id": "tile_145",
         "anchor_count": 3,
         "control_point_fixed_level0": [
-          45718.26751460728,
-          4156.096583496199
+          45716.9299672736,
+          4156.213588038886
         ],
         "residual_vector_fixed_level0": [
-          -20.267514607279736,
-          -41.096583496198946
+          -19.283425889603677,
+          -41.04501390944188
         ],
-        "residual_magnitude_px": 45.82249800497949,
-        "anchor_spread_px": 26.261751020625525
+        "residual_magnitude_px": 45.349130982479856,
+        "anchor_spread_px": 27.3181022224162
       },
       {
         "tile_id": "tile_146",
         "anchor_count": 3,
         "control_point_fixed_level0": [
-          19550.716701827452,
-          31577.078331915498
+          19549.46430958069,
+          31577.22034135898
         ],
         "residual_vector_fixed_level0": [
-          7.283298172547802,
-          2.9216680845020164
+          8.791737013576494,
+          2.412692643523769
         ],
-        "residual_magnitude_px": 7.847456700500859,
-        "anchor_spread_px": 11.768653016680002
+        "residual_magnitude_px": 9.11678262919571,
+        "anchor_spread_px": 12.212164045364277
       },
       {
         "tile_id": "tile_148",
         "anchor_count": 3,
         "control_point_fixed_level0": [
-          24491.982564133363,
-          20056.23880367006
+          24490.733763186443,
+          20055.221882262715
         ],
         "residual_vector_fixed_level0": [
-          -4.878490887327644,
-          33.89291115816013
+          -3.8368021492606204,
+          33.89845870455247
         ],
-        "residual_magnitude_px": 34.24221225494455,
-        "anchor_spread_px": 5.93005274469538
+        "residual_magnitude_px": 34.11490221701976,
+        "anchor_spread_px": 5.052324020380183
       },
       {
         "tile_id": "tile_149",
         "anchor_count": 3,
         "control_point_fixed_level0": [
-          11899.08975220224,
-          5939.819902194274
+          11899.66069857309,
+          5939.162751171196
         ],
         "residual_vector_fixed_level0": [
-          -1.089752202240561,
-          -78.81990219427371
+          -1.346622946755815,
+          -77.87936504723257
         ],
-        "residual_magnitude_px": 78.8274352099392,
-        "anchor_spread_px": 8.860852050276009
+        "residual_magnitude_px": 77.8910064996007,
+        "anchor_spread_px": 9.087165518556217
       },
       {
         "tile_id": "tile_151",
         "anchor_count": 3,
         "control_point_fixed_level0": [
-          13346.878276244282,
-          33744.139512948124
+          13345.221462152003,
+          33743.913662190964
         ],
         "residual_vector_fixed_level0": [
-          0.12172375571753946,
-          -4.13951294812432
+          1.387117002674131,
+          -3.979170478443848
         ],
-        "residual_magnitude_px": 4.141302225193772,
-        "anchor_spread_px": 10.55500415201927
+        "residual_magnitude_px": 4.214011304639168,
+        "anchor_spread_px": 11.626736356487184
       },
       {
         "tile_id": "tile_153",
         "anchor_count": 3,
         "control_point_fixed_level0": [
-          32632.8890593184,
-          8859.88324577211
+          32632.443139083134,
+          8858.50772183919
         ],
         "residual_vector_fixed_level0": [
-          -18.88905931840054,
-          30.11675422789085
+          -18.28752737576724,
+          30.890045517373437
         ],
-        "residual_magnitude_px": 35.55018209738504,
-        "anchor_spread_px": 22.37930477237751
+        "residual_magnitude_px": 35.89747302505901,
+        "anchor_spread_px": 22.416636285364802
       },
       {
         "tile_id": "tile_154",
         "anchor_count": 3,
         "control_point_fixed_level0": [
-          11608.80834810092,
-          29862.63894521851
+          11607.867647474266,
+          29861.993521503122
         ],
         "residual_vector_fixed_level0": [
-          -19.80834810091983,
-          -40.638945218510344
+          -19.323637341911308,
+          -40.0865841397499
         ],
-        "residual_magnitude_px": 45.20945169939909,
-        "anchor_spread_px": 22.329316750543512
+        "residual_magnitude_px": 44.50097963095821,
+        "anchor_spread_px": 22.079011449593963
       },
       {
         "tile_id": "tile_155",
         "anchor_count": 3,
         "control_point_fixed_level0": [
-          8666.416337103517,
-          10159.279547280714
+          8665.972040858202,
+          10159.402138026395
         ],
         "residual_vector_fixed_level0": [
-          42.583662896482565,
-          76.72045271928619
+          43.52047368123385,
+          76.73245378347019
         ],
-        "residual_magnitude_px": 87.7462034001101,
-        "anchor_spread_px": 8.75459087856506
+        "residual_magnitude_px": 88.21508427174662,
+        "anchor_spread_px": 7.964151736075082
       },
       {
         "tile_id": "tile_162",
         "anchor_count": 3,
         "control_point_fixed_level0": [
-          16990.713679763387,
-          32598.436676926885
+          16990.349344785514,
+          32597.751178420225
         ],
         "residual_vector_fixed_level0": [
-          14.971866560437775,
-          -3.9908998479004367
+          15.423694158969738,
+          -3.745820293588622
         ],
-        "residual_magnitude_px": 15.494646491595946,
-        "anchor_spread_px": 10.067084792382957
+        "residual_magnitude_px": 15.872035508443696,
+        "anchor_spread_px": 11.444764494099543
       },
       {
         "tile_id": "tile_164",
         "anchor_count": 3,
         "control_point_fixed_level0": [
-          11498.468361842797,
-          10845.310525495335
+          11497.70953560966,
+          10844.67234760599
         ],
         "residual_vector_fixed_level0": [
-          33.531638157202906,
-          0.6894745046647586
+          33.88655122925957,
+          1.696788729472246
         ],
-        "residual_magnitude_px": 33.53872586426277,
-        "anchor_spread_px": 22.103919811173448
+        "residual_magnitude_px": 33.92900597137643,
+        "anchor_spread_px": 23.034740878168794
       },
       {
         "tile_id": "tile_165",
         "anchor_count": 3,
         "control_point_fixed_level0": [
-          22642.377779506227,
-          21328.413017152037
+          22642.14153788602,
+          21327.733319221003
         ],
         "residual_vector_fixed_level0": [
-          1.6222204937730567,
-          87.79221560669612
+          1.5443530781922163,
+          89.0339591535776
         ],
-        "residual_magnitude_px": 87.80720198516198,
-        "anchor_spread_px": 15.431635286500043
+        "residual_magnitude_px": 89.04735206052477,
+        "anchor_spread_px": 14.20483303760503
       },
       {
         "tile_id": "tile_169",
         "anchor_count": 3,
         "control_point_fixed_level0": [
-          20242.280111621203,
-          13409.182211078687
+          20241.917149626184,
+          13408.474858444913
         ],
         "residual_vector_fixed_level0": [
-          -19.361054099303146,
-          -5.182211078687033
+          -18.046651266351546,
+          -4.061149389270213
         ],
-        "residual_magnitude_px": 20.042597823141833,
-        "anchor_spread_px": 11.243588752431302
+        "residual_magnitude_px": 18.497960868465412,
+        "anchor_spread_px": 13.363460310997588
       },
       {
         "tile_id": "tile_176",
         "anchor_count": 3,
         "control_point_fixed_level0": [
-          12413.542170061193,
-          21639.837381002875
+          12413.218477302775,
+          21639.839848729876
         ],
         "residual_vector_fixed_level0": [
-          -19.542170061193247,
-          -70.83738100287519
+          -19.49219077885573,
+          -70.28755203474793
         ],
-        "residual_magnitude_px": 73.48354208968904,
-        "anchor_spread_px": 22.276215440361547
+        "residual_magnitude_px": 72.94028703259062,
+        "anchor_spread_px": 22.971784799220295
       },
       {
         "tile_id": "tile_178",
         "anchor_count": 3,
         "control_point_fixed_level0": [
-          16206.118176071222,
-          26606.302707712504
+          16204.48392034663,
+          26606.753802247284
         ],
         "residual_vector_fixed_level0": [
-          22.88182392877752,
-          -25.302707712504343
+          24.188869726949633,
+          -25.625285033838736
         ],
-        "residual_magnitude_px": 34.11458462141965,
-        "anchor_spread_px": 13.638517465231416
+        "residual_magnitude_px": 35.23856767425175,
+        "anchor_spread_px": 13.59522420938083
       },
       {
         "tile_id": "tile_179",
         "anchor_count": 3,
         "control_point_fixed_level0": [
-          12966.464073190149,
-          8319.85358663743
+          12966.71503289066,
+          8319.01384962042
         ],
         "residual_vector_fixed_level0": [
-          -16.464073190149065,
-          18.146413362570456
+          -16.833937866567794,
+          19.541029626818272
         ],
-        "residual_magnitude_px": 24.502204470942218,
-        "anchor_spread_px": 17.28910832918806
+        "residual_magnitude_px": 25.792117070369667,
+        "anchor_spread_px": 15.693169309187086
       },
       {
         "tile_id": "tile_181",
         "anchor_count": 3,
         "control_point_fixed_level0": [
-          19630.89409656517,
-          28108.365470743618
+          19631.360243597617,
+          28108.15601367719
         ],
         "residual_vector_fixed_level0": [
-          0.5811555885375128,
-          1.6159297922786209
+          1.0828435553667077,
+          0.8176036584809481
         ],
-        "residual_magnitude_px": 1.7172567984032003,
-        "anchor_spread_px": 1.4999345344908803
+        "residual_magnitude_px": 1.356844098546566,
+        "anchor_spread_px": 1.9011388060025638
       },
       {
         "tile_id": "tile_182",
         "anchor_count": 3,
         "control_point_fixed_level0": [
-          21815.993053920087,
-          30850.869391170057
+          21814.936180353965,
+          30849.96451841692
         ],
         "residual_vector_fixed_level0": [
-          -0.9930539200868225,
-          1.1306088299425028
+          0.06256032645251253,
+          2.0098472757490526
         ],
-        "residual_magnitude_px": 1.5048031148770793,
-        "anchor_spread_px": 19.513623503297755
+        "residual_magnitude_px": 2.010820694711921,
+        "anchor_spread_px": 19.31042262088716
       },
       {
         "tile_id": "tile_184",
         "anchor_count": 3,
         "control_point_fixed_level0": [
-          31864.1673864549,
-          4295.269651101992
+          31863.35097610015,
+          4294.035250774289
         ],
         "residual_vector_fixed_level0": [
-          -0.16738645490113413,
-          -11.269651101992167
+          1.0441529900563182,
+          -10.197108265813768
         ],
-        "residual_magnitude_px": 11.27089411652499,
-        "anchor_spread_px": 18.61813006520747
+        "residual_magnitude_px": 10.250427915524845,
+        "anchor_spread_px": 16.157748925884444
       },
       {
         "tile_id": "tile_186",
         "anchor_count": 3,
         "control_point_fixed_level0": [
-          13133.934060283027,
-          2104.094797077206
+          13132.394184003419,
+          2102.550826767347
         ],
         "residual_vector_fixed_level0": [
-          19.065939716972935,
-          -38.09479707720584
+          20.29974388255323,
+          -36.60916010755045
         ],
-        "residual_magnitude_px": 42.59957302185946,
-        "anchor_spread_px": 10.757548058780912
+        "residual_magnitude_px": 41.8606044566669,
+        "anchor_spread_px": 11.382514354610521
       },
       {
         "tile_id": "tile_190",
         "anchor_count": 3,
         "control_point_fixed_level0": [
-          6652.627137971187,
-          13623.466399610883
+          6651.551150270312,
+          13622.785163128781
         ],
         "residual_vector_fixed_level0": [
-          -14.62713797118704,
-          -13.466399610882945
+          -13.610706211819888,
+          -12.995753575662093
         ],
-        "residual_magnitude_px": 19.882079461367464,
-        "anchor_spread_px": 30.030830001191134
+        "residual_magnitude_px": 18.818632643840164,
+        "anchor_spread_px": 29.79813448391269
       },
       {
         "tile_id": "tile_193",
         "anchor_count": 3,
         "control_point_fixed_level0": [
-          29010.810193976093,
-          23413.75225055372
+          29011.25590945235,
+          23413.169908283933
         ],
         "residual_vector_fixed_level0": [
-          30.278730186433677,
-          -4.752250553719932
+          30.844585504764837,
+          -4.376602395437658
         ],
-        "residual_magnitude_px": 30.649394562179875,
-        "anchor_spread_px": 6.474597570632525
+        "residual_magnitude_px": 31.153540785735732,
+        "anchor_spread_px": 7.055338410156046
       },
       {
         "tile_id": "tile_194",
         "anchor_count": 3,
         "control_point_fixed_level0": [
-          24234.104287793456,
-          12843.284712662751
+          24233.098452568585,
+          12842.218150099652
         ],
         "residual_vector_fixed_level0": [
-          -21.104287793456024,
-          21.71528733724881
+          -20.34695340923645,
+          22.11908987147035
         ],
-        "residual_magnitude_px": 30.281094224091298,
-        "anchor_spread_px": 20.47560881784101
+        "residual_magnitude_px": 30.05416193773869,
+        "anchor_spread_px": 20.112529223963065
       },
       {
         "tile_id": "tile_196",
         "anchor_count": 3,
         "control_point_fixed_level0": [
-          10420.020386033311,
-          22015.997089884117
+          10419.724187862204,
+          22016.07075940198
         ],
         "residual_vector_fixed_level0": [
-          4.979613966688703,
-          -81.99708988411658
+          5.579041293070986,
+          -81.63158461951753
         ],
-        "residual_magnitude_px": 82.14815460326017,
-        "anchor_spread_px": 9.707103824862605
+        "residual_magnitude_px": 81.82200993157795,
+        "anchor_spread_px": 10.117689316742606
       },
       {
         "tile_id": "tile_197",
         "anchor_count": 3,
         "control_point_fixed_level0": [
-          20338.83911131633,
-          19723.344883168676
+          20339.101095523813,
+          19722.735083361007
         ],
         "residual_vector_fixed_level0": [
-          -48.83911131633067,
-          21.65511683132354
+          -48.79871494894542,
+          21.92554666838987
         ],
-        "residual_magnitude_px": 53.42474032830867,
-        "anchor_spread_px": 40.87676665489147
+        "residual_magnitude_px": 53.49807638949433,
+        "anchor_spread_px": 41.6067895864616
       }
     ],
     "rejected_tiles": [],
@@ -1606,14 +1606,14 @@
     "num_unique_tiles_used": 88,
     "tile_size_level0_px": 354.0,
     "baseline_anchor_error": {
-      "median_px": 27.20516148208175,
-      "p90_px": 82.08549364588735,
-      "max_px": 209.42337136446415
+      "median_px": 27.20976789211783,
+      "p90_px": 81.96063876801827,
+      "max_px": 209.89650030178353
     },
     "local_anchor_error": {
-      "median_px": 8.54938432871304,
-      "p90_px": 22.31881912406293,
-      "max_px": 43.5622713112028
+      "median_px": 8.400794030449159,
+      "p90_px": 22.03757948232159,
+      "max_px": 43.019955653138545
     },
     "quality_gates": {
       "minimum_unique_tiles": true,
@@ -1641,710 +1641,710 @@
     "inverse_iterations": 3,
     "control_points_fixed_level0": [
       [
-        17449.11419657734,
-        16603.374215518346
+        17448.1467089094,
+        16601.66248699433
       ],
       [
-        17877.703594261384,
-        2965.2968447368503
+        17877.59943910291,
+        2964.728983155184
       ],
       [
-        25371.132281995535,
-        17859.268810322756
+        25369.554359789046,
+        17859.648380317292
       ],
       [
-        20810.761198685304,
-        11270.675639886766
+        20810.752916248293,
+        11271.065163958774
       ],
       [
-        19380.37482505271,
-        17083.414403529954
+        19379.967911306438,
+        17082.921783789927
       ],
       [
-        10030.212979625809,
-        3317.506328481997
+        10028.49572115126,
+        3316.0589359339574
       ],
       [
-        26927.693423217916,
-        2707.8491677958227
+        26927.805819558376,
+        2708.172177121456
       ],
       [
-        22540.65092138683,
-        12183.017074695183
+        22540.119167277437,
+        12181.662796777044
       ],
       [
-        18417.361868135413,
-        27204.691315187538
+        18415.760525854326,
+        27204.60737544362
       ],
       [
-        47817.33975267815,
-        6496.685280319074
+        47816.81210830769,
+        6496.425370946704
       ],
       [
-        26843.06005061069,
-        25826.62225304169
+        26842.409444842873,
+        25827.07487413631
       ],
       [
-        11277.107142070052,
-        23657.10997261166
+        11276.195285017739,
+        23655.87986328239
       ],
       [
-        33785.48774043703,
-        17082.30811797947
+        33784.63071990403,
+        17081.094084080174
       ],
       [
-        16136.98331194726,
-        7232.821768792687
+        16136.459615550715,
+        7233.010972275271
       ],
       [
-        37237.6801857473,
-        16426.215009341573
+        37236.232813219685,
+        16425.30540811793
       ],
       [
-        14959.317392715062,
-        4839.449732604714
+        14958.001876007484,
+        4839.513558833165
       ],
       [
-        4811.308501482732,
-        14063.699047882345
+        4809.599073388102,
+        14062.26391853174
       ],
       [
-        20349.98345223451,
-        22319.493187971148
+        20349.755032593843,
+        22318.955949333787
       ],
       [
-        33571.774370232626,
-        14973.61976965198
+        33570.42257274674,
+        14973.77199324939
       ],
       [
-        35509.63754547415,
-        18108.231329354232
+        35508.3028045993,
+        18107.791083068514
       ],
       [
-        23513.018138274645,
-        2591.6394953849613
+        23512.287035641122,
+        2591.576361169166
       ],
       [
-        7644.909233305991,
-        18920.7824835748
+        7643.193017404446,
+        18921.146076964018
       ],
       [
-        34443.46086617617,
-        6769.414312250152
+        34443.76520920322,
+        6769.987658230526
       ],
       [
-        23066.01812435684,
-        10362.053445645744
+        23064.398355819307,
+        10361.25088365679
       ],
       [
-        29360.91044155809,
-        3167.1892099843067
+        29360.05658866583,
+        3165.87118776835
       ],
       [
-        16275.86641883138,
-        33363.00446712945
+        16276.392382665463,
+        33362.19890486822
       ],
       [
-        19704.56171407519,
-        29593.547222901518
+        19705.037997300322,
+        29593.83805777045
       ],
       [
-        23105.5291430279,
-        18591.923729984883
+        23104.379516198827,
+        18591.300420550837
       ],
       [
-        25548.234434523594,
-        4095.594793845531
+        25547.726631903482,
+        4094.8939553782066
       ],
       [
-        47475.41054695102,
-        3478.876096749438
+        47475.336668206735,
+        3478.922344869679
       ],
       [
-        21574.73456083561,
-        28338.983238093755
+        21574.304265841147,
+        28338.75540912346
       ],
       [
-        6742.554288426637,
-        11303.49698198282
+        6742.326442828823,
+        11303.162142309926
       ],
       [
-        11377.025531660523,
-        14385.609470859406
+        11377.436004897767,
+        14383.904449509007
       ],
       [
-        13525.780831233044,
-        14881.603916760236
+        13524.628279096645,
+        14881.099501648041
       ],
       [
-        26968.161582110937,
-        15662.495830711727
+        26967.827570927002,
+        15662.608324405746
       ],
       [
-        25260.309614487873,
-        16124.484741113296
+        25260.5529918145,
+        16123.633496542503
       ],
       [
-        22222.527868834404,
-        17646.05195966993
+        22220.91315603443,
+        17645.86394144147
       ],
       [
-        22965.097030921985,
-        13961.196022407968
+        22965.19345737657,
+        13959.80123852263
       ],
       [
-        19386.350829468505,
-        6697.620567109267
+        19386.024154738145,
+        6697.047153577495
       ],
       [
-        33359.74238880864,
-        3263.8759736482843
+        33359.75127691502,
+        3263.4299937422356
       ],
       [
-        40246.13265879773,
-        9817.94952193711
+        40246.62791413838,
+        9816.935253095266
       ],
       [
-        30512.04341949439,
-        23525.13251961448
+        30510.43846024748,
+        23524.031668835152
       ],
       [
-        23850.30914569764,
-        29361.629670940307
+        23848.61057231033,
+        29361.2305039067
       ],
       [
-        27618.6468007138,
-        14834.669392712784
+        27618.92537402079,
+        14833.605946815607
       ],
       [
-        35021.467454897385,
-        8191.694734690617
+        35021.892656374985,
+        8190.601028325873
       ],
       [
-        14449.301411421038,
-        10022.663043015766
+        14449.695132679137,
+        10022.551656616793
       ],
       [
-        20754.542540911618,
-        2911.826360893247
+        20753.735012321747,
+        2911.028164919715
       ],
       [
-        23434.979918964145,
-        4338.489634029653
+        23435.46868570733,
+        4339.006905620369
       ],
       [
-        29970.507726044078,
-        21583.185140119997
+        29970.282916391578,
+        21583.60135751231
       ],
       [
-        23112.061553597978,
-        22766.58215578458
+        23112.036863135716,
+        22765.222676599893
       ],
       [
-        20970.218415488824,
-        5263.550290267949
+        20969.376446273192,
+        5261.861461275341
       ],
       [
-        9284.207045270829,
-        15090.12362358353
+        9283.230899401942,
+        15090.213207512681
       ],
       [
-        41704.78584027677,
-        2427.1674696003433
+        41703.59517148822,
+        2427.366530063422
       ],
       [
-        31383.88709448235,
-        14237.70769992522
+        31384.054771384082,
+        14236.213644516045
       ],
       [
-        18071.44140155878,
-        14473.725036715197
+        18071.22311640793,
+        14472.492366305
       ],
       [
-        20783.82756611293,
-        15230.17024904598
+        20784.100835821817,
+        15230.46394551135
       ],
       [
-        36394.6317551843,
-        19770.387904158313
+        36393.44794818912,
+        19769.957238002335
       ],
       [
-        23377.02101704839,
-        16811.405085799106
+        23376.061998559482,
+        16810.84998966737
       ],
       [
-        18971.932702745922,
-        20537.3903233174
+        18970.472972444968,
+        20537.219788083585
       ],
       [
-        9282.734363190226,
-        12823.026207225741
+        9282.5782089973,
+        12821.820394686258
       ],
       [
-        14075.428845581655,
-        30215.581729636633
+        14074.299080272925,
+        30215.433854089453
       ],
       [
-        19012.775060940217,
-        33625.34620607567
+        19011.14912417577,
+        33624.09692654706
       ],
       [
-        21546.13444545653,
-        7672.425116670722
+        21546.637566375273,
+        7672.08543477073
       ],
       [
-        26249.346408824018,
-        13659.41412787447
+        26247.735752436667,
+        13657.921734914791
       ],
       [
-        45718.26751460728,
-        4156.096583496199
+        45716.9299672736,
+        4156.213588038886
       ],
       [
-        19550.716701827452,
-        31577.078331915498
+        19549.46430958069,
+        31577.22034135898
       ],
       [
-        24491.982564133363,
-        20056.23880367006
+        24490.733763186443,
+        20055.221882262715
       ],
       [
-        11899.08975220224,
-        5939.819902194274
+        11899.66069857309,
+        5939.162751171196
       ],
       [
-        13346.878276244282,
-        33744.139512948124
+        13345.221462152003,
+        33743.913662190964
       ],
       [
-        32632.8890593184,
-        8859.88324577211
+        32632.443139083134,
+        8858.50772183919
       ],
       [
-        11608.80834810092,
-        29862.63894521851
+        11607.867647474266,
+        29861.993521503122
       ],
       [
-        8666.416337103517,
-        10159.279547280714
+        8665.972040858202,
+        10159.402138026395
       ],
       [
-        16990.713679763387,
-        32598.436676926885
+        16990.349344785514,
+        32597.751178420225
       ],
       [
-        11498.468361842797,
-        10845.310525495335
+        11497.70953560966,
+        10844.67234760599
       ],
       [
-        22642.377779506227,
-        21328.413017152037
+        22642.14153788602,
+        21327.733319221003
       ],
       [
-        20242.280111621203,
-        13409.182211078687
+        20241.917149626184,
+        13408.474858444913
       ],
       [
-        12413.542170061193,
-        21639.837381002875
+        12413.218477302775,
+        21639.839848729876
       ],
       [
-        16206.118176071222,
-        26606.302707712504
+        16204.48392034663,
+        26606.753802247284
       ],
       [
-        12966.464073190149,
-        8319.85358663743
+        12966.71503289066,
+        8319.01384962042
       ],
       [
-        19630.89409656517,
-        28108.365470743618
+        19631.360243597617,
+        28108.15601367719
       ],
       [
-        21815.993053920087,
-        30850.869391170057
+        21814.936180353965,
+        30849.96451841692
       ],
       [
-        31864.1673864549,
-        4295.269651101992
+        31863.35097610015,
+        4294.035250774289
       ],
       [
-        13133.934060283027,
-        2104.094797077206
+        13132.394184003419,
+        2102.550826767347
       ],
       [
-        6652.627137971187,
-        13623.466399610883
+        6651.551150270312,
+        13622.785163128781
       ],
       [
-        29010.810193976093,
-        23413.75225055372
+        29011.25590945235,
+        23413.169908283933
       ],
       [
-        24234.104287793456,
-        12843.284712662751
+        24233.098452568585,
+        12842.218150099652
       ],
       [
-        10420.020386033311,
-        22015.997089884117
+        10419.724187862204,
+        22016.07075940198
       ],
       [
-        20338.83911131633,
-        19723.344883168676
+        20339.101095523813,
+        19722.735083361007
       ]
     ],
     "residual_vectors_fixed_level0": [
       [
-        -8.11419657733859,
-        -0.3742155183463183
+        -7.123985613154218,
+        1.6731066863649176
       ],
       [
-        1.2964057386161585,
-        0.7031552631497107
+        1.6609869609710586,
+        1.6900515526590425
       ],
       [
-        7.867718004465132,
-        47.7311896772444
+        9.294060821404855,
+        47.23289738696985
       ],
       [
-        -25.761198685304407,
-        5.520859267488049
+        -25.892379362732754,
+        6.7676092436504405
       ],
       [
-        0.6251749472903612,
-        9.585596470045857
+        1.1227271148818545,
+        9.839309951752512
       ],
       [
-        6.787020374191343,
-        -21.122612101471987
+        8.219500639772377,
+        -20.297214287183124
       ],
       [
-        2.3065767820844485,
-        -13.849167795822723
+        1.8863707409873314,
+        -14.69524031198489
       ],
       [
-        -25.650921386830305,
-        0.9829253048173996
+        -25.508933538021665,
+        1.8295965851430083
       ],
       [
-        5.638131864587194,
-        2.308684812462161
+        7.551220128178102,
+        2.285389102093177
       ],
       [
-        -30.339752678148216,
-        0.3147196809259185
+        -29.683236344862962,
+        0.9894603692537203
       ],
       [
-        66.93994938931064,
-        86.3880966398865
+        68.03125164629455,
+        86.79324036016988
       ],
       [
-        -0.10714207005185017,
-        1.703883486075938
+        0.36314669388957554,
+        2.225597523371107
       ],
       [
-        59.51225956297276,
-        38.69188202052828
+        60.204342579287186,
+        39.962521034780366
       ],
       [
-        -15.983311947260518,
-        18.17823120731282
+        -15.951201035013582,
+        18.278780934977476
       ],
       [
-        74.31981425270351,
-        7.7849906584269775
+        76.17887166100263,
+        8.110535900999821
       ],
       [
-        16.682607284938058,
-        -24.449732604713972
+        17.840598883014536,
+        -24.547639407897805
       ],
       [
-        -11.308501482732026,
-        -30.69904788234453
+        -10.030978926206444,
+        -28.975798260698866
       ],
       [
-        -9.983452234511788,
-        98.50681202885244
+        -9.801160099814297,
+        98.32734535754571
       ],
       [
-        2.2256297673739027,
-        73.38023034802063
+        3.1257684650845476,
+        73.06574505386561
       ],
       [
-        60.3624545258499,
-        86.768670645768
+        61.567332955717575,
+        86.42821736308179
       ],
       [
-        -0.018138274645025376,
-        1.7453341894652112
+        0.5542909670657536,
+        1.7371815759611309
       ],
       [
-        18.09076669400929,
-        -37.44573734903315
+        19.63005613572477,
+        -35.78357878691895
       ],
       [
-        106.31147779386083,
-        -165.44099980265491
+        105.86525736968179,
+        -165.39061782798672
       ],
       [
-        -11.018124356840417,
-        42.94655435425557
+        -9.2583314373951,
+        43.73044985598062
       ],
       [
-        -27.299489176060888,
-        0.8107900156933283
+        -27.125263402409473,
+        1.9144830470422676
       ],
       [
-        2.898010971934127,
-        -39.15580300841248
+        2.672117043968683,
+        -39.72399429817597
       ],
       [
-        35.43828592481077,
-        -30.54722290151767
+        35.13196107322074,
+        -30.694341987105872
       ],
       [
-        0.4708569721005915,
-        63.07627001511719
+        1.5726211751825758,
+        63.46581095502188
       ],
       [
-        15.149326985767402,
-        36.40520615446894
+        16.536336076143925,
+        36.15338966811851
       ],
       [
-        1.58945304898225,
-        0.12390325056185247
+        1.732811083937122,
+        -0.197051708887102
       ],
       [
-        -18.379955956086633,
-        20.806610874795297
+        -17.957435263924708,
+        20.465309088154754
       ],
       [
-        0.4457115733630417,
-        -9.507312545310924
+        0.9191243795376067,
+        -9.204378271917449
       ],
       [
-        17.974468339476516,
-        17.39052914059357
+        17.25476937356325,
+        19.052154810018692
       ],
       [
-        17.2191687669565,
-        -12.603916760235734
+        18.00388877875048,
+        -12.397812052926383
       ],
       [
-        0.8384178890628391,
-        0.43527549257851206
+        0.8809469772349985,
+        1.7659907687902887
       ],
       [
-        1.69038551212725,
-        35.51525888670403
+        1.228530842516193,
+        35.59618184545252
       ],
       [
-        -8.527868834404217,
-        2.948040330069489
+        -6.459944551097578,
+        2.3904173594164604
       ],
       [
-        -24.097030921984697,
-        45.38358322860222
+        -24.207345065449772,
+        45.822519940689745
       ],
       [
-        10.200400625744805,
-        1.3794328907333693
+        11.02544028756165,
+        1.5344890126043538
       ],
       [
-        -1.0761460884168628,
-        23.124026351715656
+        0.24651667509169783,
+        23.275324219058348
       ],
       [
-        7.867341202269017,
-        10.206494937086973
+        7.332966571659199,
+        10.131057399234123
       ],
       [
-        58.95658050561178,
-        45.40212220560716
+        60.66770826123684,
+        45.44098568660047
       ],
       [
-        0.6908543023600942,
-        1.3703290596931765
+        2.8640311742965423,
+        1.6097837130982953
       ],
       [
-        17.353199286200834,
-        1.3306072872164805
+        17.43853019244125,
+        1.754109350782528
       ],
       [
-        -29.467454897385323,
-        50.305265309382776
+        -29.739402775725466,
+        50.59765035372584
       ],
       [
-        -25.30141142103821,
-        1.336956984234348
+        -25.637222948915223,
+        1.7197384636147035
       ],
       [
-        -5.542540911617834,
-        1.173639106752944
+        -4.694800956003746,
+        1.9207129031988188
       ],
       [
-        -13.979918964145327,
-        16.510365970347266
+        -14.955340809741756,
+        16.239098323169856
       ],
       [
-        19.49227395592243,
-        61.814859880003496
+        19.653887529137137,
+        61.5181883465375
       ],
       [
-        1.9560446116447565,
-        26.436962073563336
+        3.0474262596653716,
+        26.0465905345809
       ],
       [
-        -16.218415488823666,
-        0.4497097320509056
+        -15.12299739825903,
+        2.313091934091972
       ],
       [
-        -0.2070452708285302,
-        9.87637641647052
+        1.0811070690506313,
+        10.052857205891996
       ],
       [
-        -17.16241482228361,
-        36.83253039965666
+        -16.314960645133397,
+        35.821462007188074
       ],
       [
-        -15.904336991574382,
-        47.29230007477963
+        -14.74080906954623,
+        48.365907067889566
       ],
       [
-        -17.441401558779035,
-        0.5564373676770629
+        -17.230895764740126,
+        1.8988715717150626
       ],
       [
-        -27.207555097975273,
-        1.8297509540207102
+        -27.239902953657293,
+        1.6364481406344566
       ],
       [
-        67.36824481569784,
-        77.61209584168682
+        68.73858283153095,
+        77.4931190862626
       ],
       [
-        -0.021017048391513526,
-        21.59491420089398
+        0.7043994917912642,
+        21.792247578545357
       ],
       [
-        -18.932702745922143,
-        -57.390323317398725
+        -17.224305608131544,
+        -57.08531935553401
       ],
       [
-        1.2656368097741506,
-        -124.02620722574102
+        1.467530742422241,
+        -122.57073631339517
       ],
       [
-        -36.29755284211751,
-        1.4182703633669007
+        -35.37801412949375,
+        1.859541138073837
       ],
       [
-        -28.984521646092617,
-        0.6537939243280562
+        -27.754510782651778,
+        1.6880093678992125
       ],
       [
-        1.8655545434703527,
-        1.5748833292782365
+        1.8400245091543184,
+        1.3540204759756307
       ],
       [
-        -1.346408824017999,
-        0.5858721255299315
+        0.39267301217478234,
+        1.8241867916258343
       ],
       [
-        -20.267514607279736,
-        -41.096583496198946
+        -19.283425889603677,
+        -41.04501390944188
       ],
       [
-        7.283298172547802,
-        2.9216680845020164
+        8.791737013576494,
+        2.412692643523769
       ],
       [
-        -4.878490887327644,
-        33.89291115816013
+        -3.8368021492606204,
+        33.89845870455247
       ],
       [
-        -1.089752202240561,
-        -78.81990219427371
+        -1.346622946755815,
+        -77.87936504723257
       ],
       [
-        0.12172375571753946,
-        -4.13951294812432
+        1.387117002674131,
+        -3.979170478443848
       ],
       [
-        -18.88905931840054,
-        30.11675422789085
+        -18.28752737576724,
+        30.890045517373437
       ],
       [
-        -19.80834810091983,
-        -40.638945218510344
+        -19.323637341911308,
+        -40.0865841397499
       ],
       [
-        42.583662896482565,
-        76.72045271928619
+        43.52047368123385,
+        76.73245378347019
       ],
       [
-        14.971866560437775,
-        -3.9908998479004367
+        15.423694158969738,
+        -3.745820293588622
       ],
       [
-        33.531638157202906,
-        0.6894745046647586
+        33.88655122925957,
+        1.696788729472246
       ],
       [
-        1.6222204937730567,
-        87.79221560669612
+        1.5443530781922163,
+        89.0339591535776
       ],
       [
-        -19.361054099303146,
-        -5.182211078687033
+        -18.046651266351546,
+        -4.061149389270213
       ],
       [
-        -19.542170061193247,
-        -70.83738100287519
+        -19.49219077885573,
+        -70.28755203474793
       ],
       [
-        22.88182392877752,
-        -25.302707712504343
+        24.188869726949633,
+        -25.625285033838736
       ],
       [
-        -16.464073190149065,
-        18.146413362570456
+        -16.833937866567794,
+        19.541029626818272
       ],
       [
-        0.5811555885375128,
-        1.6159297922786209
+        1.0828435553667077,
+        0.8176036584809481
       ],
       [
-        -0.9930539200868225,
-        1.1306088299425028
+        0.06256032645251253,
+        2.0098472757490526
       ],
       [
-        -0.16738645490113413,
-        -11.269651101992167
+        1.0441529900563182,
+        -10.197108265813768
       ],
       [
-        19.065939716972935,
-        -38.09479707720584
+        20.29974388255323,
+        -36.60916010755045
       ],
       [
-        -14.62713797118704,
-        -13.466399610882945
+        -13.610706211819888,
+        -12.995753575662093
       ],
       [
-        30.278730186433677,
-        -4.752250553719932
+        30.844585504764837,
+        -4.376602395437658
       ],
       [
-        -21.104287793456024,
-        21.71528733724881
+        -20.34695340923645,
+        22.11908987147035
       ],
       [
-        4.979613966688703,
-        -81.99708988411658
+        5.579041293070986,
+        -81.63158461951753
       ],
       [
-        -48.83911131633067,
-        21.65511683132354
+        -48.79871494894542,
+        21.92554666838987
       ]
     ],
     "tile_ids": [

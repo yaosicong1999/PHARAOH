@@ -1,23 +1,23 @@
 {
   "from": "dapi_level0",
   "to": "he_level0",
-  "method": "Stage8 cv2.findHomography(RANSAC) from Stage7 high-confidence pairs",
-  "transform_type": "homography",
+  "method": "Stage8 cv2.estimateAffine2D(RANSAC) from Stage7 high-confidence pairs",
+  "transform_type": "affine",
   "stage": 8,
   "sampling": {
     "type": "stage7_high_confidence_pairs",
-    "source": "/Volumes/X10 Pro/benchmark_new/runs/iter1/experimental/pharaoh/default/geo_brca_b12/dense_nucleus_pairs/high_confidence_pairs.csv.gz",
-    "num_points": 5882,
-    "num_train_points": 4705,
+    "source": "/Volumes/T7 Shield/benchmark_new/runs/iter1/experimental/pharaoh/default/geo_brca_b12/dense_nucleus_pairs/high_confidence_pairs.csv.gz",
+    "num_points": 5886,
+    "num_train_points": 4709,
     "num_holdout_points": 1177
   },
   "ransacReprojThreshold": 12.697971014492754,
   "maxIters": 20000,
   "confidence": 0.999,
-  "num_points": 5882,
-  "num_inliers": 2798,
-  "inlier_median_reproj_error_px": 6.482852773518539,
-  "inlier_mean_reproj_error_px": 6.617330665372605,
+  "num_points": 5886,
+  "num_inliers": 2639,
+  "inlier_median_reproj_error_px": 5.728995173185638,
+  "inlier_mean_reproj_error_px": 6.093080706889166,
   "quality_gates": {
     "minimum_pairs": true,
     "minimum_spatial_grid_coverage": true,
@@ -28,23 +28,24 @@
     "holdout_median_degradation_bounded": true,
     "holdout_p95_degradation_bounded": true,
     "bounded_transform_shift": true,
-    "holdout_median_degradation_px_bounded": true
+    "holdout_median_degradation_px_bounded": true,
+    "stable_under_pair_subsampling": true
   },
   "promoted_to_canonical": true,
   "homography_3x3": [
     [
-      -0.004011148576263297,
-      -2.440750431256561,
-      45654.352587351124
+      -0.004158432731315541,
+      -2.4412431576244806,
+      45662.306850903995
     ],
     [
-      2.4420877117996085,
-      -0.0031422935232284614,
-      -6771.073343036775
+      2.440817991100172,
+      -0.0034516848902662843,
+      -6750.9760789929705
     ],
     [
-      9.214294237448114e-09,
-      2.6568859882652517e-09,
+      0.0,
+      0.0,
       1.0
     ]
   ]

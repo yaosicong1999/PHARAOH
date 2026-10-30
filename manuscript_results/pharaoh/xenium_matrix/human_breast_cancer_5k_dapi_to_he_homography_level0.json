@@ -1,23 +1,23 @@
 {
   "from": "dapi_level0",
   "to": "he_level0",
-  "method": "Stage8 cv2.findHomography(RANSAC) from Stage7 high-confidence pairs",
-  "transform_type": "homography",
+  "method": "Stage8 cv2.estimateAffine2D(RANSAC) from Stage7 high-confidence pairs",
+  "transform_type": "affine",
   "stage": 8,
   "sampling": {
     "type": "stage7_high_confidence_pairs",
-    "source": "/Volumes/X10 Pro/benchmark_new/runs/iter1/matrix/pharaoh/default/human_breast_cancer_5k/dense_nucleus_pairs/high_confidence_pairs.csv.gz",
-    "num_points": 5940,
-    "num_train_points": 4772,
-    "num_holdout_points": 1168
+    "source": "/Volumes/T7 Shield/ablation_parallel_macos_rosetta/BGS-STU23-143/cohort25/gated_j1/runs_human_breast_cancer_5k/dense_nucleus_pairs/high_confidence_pairs.csv.gz",
+    "num_points": 5938,
+    "num_train_points": 4775,
+    "num_holdout_points": 1163
   },
   "ransacReprojThreshold": 4.0,
   "maxIters": 20000,
   "confidence": 0.999,
-  "num_points": 5940,
-  "num_inliers": 3250,
-  "inlier_median_reproj_error_px": 1.7543007138231406,
-  "inlier_mean_reproj_error_px": 1.8691737645958515,
+  "num_points": 5938,
+  "num_inliers": 3057,
+  "inlier_median_reproj_error_px": 1.6006472533136278,
+  "inlier_mean_reproj_error_px": 1.7816142478705372,
   "quality_gates": {
     "minimum_pairs": true,
     "minimum_spatial_grid_coverage": true,
@@ -28,23 +28,24 @@
     "holdout_median_degradation_bounded": true,
     "holdout_p95_degradation_bounded": true,
     "bounded_transform_shift": true,
-    "holdout_median_degradation_px_bounded": true
+    "holdout_median_degradation_px_bounded": true,
+    "stable_under_pair_subsampling": true
   },
   "promoted_to_canonical": true,
   "homography_3x3": [
     [
-      0.0065836484715656885,
-      -0.7754331065406816,
-      56680.328062463166
+      0.006540005544886316,
+      -0.7753836675550223,
+      56675.95793955223
     ],
     [
-      0.7755584400984691,
-      0.00677590811197157,
-      -1116.949735200573
+      0.7753705226417548,
+      0.006663825127360575,
+      -1113.2930425872773
     ],
     [
-      2.2798857596521364e-09,
-      4.201384851929094e-09,
+      0.0,
+      0.0,
       1.0
     ]
   ]
