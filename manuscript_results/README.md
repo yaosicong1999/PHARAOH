@@ -1,10 +1,9 @@
 # PHARAOH results of the manuscript
 
 `pharaoh/` holds the final transformation of every PHARAOH registration reported in the
-manuscript, all from PHARAOH 5.0: 100 files, one per registration, grouped by experiment. Each is
+manuscript, all from PHARAOH 5.0: 121 files, one per registration, grouped by experiment. Each is
 the run's own `<moving>_to_<fixed>_homography_level0.json`, copied unchanged and prefixed with the
-run's name. The 21 CosMx transformations are pending (see `pharaoh/cosmx_subsampled/README.md`).
-`pharaoh/index.csv` lists every file with its dataset, condition, moving and fixed side,
+run's name. `pharaoh/index.csv` lists every file with its dataset, condition, moving and fixed side,
 transformation type and number of inliers.
 
 ## What a file contains
@@ -28,7 +27,7 @@ three transformation types.
 | `xenium_keypoints` | 6 | DAPI → H&E | benchmark, datasets with DAPI–H&E landmarks |
 | `xenium_matrix` | 19 | DAPI → H&E | benchmark, datasets with a 10x alignment matrix |
 | `xenium_experimental` | 30 | DAPI → H&E | Xenium sections without a reference alignment (visual assessment) |
-| `cosmx_subsampled` | 21 (pending) | DAPI → H&E | CosMx kidney slide: all 483 FOVs, and 20%, 40%, 60% and 80% of them with five random seeds |
+| `cosmx_subsampled` | 21 | DAPI → H&E | CosMx kidney slide: all 483 FOVs, and 20%, 40%, 60% and 80% of them with five random seeds |
 | `orion_perturbed` | 20 | Hoechst → H&E | four Orion images, each with five seeded synthetic distortions of the Hoechst channel |
 | `hyreco_phh3` | 4 | PHH3 hematoxylin → H&E | restained PHH3–H&E pairs from HyReCo |
 | `simulated_dapi_dapi` | 9 | DAPI → DAPI | partially overlapping same-section crops, three datasets × three perturbations |
@@ -45,8 +44,7 @@ three transformation types.
   H&E is mirrored relative to the DAPI. In the benchmark, every method received the H&E flipped
   vertically (y → H − 1 − y), so these two files map DAPI pixels to the **flipped** H&E.
 - **CosMx.** The moving image is the DAPI canvas stitched from the FOVs at their global
-  coordinates. The run outputs were lost when the SSD holding them was damaged; the 21 files will
-  be added once the registrations are rerun.
+  coordinates.
 - **Orion.** The moving image is the Hoechst channel after a known synthetic distortion, so each
   transformation can be compared with the inverse of that distortion.
 - **HyReCo.** Only the four evaluated cases are included. Cases 464 and 611 are left out

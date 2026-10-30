@@ -54,6 +54,27 @@ xenium_experimental,geo_nsclc5k_l8_dapi_to_he_homography_level0.json,geo_nsclc5k
 xenium_experimental,geo_nsclc_io_l1_1_dapi_to_he_homography_level0.json,geo_nsclc_io_l1_1,,dapi,he,homography,194
 xenium_experimental,geo_nsclc_io_l2_dapi_to_he_homography_level0.json,geo_nsclc_io_l2,,dapi,he,homography,178
 xenium_experimental,geo_nsclc_io_l3_dapi_to_he_homography_level0.json,geo_nsclc_io_l3,,dapi,he,affine,4692
+cosmx_subsampled,cosmx_100percent_dapi_to_he_homography_level0.json,cosmx_hk3039_hk2844,100% FOVs,dapi,he,affine,143
+cosmx_subsampled,cosmx_seed_001_20percent_dapi_to_he_homography_level0.json,cosmx_hk3039_hk2844,"seed 1, 20% FOVs",dapi,he,affine,221
+cosmx_subsampled,cosmx_seed_001_40percent_dapi_to_he_homography_level0.json,cosmx_hk3039_hk2844,"seed 1, 40% FOVs",dapi,he,affine,275
+cosmx_subsampled,cosmx_seed_001_60percent_dapi_to_he_homography_level0.json,cosmx_hk3039_hk2844,"seed 1, 60% FOVs",dapi,he,affine,279
+cosmx_subsampled,cosmx_seed_001_80percent_dapi_to_he_homography_level0.json,cosmx_hk3039_hk2844,"seed 1, 80% FOVs",dapi,he,affine,212
+cosmx_subsampled,cosmx_seed_002_20percent_dapi_to_he_homography_level0.json,cosmx_hk3039_hk2844,"seed 2, 20% FOVs",dapi,he,affine,222
+cosmx_subsampled,cosmx_seed_002_40percent_dapi_to_he_homography_level0.json,cosmx_hk3039_hk2844,"seed 2, 40% FOVs",dapi,he,affine,265
+cosmx_subsampled,cosmx_seed_002_60percent_dapi_to_he_homography_level0.json,cosmx_hk3039_hk2844,"seed 2, 60% FOVs",dapi,he,affine,266
+cosmx_subsampled,cosmx_seed_002_80percent_dapi_to_he_homography_level0.json,cosmx_hk3039_hk2844,"seed 2, 80% FOVs",dapi,he,affine,187
+cosmx_subsampled,cosmx_seed_003_20percent_dapi_to_he_homography_level0.json,cosmx_hk3039_hk2844,"seed 3, 20% FOVs",dapi,he,affine,241
+cosmx_subsampled,cosmx_seed_003_40percent_dapi_to_he_homography_level0.json,cosmx_hk3039_hk2844,"seed 3, 40% FOVs",dapi,he,affine,268
+cosmx_subsampled,cosmx_seed_003_60percent_dapi_to_he_homography_level0.json,cosmx_hk3039_hk2844,"seed 3, 60% FOVs",dapi,he,affine,272
+cosmx_subsampled,cosmx_seed_003_80percent_dapi_to_he_homography_level0.json,cosmx_hk3039_hk2844,"seed 3, 80% FOVs",dapi,he,affine,205
+cosmx_subsampled,cosmx_seed_004_20percent_dapi_to_he_homography_level0.json,cosmx_hk3039_hk2844,"seed 4, 20% FOVs",dapi,he,affine,232
+cosmx_subsampled,cosmx_seed_004_40percent_dapi_to_he_homography_level0.json,cosmx_hk3039_hk2844,"seed 4, 40% FOVs",dapi,he,affine,287
+cosmx_subsampled,cosmx_seed_004_60percent_dapi_to_he_homography_level0.json,cosmx_hk3039_hk2844,"seed 4, 60% FOVs",dapi,he,affine,303
+cosmx_subsampled,cosmx_seed_004_80percent_dapi_to_he_homography_level0.json,cosmx_hk3039_hk2844,"seed 4, 80% FOVs",dapi,he,affine,200
+cosmx_subsampled,cosmx_seed_005_20percent_dapi_to_he_homography_level0.json,cosmx_hk3039_hk2844,"seed 5, 20% FOVs",dapi,he,affine,225
+cosmx_subsampled,cosmx_seed_005_40percent_dapi_to_he_homography_level0.json,cosmx_hk3039_hk2844,"seed 5, 40% FOVs",dapi,he,affine,279
+cosmx_subsampled,cosmx_seed_005_60percent_dapi_to_he_homography_level0.json,cosmx_hk3039_hk2844,"seed 5, 60% FOVs",dapi,he,affine,280
+cosmx_subsampled,cosmx_seed_005_80percent_dapi_to_he_homography_level0.json,cosmx_hk3039_hk2844,"seed 5, 80% FOVs",dapi,he,affine,223
 orion_perturbed,HTA7_919_6_1_seed_123456789_dapi_to_he_homography_level0.json,HTA7_919_6_1,seed 123456789,dapi,he,homography,285
 orion_perturbed,HTA7_919_6_1_seed_23456789_dapi_to_he_homography_level0.json,HTA7_919_6_1,seed 23456789,dapi,he,homography,250
 orion_perturbed,HTA7_919_6_1_seed_3456789_dapi_to_he_homography_level0.json,HTA7_919_6_1,seed 3456789,dapi,he,homography,275
