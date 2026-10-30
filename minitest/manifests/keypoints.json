@@ -1,0 +1,34 @@
+{
+  "group": "keypoints",
+  "description": "Minitest landmark dataset: 10x Genomics Xenium human colorectal cancer P1 with its 8 annotated DAPI-H&E landmark pairs. Paths are relative to ../benchmark/ and are filled by 2_download_data.sh.",
+  "datasets": [
+    {
+      "name": "human_crc_p1",
+      "tissue": "colon",
+      "condition": "colorectal cancer",
+      "species": "human",
+      "preservation": "FFPE",
+      "platform": "Xenium v1, Human Colon panel with add-on",
+      "dapi": "../minitest/data/human_crc_p1/morphology_focus/morphology_focus_0000.ome.tif",
+      "he": "../minitest/data/human_crc_p1/Xenium_V1_Human_Colon_Cancer_P1_CRC_Add_on_FFPE_he_image.ome.tif",
+      "alignment": {
+        "path": "../minitest/data/human_crc_p1/Xenium_V1_Human_Colon_Cancer_P1_CRC_Add_on_FFPE_he_imagealignment.csv",
+        "kind": "landmarks",
+        "n_points": 8,
+        "fixed_space": "dapi_level0_px",
+        "moving_space": "he_level0_px"
+      },
+      "dapi_level0": [
+        34111,
+        31345
+      ],
+      "he_level0": [
+        60222,
+        70534
+      ],
+      "dapi_mpp": 0.2125,
+      "he_mpp": 0.2737768141407522,
+      "source": "10x Genomics Xenium In Situ, Sample P1 CRC; files from https://cf.10xgenomics.com/samples/xenium/2.0.0/Xenium_V1_Human_Colon_Cancer_P1_CRC_Add_on_FFPE/"
+    }
+  ]
+}

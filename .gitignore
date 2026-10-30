@@ -30,5 +30,5 @@ __pycache__/
 version_*/outputs/
 tools/figure_layout/
 
-# Example data downloaded by examples/download_example_*.sh
-examples/*/
+# Example data downloaded by example_data/download_example_*.sh
+example_data/*/

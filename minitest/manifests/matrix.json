@@ -1,0 +1,33 @@
+{
+  "group": "matrix",
+  "description": "Minitest matrix dataset: 10x Genomics Xenium non-diseased human heart, scored by every transcript's distance between PHARAOH's and 10x's DAPI-to-H&E mapping. Paths are relative to ../benchmark/ and are filled by 2_download_data.sh.",
+  "datasets": [
+    {
+      "name": "human_heart",
+      "tissue": "heart",
+      "condition": "non-diseased",
+      "species": "human",
+      "preservation": "FFPE",
+      "platform": "Xenium v1, Human Multi-Tissue and Cancer Panel",
+      "dapi": "../minitest/data/human_heart/morphology_focus.ome.tif",
+      "he": "../minitest/data/human_heart/Xenium_V1_hHeart_nondiseased_section_FFPE_he_image.ome.tif",
+      "alignment": {
+        "path": "../minitest/data/human_heart/Xenium_V1_hHeart_nondiseased_section_FFPE_he_imagealignment.csv",
+        "kind": "matrix",
+        "direction": "he_level0_px_to_dapi_level0_px"
+      },
+      "transcripts": "../minitest/data/human_heart/transcripts.parquet",
+      "dapi_level0": [
+        34050,
+        14326
+      ],
+      "he_level0": [
+        10645,
+        24544
+      ],
+      "dapi_mpp": 0.2125,
+      "he_mpp": 0.2737714825141721,
+      "source": "10x Genomics Xenium In Situ, Human Heart Data with Xenium Human Multi-Tissue and Cancer Panel; files from https://cf.10xgenomics.com/samples/xenium/1.9.0/Xenium_V1_hHeart_nondiseased_section_FFPE/"
+    }
+  ]
+}

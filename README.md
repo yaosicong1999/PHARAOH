@@ -24,13 +24,15 @@ slide typically registers in about a minute on a laptop.
 
 ```text
 PHARAOH/
-├── install_conda_env.sh        # Conda environment, macOS and Linux
+├── install_conda_env.sh        # Conda environment, macOS
 ├── install_conda_env.ps1       # Conda environment, Windows
 ├── version_5.0_macos_linux/    # PHARAOH 5.0 with .sh launchers
 ├── version_5.0_windows/        # the same pipeline with Windows support and .ps1 launchers
-├── examples/                   # example data downloads and example alignments
+├── example_data/               # example data downloads and example alignments
 ├── benchmark/                  # the manuscript's DAPI–H&E benchmark against VoltRon, RegWSI and VALIS,
 │                               #   set up to run on one public test dataset (benchmark/README.md)
+├── minitest/                   # install, download, run and check PHARAOH on two public datasets
+│                               #   against the benchmark's results (minitest/README.md)
 ├── manuscript_results/         # PHARAOH's final transformation of every registration in the manuscript
 └── assets/                     # figures and demo GIFs
 ```
@@ -59,7 +61,7 @@ On Windows every `.sh` launcher has a `.ps1` counterpart with the same arguments
 
 PHARAOH runs in its own Conda environment named `PHARAOH`.
 
-**macOS and Linux**
+**macOS**
 
 ```bash
 bash install_conda_env.sh
@@ -76,16 +78,43 @@ cd version_5.0_windows
 
 Add `-InstallMiniforge` on a machine without Conda: Miniforge is then installed for the
 current user first. The `.ps1` launchers find the environment's `python.exe` themselves, so
-`conda activate` is not needed; set `$env:PYTHON` to use another interpreter. On macOS and
-Linux, `PYTHON=/path/to/python ./run_pharaoh_cli.sh ...` does the same.
+`conda activate` is not needed; set `$env:PYTHON` to use another interpreter. On macOS,
+`PYTHON=/path/to/python ./run_pharaoh_cli.sh ...` does the same.
 
 PHARAOH 5.0 has been run on the 25 benchmark datasets on an Apple M1 Pro Mac (native arm64),
 an Apple M2 Pro Mac (native arm64, and x86_64 under Rosetta 2) and an Intel Core i7 PC with
 Windows 10. Every run finished, and each dataset's median error stayed within 0.4 µm of the
 benchmark run on every machine. On Windows, the command-line and batch launchers have been
-tested; the GUI and the manual fail-safe have not yet been run there. Linux has not been tested:
-`install_conda_env.sh` supports x86_64 Linux, but not arm64 Linux, where PyQt5 and aicspylibczi
-have no prebuilt packages.
+tested; the GUI and the manual fail-safe have not yet been run there. Linux has not been tested.
+
+---
+
+## Quick run with evaluation
+
+[`minitest/`](minitest/README.md) tests a new installation end to end in four steps. It installs
+PHARAOH's environment, downloads two public 10x Genomics Xenium datasets, registers both with
+PHARAOH's default configuration, and scores them as the manuscript's benchmark does:
+
+```bash
+cd minitest
+./1_install.sh
+./2_download_data.sh
+./3_run.sh
+./4_evaluate.sh
+```
+
+- **Datasets.**
+  - Human colorectal cancer P1, scored at the 8 DAPI–H&E landmarks annotated by 10x Genomics.
+  - Non-diseased human heart, scored by the distance between PHARAOH's and 10x's H&E positions
+    of all 2,452,409 transcripts.
+- **Resources.** About 16 GB of memory and 12.5 GB of disk (about 26 GB is downloaded). Each
+  registration takes 1–2 minutes.
+- **Result.** The last step prints each dataset's median, 95th-percentile and largest error. It
+  also says whether the median is within 0.4 µm of the benchmark's (0.51 µm for CRC P1, 0.35 µm
+  for the heart).
+- **Reference values.** [`minitest/README.md`](minitest/README.md) lists the same numbers on four
+  platforms. On the same platform, results are identical from run to run; another processor or
+  operating system changes them slightly.
 
 ---
 
@@ -404,16 +433,16 @@ otherwise. A run records the parameters it used in `run_parameters.json`.
 
 ### DAPI → H&E: Xenium Human Colon Cancer P1
 
-From the repository root, download the dataset into `examples/xenium_human_CRC_P1/`
+From the repository root, download the dataset into `example_data/xenium_human_CRC_P1/`
 (`morphology_focus.ome.tif`, `he.ome.tif` and `cells.csv.gz`) and run PHARAOH on it:
 
 ```bash
-cd examples
+cd example_data
 bash download_example_dapi_he_data.sh
 conda activate PHARAOH
 cd ../version_5.0_macos_linux
-./run_pharaoh_cli.sh --moving ../examples/xenium_human_CRC_P1/morphology_focus.ome.tif \
-                     --fixed  ../examples/xenium_human_CRC_P1/he.ome.tif
+./run_pharaoh_cli.sh --moving ../example_data/xenium_human_CRC_P1/morphology_focus.ome.tif \
+                     --fixed  ../example_data/xenium_human_CRC_P1/he.ome.tif
 ```
 
 Depending on the Xenium release, the DAPI image may be
@@ -423,19 +452,19 @@ Depending on the Xenium release, the DAPI image may be
 
 The adjacent-section registration of the manuscript: the H&E of the Visium HD section is
 registered onto the H&E of the adjacent Xenium section. The Visium HD tissue image is a BigTIFF
-(`.btf`, about 11 GB) without a pyramid. The download goes to `examples/he_he_human_CRC_P2/`
+(`.btf`, about 11 GB) without a pyramid. The download goes to `example_data/he_he_human_CRC_P2/`
 (`hefg.btf` and `he.ome.tif`); convert `hefg.btf` once to a pyramidal OME-TIFF (the converter
 writes `hefg.ome.tif` next to it), then register it onto the Xenium H&E:
 
 ```bash
-cd examples
+cd example_data
 bash download_example_he_he_data.sh
 conda activate PHARAOH
 cd ../version_5.0_macos_linux
-python scripts/pre_process/convert_image_to_ome_tif.py ../examples/he_he_human_CRC_P2/hefg.btf
+python scripts/pre_process/convert_image_to_ome_tif.py ../example_data/he_he_human_CRC_P2/hefg.btf
 ./run_pharaoh_cli.sh --pair he-he \
-                     --moving ../examples/he_he_human_CRC_P2/hefg.ome.tif \
-                     --fixed  ../examples/he_he_human_CRC_P2/he.ome.tif
+                     --moving ../example_data/he_he_human_CRC_P2/hefg.ome.tif \
+                     --fixed  ../example_data/he_he_human_CRC_P2/he.ome.tif
 ```
 
 Other datasets can be downloaded from the sources listed in the manuscript's Data Availability
@@ -450,6 +479,8 @@ wrappers that run PHARAOH, VoltRon, RegWSI and VALIS on the same images, the run
 records time and memory, and the scoring at the 10x Genomics landmarks. It runs end to end on
 one public dataset (Xenium Human Colon Cancer P1), from download to figures. It also has a VALIS
 wrapper for mirrored image pairs.
+
+For a quicker check of PHARAOH alone, see [Quick run with evaluation](#quick-run-with-evaluation).
 
 ---
 

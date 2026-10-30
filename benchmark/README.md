@@ -60,7 +60,7 @@ benchmark/
 
 ## Requirements
 
-- macOS (Apple silicon) or Linux. The benchmark ran on a 32 GiB workstation: runs are limited to
+- macOS (Apple silicon); Linux has not been tested. The benchmark ran on a 32 GiB workstation: runs are limited to
   28 GiB of resident memory, and a run above the limit is recorded as a failure, as in the benchmark.
 - About 11.5 GB of disk for the data (about 22 GB is downloaded; the Xenium output bundle is deleted
   after the DAPI image is extracted) and a few GB for the runs.
@@ -114,6 +114,12 @@ Score the runs and draw the figures:
 
 or per method, e.g. `eval/eval_valis_tifffile.sh --mode keypoints --series test`, and then
 `eval/eval_summary.sh --mode keypoints --series test` and `./plot.sh`.
+
+PHARAOH runs on a transcript dataset can also be scored, with
+`eval/eval_pharaoh.sh --mode matrix` (every transcript's distance between PHARAOH's and 10x's
+mapping). `../minitest/` uses this for a Xenium human heart section. It points the runner and
+the scoring at its own manifests, environment and limits through `BENCH_MANIFESTS`,
+`BENCH_ENVIRONMENT` and `BENCH_RESOURCES`.
 
 ## Outputs
 

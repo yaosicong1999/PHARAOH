@@ -11,7 +11,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 CONFIGS = ROOT / "configs"
-MANIFESTS = ROOT / "manifests"
+# The folder of the group manifests, or the one BENCH_MANIFESTS names (e.g. ../minitest/manifests,
+# whose datasets live outside this folder).
+MANIFESTS = Path(os.environ["BENCH_MANIFESTS"]).resolve() if os.environ.get("BENCH_MANIFESTS") else ROOT / "manifests"
 METHODS = ("pharaoh", "voltron", "regwsi", "valis_tifffile", "valis_bioformats")
 # The software behind each method: methods/<package>/wrapper.py, and the interpreters in
 # environment.json. The two VALIS methods run the same wrapper and differ only in how the

@@ -10,10 +10,10 @@ set -euo pipefail
 # The Visium HD H&E (adjacent section) is warped/placed onto the
 # fixed Xenium H&E. The Visium HD .btf has no pyramid, so convert it once to a
 # pyramidal OME-TIFF, then run from version_5.0_macos_linux/:
-#   python scripts/pre_process/convert_image_to_ome_tif.py ../examples/he_he_human_CRC_P2/hefg.btf
+#   python scripts/pre_process/convert_image_to_ome_tif.py ../example_data/he_he_human_CRC_P2/hefg.btf
 #   ./run_pharaoh_cli.sh --pair he-he \
-#                        --moving "../examples/he_he_human_CRC_P2/hefg.ome.tif" \
-#                        --fixed  "../examples/he_he_human_CRC_P2/he.ome.tif"
+#                        --moving "../example_data/he_he_human_CRC_P2/hefg.ome.tif" \
+#                        --fixed  "../example_data/he_he_human_CRC_P2/he.ome.tif"
 #
 # Outputs:
 #   he_he_human_CRC_P2/hefg.btf     (moving H&E-FG, Visium HD)

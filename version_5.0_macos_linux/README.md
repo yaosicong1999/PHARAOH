@@ -1,8 +1,8 @@
-# PHARAOH 5.0 for macOS and Linux
+# PHARAOH 5.0 for macOS
 
 This directory holds the complete PHARAOH 5.0 pipeline with its `.sh` launchers. The
 installation, all options and the input and output formats are described in the
-[repository README](../README.md).
+[repository README](../README.md). Linux has not been tested.
 
 ## Quick start
 

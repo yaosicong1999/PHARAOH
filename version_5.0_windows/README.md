@@ -35,7 +35,7 @@ fixed level-0 pixels, and the overlay `6_overlay_final_L*.png`.
 | `run_pharaoh_gui.ps1` | the interactive pipeline, one window per stage |
 
 The command-line and batch launchers have been tested on Windows 10; the GUI and the manual
-fail-safe have not yet been run on Windows. The `.sh` launchers are kept for macOS and Linux.
+fail-safe have not yet been run on Windows. The `.sh` launchers are kept for macOS.
 
 Helper tools for preparing images and applying a finished registration are described in
 [`scripts/README.md`](scripts/README.md).

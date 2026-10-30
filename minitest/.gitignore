@@ -1,0 +1,8 @@
+data/
+runs/
+cache/
+results/
+environment.json
+__pycache__/
+*.pyc
+.DS_Store
